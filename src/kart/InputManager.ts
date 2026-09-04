@@ -3,7 +3,7 @@
  * returns a reused InputState. Edge fields (useItem, pause, confirm, back,
  * menu*) are true only for the call right after the press.
  */
-import { createEmptyInput, type InputState } from '../core/types';
+import { createEmptyInput, type InputState, type TouchInputSource } from '../core/types';
 import { clamp } from '../core/math';
 
 const KEY_THROTTLE = ['KeyW', 'ArrowUp'];
@@ -66,6 +66,9 @@ export class InputManager {
   private prevPadStickMenuX = 0;
   private prevPadStickMenuY = 0;
   private disposed = false;
+  private touch: TouchInputSource | null = null;
+  private prevTouchItem = false;
+  private prevTouchPause = false;
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown, { passive: false });
@@ -78,6 +81,13 @@ export class InputManager {
   /** True while any gamepad is connected and readable. */
   get hasGamepad(): boolean {
     return this.getPad() !== null;
+  }
+
+  /** Attach (or detach with null) a virtual touch controller. Its values are merged in update(). */
+  attachTouch(source: TouchInputSource | null): void {
+    this.touch = source;
+    this.prevTouchItem = false;
+    this.prevTouchPause = false;
   }
 
   update(): InputState {
@@ -126,16 +136,30 @@ export class InputManager {
     }
     const padEdge = this.padEdge;
 
+    // --- touch ---------------------------------------------------------------
+    const tc = this.touch;
+    const tcThrottle = tc ? clamp(tc.throttle, 0, 1) : 0;
+    const tcBrake = tc ? clamp(tc.brake, 0, 1) : 0;
+    const tcSteer = tc ? clamp(tc.steer, -1, 1) : 0;
+    const tcDrift = tc ? tc.drift : false;
+    const tcItem = tc ? tc.item : false;
+    const tcPause = tc ? tc.pause : false;
+    const tcItemEdge = tcItem && !this.prevTouchItem;
+    const tcPauseEdge = tcPause && !this.prevTouchPause;
+    this.prevTouchItem = tcItem;
+    this.prevTouchPause = tcPause;
+
     // --- compose -----------------------------------------------------------------
-    s.throttle = Math.max(kbThrottle, padThrottle);
-    s.brake = Math.max(kbBrake, padBrake);
-    s.steer = clamp(this.keyboardSteer + padSteer, -1, 1);
-    s.drift = this.anyHeld(KEY_DRIFT) || buttons[PAD_A] || buttons[PAD_RB];
-    s.useItemHeld = this.anyHeld(KEY_ITEM) || buttons[PAD_X] || buttons[PAD_LB];
+    s.throttle = Math.max(kbThrottle, padThrottle, tcThrottle);
+    s.brake = Math.max(kbBrake, padBrake, tcBrake);
+    const digitalSteer = clamp(this.keyboardSteer + padSteer, -1, 1);
+    s.steer = Math.abs(tcSteer) > Math.abs(digitalSteer) ? tcSteer : digitalSteer;
+    s.drift = this.anyHeld(KEY_DRIFT) || buttons[PAD_A] || buttons[PAD_RB] || tcDrift;
+    s.useItemHeld = this.anyHeld(KEY_ITEM) || buttons[PAD_X] || buttons[PAD_LB] || tcItem;
     s.lookBack = this.anyHeld(KEY_LOOKBACK) || buttons[PAD_Y];
 
-    s.useItem = this.anyPressed(KEY_ITEM) || padEdge(PAD_X) || padEdge(PAD_LB);
-    s.pause = this.anyPressed(KEY_PAUSE) || padEdge(PAD_START);
+    s.useItem = this.anyPressed(KEY_ITEM) || padEdge(PAD_X) || padEdge(PAD_LB) || tcItemEdge;
+    s.pause = this.anyPressed(KEY_PAUSE) || padEdge(PAD_START) || tcPauseEdge;
     s.confirm = this.anyPressed(KEY_CONFIRM) || padEdge(PAD_A);
     s.back = this.anyPressed(KEY_BACK) || padEdge(PAD_B);
     s.menuUp =
@@ -168,6 +192,7 @@ export class InputManager {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.held.clear();
     this.pressed.clear();
+    this.touch = null;
   }
 
   // ---------------------------------------------------------------------------

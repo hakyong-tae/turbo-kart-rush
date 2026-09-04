@@ -40,6 +40,19 @@ export interface InputState {
   menuRight: boolean;
 }
 
+/**
+ * Contract addition (touch controls). A DOM-side virtual controller exposes its held
+ * state here; `InputManager` merges it with keyboard/gamepad and derives edges.
+ */
+export interface TouchInputSource {
+  readonly steer: number; // -1..1
+  readonly throttle: number; // 0..1
+  readonly brake: number; // 0..1
+  readonly drift: boolean; // held
+  readonly item: boolean; // held (InputManager turns this into the useItem edge)
+  readonly pause: boolean; // held (InputManager turns this into the pause edge)
+}
+
 export function createEmptyInput(): InputState {
   return {
     throttle: 0,
