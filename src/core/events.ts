@@ -57,6 +57,7 @@ export interface GameEvents {
   'ui:select': {};
   'ui:back': {};
   'ui:error': {};
+  'ui:langChange': {};
 }
 
 export type EventName = keyof GameEvents;
