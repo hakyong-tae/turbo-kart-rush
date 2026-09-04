@@ -1936,3 +1936,125 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   Touch controls (visible only on touch devices while racing)
+   --------------------------------------------------------------------------- */
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 20;
+}
+#ui[data-state='racing'] .touch-controls.enabled,
+#ui[data-state='countdown'] .touch-controls.enabled,
+#ui[data-state='finished'] .touch-controls.enabled {
+  display: block;
+}
+
+.touch-stick-zone {
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 0;
+  width: 45%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-stick {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.touch-stick-ring {
+  position: absolute;
+  left: -60px;
+  top: -60px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(16, 17, 38, 0.35);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+.touch-knob {
+  position: absolute;
+  left: -26px;
+  top: -26px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, var(--blue) 60%, var(--magenta) 100%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.touch-btn {
+  position: absolute;
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  pointer-events: auto;
+  touch-action: none;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(16, 17, 38, 0.55);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 80ms var(--ease-out), background 80ms;
+}
+.touch-btn.held {
+  transform: scale(0.92);
+  background: rgba(55, 168, 255, 0.55);
+}
+.touch-drift {
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  width: 104px;
+  height: 104px;
+  font-size: 18px;
+}
+.touch-item {
+  bottom: calc(146px + env(safe-area-inset-bottom, 0px));
+  right: calc(52px + env(safe-area-inset-right, 0px));
+  width: 78px;
+  height: 78px;
+}
+
+.touch-pause {
+  position: absolute;
+  /* Sits to the right of the HUD item slot (which is 16px + ~84px wide). */
+  left: calc(112px + env(safe-area-inset-left, 0px));
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(16, 17, 38, 0.55);
+  color: var(--ink);
+  font-size: 14px;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: pointer;
+}
+.touch-pause.held {
+  background: rgba(55, 168, 255, 0.55);
+}
+
+/* Touch mode: the DRIFT/ITEM buttons live bottom-right, so park a smaller minimap top-centre. */
+#ui.touch .hud-minimap {
+  right: auto;
+  bottom: auto;
+  top: var(--hud-pad);
+  left: 48%;
+  transform: translateX(-50%) scale(0.5);
+  transform-origin: top center;
+}

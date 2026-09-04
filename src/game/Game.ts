@@ -47,6 +47,7 @@ import type { MenuPanel } from '../ui/MainMenu';
 import { ResultsScreen } from '../ui/ResultsScreen';
 import { PauseMenu } from '../ui/PauseMenu';
 import { LoadingScreen } from '../ui/LoadingScreen';
+import { TouchControls } from '../ui/TouchControls';
 import { el } from '../ui/dom';
 import { showToast } from '../ui/toast';
 
@@ -98,6 +99,7 @@ export class Game {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly uiRoot: HTMLElement;
+  private readonly touch: TouchControls;
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
@@ -203,6 +205,8 @@ export class Game {
 
     this.loading = new LoadingScreen(this.uiRoot);
     this.muteIndicator = el('div', 'mute-indicator', '🔇 MUTED', this.uiRoot);
+    this.touch = new TouchControls(this.uiRoot);
+    this.input.attachTouch(this.touch);
 
     // ---------------------------------------------------------- listeners
     window.addEventListener('resize', this.onResize);
@@ -248,6 +252,8 @@ export class Game {
     this.pauseMenu.dispose();
     this.loading.dispose();
     this.muteIndicator.remove();
+    this.input.attachTouch(null);
+    this.touch.dispose();
     this.input.dispose();
     this.safe(() => this.audio.dispose());
     this.safe(() => this.particles.dispose());
