@@ -6,7 +6,8 @@ import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinitio
 import { events } from '../core/events';
 import { GAME_TITLE, DEFAULT_LAPS } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
-import { getLang, t, t as tt, tOr, toggleLang } from '../core/i18n';
+import { t, t as tt, tOr } from '../core/i18n';
+import { canRace, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
 import type { StringKey } from '../core/i18n';
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
@@ -32,6 +33,10 @@ export class MainMenu {
   onStart: ((settings: RaceSettings) => void) | null = null;
   onHighlight: ((characterId: string) => void) | null = null;
   onPanelChange: ((panel: MenuPanel) => void) | null = null;
+  /** Player tried to continue with a premium kart they cannot race yet. */
+  onLockedAttempt: ((character: CharacterDef) => void) | null = null;
+  onRecords: (() => void) | null = null;
+  onSettings: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly panels: Record<MenuPanel, HTMLElement>;
@@ -43,6 +48,8 @@ export class MainMenu {
   private charIndex = 0;
   private readonly charName: TextField;
   private readonly charTagline: TextField;
+  private readonly lockBadges = new Map<string, HTMLElement>();
+  private readonly unsubEntitlements: () => void;
 
   // Track select
   private readonly trackCards: HTMLElement[] = [];
@@ -63,11 +70,11 @@ export class MainMenu {
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
-    const langBtn = button(t('title.lang'), 'ghost lang-toggle', () => {
-      toggleLang();
-    });
-    langBtn.dataset.lang = getLang();
-    title.appendChild(langBtn);
+    const settingsBtn = button('⚙', 'ghost title-corner settings-toggle', () => this.onSettings?.());
+    settingsBtn.title = t('settings.title');
+    title.appendChild(settingsBtn);
+    const recordsBtn = button(t('lb.button'), 'ghost title-corner records-toggle', () => this.onRecords?.());
+    title.appendChild(recordsBtn);
     const logoWrap = el('div', 'logo', undefined, title);
     const words = GAME_TITLE.split(' ');
     words.forEach((w, i) => {
@@ -114,10 +121,10 @@ export class MainMenu {
       const card = this.buildCharacterCard(c);
       card.addEventListener('pointerenter', () => this.setCharacter(i));
       card.addEventListener('click', () => {
-        if (this.charIndex === i) this.goTo('trackSelect', true);
+        if (this.charIndex === i) this.tryProceed();
         else this.setCharacter(i, true);
       });
-      card.addEventListener('dblclick', () => this.goTo('trackSelect', true));
+      card.addEventListener('dblclick', () => this.tryProceed());
       charGrid.appendChild(card);
       this.charCards.push(card);
     });
@@ -127,7 +134,7 @@ export class MainMenu {
     this.charTagline = new TextField(el('div', 'select-info-tagline', '', charInfo));
     const charActions = el('div', 'actions', undefined, charFoot);
     charActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('title', true)));
-    charActions.appendChild(button(t('menu.continue'), 'primary', () => this.goTo('trackSelect', true)));
+    charActions.appendChild(button(t('menu.continue'), 'primary', () => this.tryProceed()));
 
     // ----------------------------------------------------------- track select
     const tr = el('section', 'panel-select panel-tracks', undefined, this.rootNode);
@@ -180,6 +187,8 @@ export class MainMenu {
     trActions.appendChild(this.startButton);
 
     this.panels = { title, characterSelect: chars, trackSelect: tr };
+    this.unsubEntitlements = onEntitlementsChange(() => this.refreshLocks());
+    this.refreshLocks();
     this.setCharacter(0);
     this.setTrack(0);
     this.setDifficulty(1);
@@ -209,7 +218,13 @@ export class MainMenu {
   }
 
   dispose(): void {
+    this.unsubEntitlements();
     this.rootNode.remove();
+  }
+
+  /** Continue past character select after a lock was resolved (ad watched / purchase made). */
+  proceedFromCharacter(): void {
+    if (this.panel === 'characterSelect') this.goTo('trackSelect', true);
   }
 
   /** Drive navigation from the InputState edges (keyboard / gamepad). */
@@ -225,7 +240,7 @@ export class MainMenu {
         else if (input.menuRight) this.setCharacter((this.charIndex + 1) % n, true);
         else if (input.menuUp) this.setCharacter((this.charIndex - CHAR_COLUMNS + n) % n, true);
         else if (input.menuDown) this.setCharacter((this.charIndex + CHAR_COLUMNS) % n, true);
-        if (input.confirm) this.goTo('trackSelect', true);
+        if (input.confirm) this.tryProceed();
         else if (input.back) this.goTo('title', true);
         break;
       }
@@ -257,6 +272,34 @@ export class MainMenu {
   }
 
   // ----------------------------------------------------------------- private
+
+  private tryProceed(): void {
+    const def = this.characters[this.charIndex];
+    if (!def) return;
+    if (!canRace(def.id)) {
+      events.emit('ui:back', {});
+      this.onLockedAttempt?.(def);
+      return;
+    }
+    this.goTo('trackSelect', true);
+  }
+
+  private refreshLocks(): void {
+    const ent = getEntitlements();
+    this.charCards.forEach((card, i) => {
+      const def = this.characters[i];
+      if (!def || !isPremium(def.id)) return;
+      const locked = !canRace(def.id);
+      card.classList.toggle('locked', locked);
+      const badge = this.lockBadges.get(def.id);
+      if (!badge) return;
+      if (ent.adsRemoved) badge.classList.add('hidden');
+      else {
+        badge.classList.remove('hidden');
+        badge.textContent = ent.premiumRaces > 0 ? t('v8.ticketsLeft', { n: ent.premiumRaces }) : t('v8.locked');
+      }
+    });
+  }
 
   private goTo(panel: MenuPanel, sound: boolean): void {
     if (sound) {
@@ -358,6 +401,10 @@ export class MainMenu {
     el('div', 'char-wheel char-wheel-l', undefined, swatch);
     el('div', 'char-wheel char-wheel-r', undefined, swatch);
     el('div', 'card-name', c.name.toUpperCase(), card);
+    if (c.premium) {
+      card.dataset.premium = '1';
+      this.lockBadges.set(c.id, el('div', 'lock-badge', t('v8.locked'), card));
+    }
     el('div', 'card-tag', tOr(`char.${c.id}.tagline`, c.tagline), card);
     const pill = el('div', `pill weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
     pill.title = t('menu.weightClass');

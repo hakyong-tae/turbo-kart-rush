@@ -2103,3 +2103,199 @@ html[lang='ko'] .touch-btn {
   letter-spacing: 0.01em;
   word-break: keep-all;
 }
+
+/* ----------------------------------------------------------------------------
+   Verse8: title corner buttons, premium locks, lock sheet, records, settings, mocks
+   --------------------------------------------------------------------------- */
+.title-corner {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  pointer-events: auto;
+  font-size: 13px;
+  padding: 8px 12px;
+  z-index: 2;
+}
+.settings-toggle {
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  font-size: 18px;
+  padding: 6px 12px;
+}
+.records-toggle {
+  left: calc(16px + env(safe-area-inset-left, 0px));
+}
+
+.char-card.locked .char-swatch {
+  filter: grayscale(0.7) brightness(0.55);
+}
+.lock-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-family: var(--display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  pointer-events: none;
+}
+.char-card {
+  position: relative;
+}
+
+.lock-sheet,
+.lb,
+.settings,
+.v8-mock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(5, 5, 16, 0.55);
+  pointer-events: auto;
+  z-index: 30;
+}
+.lb,
+.settings,
+.v8-mock {
+  align-items: center;
+}
+.v8-mock {
+  position: fixed;
+  z-index: 100;
+}
+.lock-panel,
+.lb-panel,
+.settings-panel,
+.v8-mock-panel {
+  width: min(520px, 100%);
+  padding: 20px 22px;
+  pointer-events: auto;
+}
+.lock-panel.busy .btn {
+  opacity: 0.6;
+}
+.lock-body {
+  color: var(--ink-dim);
+  margin: 6px 0 14px;
+  line-height: 1.4;
+}
+.v8-mock-price {
+  color: var(--gold);
+  font-family: var(--display);
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+
+.lb-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.lb-tab {
+  font-size: 11px;
+  padding: 6px 10px;
+}
+.lb-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.lb-row {
+  display: grid;
+  grid-template-columns: 2.2em 1fr 6.5em 7em 5em;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+  align-items: center;
+}
+.lb-row.you {
+  background: rgba(55, 168, 255, 0.18);
+  border: 1px solid rgba(55, 168, 255, 0.45);
+}
+.lb-cell.lb-time {
+  font-family: var(--display);
+  letter-spacing: 0.04em;
+}
+.lb-cell.lb-kart,
+.lb-cell.lb-diff {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+.lb-status,
+.lb-mine {
+  color: var(--ink-dim);
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+.lb-mine {
+  color: var(--gold);
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+.results-rank {
+  color: var(--gold);
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  margin: 4px 0 10px;
+}
+@media (max-width: 700px) {
+  .lb-row {
+    grid-template-columns: 2em 1fr 6em;
+  }
+  .lb-cell.lb-kart,
+  .lb-cell.lb-diff {
+    display: none;
+  }
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+.settings-field.settings-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-label {
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+}
+.settings-input {
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  outline: none;
+}
+.settings-input:focus {
+  border-color: var(--blue);
+}
+.settings-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.settings-check {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--blue);
+}

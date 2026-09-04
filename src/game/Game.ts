@@ -20,7 +20,6 @@ import type {
   RaceSettings,
   TrackDefinition,
 } from '../core/types';
-import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
 import { COUNTDOWN_STEP_SECONDS, FIXED_DT, KART_COUNT, MAX_FRAME_DT } from '../core/constants';
 import { clamp, clamp01, damp } from '../core/math';
@@ -51,6 +50,15 @@ import { TouchControls } from '../ui/TouchControls';
 import { t } from '../core/i18n';
 import { el } from '../ui/dom';
 import { showToast } from '../ui/toast';
+import { createEmptyInput } from '../core/types';
+import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
+import { LeaderboardPanel, localBestKey, readLocalBest } from '../ui/LeaderboardPanel';
+import { SettingsPanel } from '../ui/SettingsPanel';
+import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
+import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
+import { buyRemoveAds } from '../verse8/shop';
+import { inVerse8Host } from '../verse8/embed';
+import { submitTime, type SubmitResult } from '../verse8/server';
 
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
@@ -80,6 +88,8 @@ interface RaceContext {
   karts: IKart[];
   aiDrivers: IAIDriver[];
   playerAutoDriver: IAIDriver | null;
+  /** True when an AI drove the player before the finish (dev `?auto=1`) — never submit such times. */
+  playerAutoDriverBeforeFinish: boolean;
   items: IItemManager;
   raceManager: RaceManager;
   followCamera: FollowCamera;
@@ -102,6 +112,10 @@ export class Game {
   private readonly uiRoot: HTMLElement;
   private readonly touch: TouchControls;
   private unsubLang: (() => void) | null = null;
+  private lockSheet: LockSheet;
+  private leaderboard: LeaderboardPanel;
+  private settings: SettingsPanel;
+  private lastSubmit: SubmitResult | null = null;
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
@@ -184,6 +198,9 @@ export class Game {
     this.results = this.buildResults();
     this.pauseMenu = this.buildPauseMenu();
     this.loading = new LoadingScreen(this.uiRoot);
+    this.lockSheet = new LockSheet(this.uiRoot);
+    this.leaderboard = this.buildLeaderboard();
+    this.settings = this.buildSettings();
     this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
@@ -205,6 +222,7 @@ export class Game {
   start(): void {
     if (this.state !== 'boot') return;
     this.showMenu('title');
+    this.maybeNudgeNickname();
     this.lastTime = -1;
     this.rafId = requestAnimationFrame(this.loop);
   }
@@ -237,6 +255,9 @@ export class Game {
     this.unsubLang = null;
     this.input.attachTouch(null);
     this.touch.dispose();
+    this.lockSheet.dispose();
+    this.leaderboard.dispose();
+    this.settings.dispose();
     this.input.dispose();
     this.safe(() => this.audio.dispose());
     this.safe(() => this.particles.dispose());
@@ -252,14 +273,20 @@ export class Game {
     const menu = new MainMenu(this.uiRoot, CHARACTERS as readonly CharacterDef[], TRACKS as readonly TrackDefinition[]);
     menu.onHighlight = (id) => this.backdrop.setCharacter(getCharacter(id));
     menu.onPanelChange = (panel) => this.onMenuPanel(panel);
-    menu.onStart = (settings) => this.startRace(settings);
+    menu.onStart = (settings) => void this.startRaceGated(settings);
+    menu.onLockedAttempt = (c) => this.lockSheet.show(c, this.lockSheetHandlers(c));
+    menu.onRecords = () => this.leaderboard.show(TRACKS[0]?.id ?? 'sunny_circuit');
+    menu.onSettings = () => this.settings.show();
     return menu;
   }
 
   private buildResults(): ResultsScreen {
     const results = new ResultsScreen(this.uiRoot);
     results.onRaceAgain = () => {
-      if (this.race) this.startRace(this.race.settings);
+      if (this.race) void this.startRaceGated(this.race.settings);
+    };
+    results.onRecords = () => {
+      if (this.race) this.leaderboard.show(this.race.trackDef.id, { submit: this.lastSubmit });
     };
     results.onChangeTrack = () => this.returnToMenu('trackSelect');
     results.onMainMenu = () => this.returnToMenu('title');
@@ -272,7 +299,7 @@ export class Game {
     pauseMenu.onRestart = () => {
       const settings = this.race?.settings;
       this.leavePause();
-      if (settings) this.startRace(settings);
+      if (settings) void this.startRaceGated(settings);
       else this.returnToMenu('title');
     };
     pauseMenu.onQuit = () => {
@@ -280,6 +307,107 @@ export class Game {
       this.returnToMenu('title');
     };
     return pauseMenu;
+  }
+
+  /** Inside the host, once entitlements have loaded: nudge a nickname if none is set (once per device). */
+  private maybeNudgeNickname(): void {
+    if (!inVerse8Host()) return;
+    try {
+      if (localStorage.getItem('tkr.nudged')) return;
+    } catch {
+      return;
+    }
+    const off = onEntitlementsChange((ent) => {
+      if (!ent.loaded) return;
+      off();
+      if (ent.nickname !== '' || !serverReachable()) return;
+      showToast(t('settings.nudge'), 'info', 7000);
+      try {
+        localStorage.setItem('tkr.nudged', '1');
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  private buildLeaderboard(): LeaderboardPanel {
+    const lb = new LeaderboardPanel(this.uiRoot, TRACKS as readonly TrackDefinition[], CHARACTERS as readonly CharacterDef[]);
+    lb.onSetNickname = () => {
+      lb.hide();
+      this.settings.show();
+    };
+    return lb;
+  }
+
+  private buildSettings(): SettingsPanel {
+    return new SettingsPanel(this.uiRoot, {
+      isMuted: () => this.audio.muted,
+      onToggleMute: () => this.toggleMute(),
+    });
+  }
+
+  private lockSheetHandlers(def: CharacterDef): LockSheetHandlers {
+    return {
+      onWatch: async () => {
+        const rewarded = await requestRewardedAd(PLACEMENT_REWARDED_PREMIUM);
+        if (!rewarded) {
+          showToast(t('v8.lock.adFailed'), 'error');
+          return;
+        }
+        const granted = await grantPremiumRaces();
+        if (!granted) {
+          showToast(t('v8.lock.adFailed'), 'error');
+          return;
+        }
+        showToast(t('v8.lock.granted'), 'info');
+        this.lockSheet.hide();
+        this.mainMenu.proceedFromCharacter();
+      },
+      onBuy: () => {
+        if (!buyRemoveAds()) showToast(t('v8.lock.buyFailed'), 'error');
+        // A completed purchase lands via refreshEntitlements → badges update; the sheet stays
+        // open so the player can continue once the kart shows as unlocked.
+        else this.lockSheet.hide();
+      },
+      onOther: () => this.lockSheet.hide(),
+    };
+  }
+
+  /** Spend a premium race ticket (server-authoritative) before starting with a premium kart. */
+  private async startRaceGated(settings: RaceSettings): Promise<void> {
+    if (isPremium(settings.characterId)) {
+      const ok = await consumePremiumRace(settings.characterId);
+      if (!ok) {
+        const def = getCharacter(settings.characterId);
+        showToast(t('v8.lock.noTicket', { name: def.name }), 'error');
+        this.returnToMenu('characterSelect');
+        this.lockSheet.show(def, this.lockSheetHandlers(def));
+        return;
+      }
+    }
+    this.startRace(settings);
+  }
+
+  private maybeSubmitTime(r: RaceContext, seconds: number): void {
+    const params = new URLSearchParams(location.search);
+    if (params.has('auto') || r.playerAutoDriverBeforeFinish) return;
+    if (Array.from(params.keys()).some((k) => k.startsWith('b.'))) return;
+    const timeMs = Math.round(seconds * 1000);
+    const trackId = r.trackDef.id;
+    try {
+      const prev = readLocalBest(trackId);
+      if (prev === null || timeMs < prev) localStorage.setItem(localBestKey(trackId), String(timeMs));
+    } catch {
+      /* storage unavailable */
+    }
+    if (!inVerse8Host()) return;
+    void submitTime(trackId, timeMs, r.settings.characterId, r.settings.difficulty).then((res) => {
+      if (!res || this.race !== r) return;
+      this.lastSubmit = res;
+      if (res.updated && res.rank && this.state === 'results') {
+        this.results.showRankBanner(t('lb.newRank', { rank: res.rank }));
+      }
+    });
   }
 
   /**
@@ -293,6 +421,14 @@ export class Game {
     this.results.dispose();
     this.pauseMenu.dispose();
     this.loading.dispose();
+    const settingsWasOpen = this.settings.isVisible;
+    this.lockSheet.dispose();
+    this.leaderboard.dispose();
+    this.settings.dispose();
+    this.lockSheet = new LockSheet(this.uiRoot);
+    this.leaderboard = this.buildLeaderboard();
+    this.settings = this.buildSettings();
+    if (settingsWasOpen) this.settings.show();
     this.mainMenu = this.buildMainMenu();
     this.results = this.buildResults();
     this.pauseMenu = this.buildPauseMenu();
@@ -326,6 +462,13 @@ export class Game {
   };
 
   private frame(dt: number, input: InputState): void {
+    // Modal overlays (settings / records / lock sheet) swallow menu input while open.
+    if (this.settings.isVisible || this.leaderboard.isVisible || this.lockSheet.isVisible) {
+      if (this.settings.isVisible) this.settings.handleInput(input);
+      else if (this.leaderboard.isVisible) this.leaderboard.handleInput(input);
+      else if (input.back) this.lockSheet.hide();
+      input = createEmptyInput();
+    }
     switch (this.state) {
       case 'boot':
         return;
@@ -615,6 +758,7 @@ export class Game {
       return;
     }
     this.pendingSettings = { ...settings, trackId: trackDef.id };
+    this.lastSubmit = null;
     this.loadingElapsed = 0;
     this.loadingFrames = 0;
     this.loadingProgress = 0;
@@ -730,6 +874,7 @@ export class Game {
       karts,
       aiDrivers,
       playerAutoDriver: null,
+      playerAutoDriverBeforeFinish: false,
       items,
       raceManager,
       followCamera,
@@ -753,6 +898,7 @@ export class Game {
       // Dev-only: `?auto=1` lets the AI drive the player for soak testing.
       if (new URLSearchParams(location.search).has('auto')) {
         r.playerAutoDriver = new AIDriver(karts[0], 'hard', 0);
+        r.playerAutoDriverBeforeFinish = true;
       }
       (window as unknown as { __tkr?: unknown }).__tkr = {
         game: this,
@@ -778,6 +924,7 @@ export class Game {
       events.on('race:finish', (e) => {
         if (this.race !== r || !e.isPlayer) return;
         this.onPlayerFinished(r);
+        this.maybeSubmitTime(r, e.time);
       }),
       events.on('race:allFinished', () => {
         if (this.race !== r) return;
@@ -847,6 +994,9 @@ export class Game {
     if (!r || this.state === 'results') return;
     r.hud.hide();
     this.results.show(r.raceManager.getStandings());
+    if (this.lastSubmit?.updated && this.lastSubmit.rank) {
+      this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
+    }
     this.setState('results');
     this.playMusic('results');
   }
