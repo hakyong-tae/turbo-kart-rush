@@ -14,6 +14,7 @@ export PATH="$HOME/.nvm/versions/node/v23.11.0/bin:$PATH"
 cd /Users/hytae/Downloads/turbo-kart-rush
 npm run dev          # http://localhost:5178  (vite --host, strictPort 아님)
 npm run typecheck    # tsc --noEmit  — 현재 클린
+npm test             # vitest — touchMath / InputManager / tracks / balance / i18n (30 tests)
 npm run build        # dist/  (base: './' → 서브경로 배포 OK)
 npm run preview
 ```
@@ -43,6 +44,8 @@ turbo-kart-rush/
     │   ├── types.ts (515)   IKart·ITrack·IItemManager·IAIDriver·IAudioEngine·IParticleSystem·IPostFX 인터페이스,
     │   │                    TrackDefinition·CharacterDef·KartState·RaceSettings·GameState·ItemType 등
     │   ├── constants.ts (58) KART_COUNT=8, FIXED_DT=1/120, BASE_TOP_SPEED=22, GRAVITY=26, CHECKPOINT_COUNT=12 …
+    │   ├── balance.ts ★(local-mods) BALANCE 튠 객체 + `?b.<path>=` URL 오버라이드 + window.__balance
+    │   ├── i18n.ts / locales/{en,ko}.ts ★(local-mods) t()/setLang/detectLang, 키 ~130개, ko 누락시 컴파일 에러
     │   ├── events.ts (108)  타입드 이벤트 버스 `events.emit/on` — race:* kart:* item:* game:* ui:* (약 45종)
     │   └── math.ts (135)    clamp/lerp/damp/seededRandom/fbm2 등
     │
@@ -58,12 +61,13 @@ turbo-kart-rush/
     │   ├── Minimap.ts (172) 220px 캔버스, 트랙 폴리라인 + 카트 점
     │   ├── LoadingScreen.ts (99) 트랙명+팁+프로그레스바
     │   ├── PauseMenu.ts (76), ResultsScreen.ts (134) 결과표+컨페티
+    │   ├── TouchControls.ts / touchMath.ts ★(local-mods) 가상 스틱(좌)+DRIFT/ITEM/⏸(우), TouchInputSource 구현
     │   └── dom.ts (106) `el()` 헬퍼, toast.ts (27)
     │
     ├── kart/                [B] 카트 물리·모델·입력·로스터
     │   ├── Kart.ts (987)    아케이드 물리 (가속/브레이크/조향/홉/드리프트 3단 미니터보/부스트/스핀/스타/축소/벽·카트 충돌)
     │   ├── KartModel.ts (582) 캐릭터별 프로시저럴 카트 메쉬 (바디·휠·드라이버·배기)
-    │   ├── InputManager.ts (250) 키보드+게임패드 → InputState (edge-trigger 불리언). **터치 입력 없음**
+    │   ├── InputManager.ts (250) 키보드+게임패드(+attachTouch 터치 병합) → InputState (edge-trigger 불리언)
     │   └── roster.ts (98)   CHARACTERS 8명 (light 3 / medium 3 / heavy 2), stats 0..1
     │
     ├── track/               [C] 트랙 빌더 + 환경
@@ -72,7 +76,7 @@ turbo-kart-rush/
     │   ├── TerrainField.ts (216) fbm2 지형 높이필드, 도로 근처 평탄화
     │   ├── textures.ts (700) CanvasTexture 생성기 (도로/커브/잔디/사막/눈/네온/관중 등)
     │   ├── builders/        sky·terrain(+mountains)·road·barriers·decor(인스턴싱)·landmarks·props(그랜드스탠드/갠트리/스폰서브릿지/부스트패드)·animated
-    │   └── tracks/          ★ 데이터 파일 — sunnyCircuit / duneDrift / frostbiteFalls / neonNexus + validate.ts(DEV 검증)
+    │   └── tracks/          ★ 데이터 파일 — sunny / coral(beach★★) / dune / frostbite / neon / magma(volcano★★★) + validate.ts(DEV 검증)
     │
     ├── items/               [D] 아이템
     │   ├── ItemManager.ts (1340) 박스 스폰/리스폰, 순위별 룰렛 확률표(ITEM_TABLE), 발사체·해저드 시뮬, 충돌, 삼단 오빗
@@ -166,11 +170,11 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 
 | # | 항목 | 현황 | 메모 |
 |---|---|---|---|
-| 1 | **모바일 터치 입력 없음** | `InputManager`에 touch/pointer 핸들러 0건. 메뉴는 `pointerenter`만 | Verse8 모바일 대응 시 최우선. `InputState`를 만들어 넣는 구조라 가상 패드 레이어 추가만으로 됨 (server-survival-v8 터치 HUD 패턴 재사용) |
+| 1 | ~~모바일 터치 입력 없음~~ | ✅ **완료(local-mods)** `ui/TouchControls.ts` — 왼쪽 플로팅 스틱(12시 가속/6시 브레이크/좌우 조향) + DRIFT·ITEM·⏸. `pointer: coarse`거나 첫 touchstart 시 활성, 레이스 중에만 표시. 터치 모드에선 미니맵을 상단 중앙으로 축소 배치 | 실기기 테스트는 미완(패널 에뮬레이션만) |
 | 2 | 로딩이 rAF 의존 | 탭 백그라운드면 진행 안 됨 | `loadingElapsed`를 `performance.now()` 기반으로 바꾸면 해결 |
-| 3 | 세이브/기록 없음 | 베스트랩·완주 기록 로컬스토리지 없음 | agent8 리더보드 붙이기 좋은 자리 = `race:finish` 이벤트(kartId 0, time) |
-| 4 | 싱글플레이 전용 | 네트워크 코드 0 | 멀티는 `Kart.setInput`이 외부 InputState를 받는 구조여서 록스텝/입력동기 방식이 자연스러움 |
-| 5 | 영문 UI 하드코딩 | MainMenu/HUD/LoadingScreen 팁 문자열 | i18n 시 `LoadingScreen.ts:16~` 팁 배열, MainMenu 라벨, roster tagline |
+| 3 | 세이브/기록 없음 (→ 다음: V8 연동 스펙) | 베스트랩·완주 기록 로컬스토리지 없음 | agent8 리더보드 붙이기 좋은 자리 = `race:finish` 이벤트(kartId 0, time) |
+| 4 | 싱글플레이 전용 (→ 다음: V8 연동 스펙) | 네트워크 코드 0 | 멀티는 `Kart.setInput`이 외부 InputState를 받는 구조여서 록스텝/입력동기 방식이 자연스러움 |
+| 5 | ~~영문 UI 하드코딩~~ | ✅ **완료(local-mods)** `core/i18n.ts` ko/en, 타이틀 우상단 KO\|EN 토글(메뉴·오버레이 재구축), localStorage `tkr.lang`, navigator.language ko 자동. 캐릭터/트랙 이름은 영문 유지 | 토글은 타이틀에서만 |
 | 6 | 텍스처 전부 CanvasTexture | 로딩 시 CPU로 생성 | 저사양에서 첫 로딩 수 초. 캐싱 or 해상도 옵션 여지 |
 | 7 | `PCFSoftShadowMap` deprecated 경고 | three 0.185에서 PCF로 폴백 | 무해. `Game.ts` 렌더러 설정에서 `PCFShadowMap`으로 바꾸면 경고 제거 |
 | 8 | 라이선스 | MIT (코드), 에셋 없음 → 저작권 이슈 0 | 캐릭터/트랙 이름도 자체 IP. Verse8 상업 배포 문제 없음 |

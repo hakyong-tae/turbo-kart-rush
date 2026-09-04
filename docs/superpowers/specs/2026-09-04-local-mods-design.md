@@ -125,7 +125,7 @@ export const BALANCE = {
 - 캐릭터 태글라인 8개 `char.<id>.tagline`, 트랙 설명 6개 `track.<id>.desc`. UI가 `t()`로 조회하고 키가 없으면 def의 영문 사용. **캐릭터/트랙 이름은 영문 고유명사 유지.**
 
 ### 전환
-- 타이틀 화면 우상단 `KO | EN` 토글 버튼. 클릭 → `setLang` → `MainMenu.refreshText()`가 현재 화면의 텍스트 노드를 다시 채움(DOM 재구축 없이 라벨만 교체). HUD/로딩/결과/일시정지는 레이스마다 새로 만들어져 자연 반영.
+- 타이틀 화면 우상단 `KO | EN` 토글 버튼. 클릭 → `setLang` → `ui:langChange` → `Game.onLangChange()`가 MainMenu·ResultsScreen·PauseMenu·LoadingScreen을 **재구축**(모두 상태 없는 DOM이고 토글은 타이틀에서만 일어나므로 라벨 참조 20여 개를 보관하는 것보다 단순). HUD는 레이스마다 새로 만들어져 자연 반영, TouchControls는 이벤트로 라벨만 갱신. *(구현 중 변경: 원안은 라벨만 교체)*
 - 한글 타이포: `html[lang="ko"]`에서 대문자용 `letter-spacing`·`text-transform: uppercase` 해제, 디스플레이 서체 스택 앞에 `"Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic"` 추가.
 
 ### 테스트
