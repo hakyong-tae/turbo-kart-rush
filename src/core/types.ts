@@ -286,6 +286,8 @@ export interface CharacterStats {
 export interface CharacterDef {
   id: string;
   name: string;
+  /** Contract addition (local-mods): locked behind a rewarded ad (3 races) or the remove-ads purchase. */
+  premium?: true;
   /** Primary body colour. */
   color: number;
   /** Accent / trim colour. */

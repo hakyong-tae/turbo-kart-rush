@@ -28,6 +28,7 @@ export const CHARACTERS: CharacterDef[] = [
   },
   {
     id: 'fennec',
+    premium: true,
     name: 'Fennec Flash',
     color: 0xffcf1f,
     accent: 0xff6a00,
@@ -70,6 +71,7 @@ export const CHARACTERS: CharacterDef[] = [
   // --- heavy ---------------------------------------------------------------
   {
     id: 'bram',
+    premium: true,
     name: 'Boulder Bram',
     color: 0x1f9a4b,
     accent: 0xd88a3c,
@@ -80,6 +82,7 @@ export const CHARACTERS: CharacterDef[] = [
   },
   {
     id: 'rosa',
+    premium: true,
     name: 'Big Rig Rosa',
     color: 0xff6a00,
     accent: 0x19d3c5,
