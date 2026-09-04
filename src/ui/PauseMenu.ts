@@ -4,6 +4,7 @@
 import type { InputState } from '../core/types';
 import { events } from '../core/events';
 import { button, el, FocusRing } from './dom';
+import { t } from '../core/i18n';
 
 export class PauseMenu {
   onResume: (() => void) | null = null;
@@ -17,20 +18,20 @@ export class PauseMenu {
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen pause hidden', undefined, root);
     const panel = el('div', 'glass panel pause-panel', undefined, this.rootNode);
-    el('div', 'panel-kicker', 'RACE PAUSED', panel);
-    el('h2', 'panel-title', 'PAUSED', panel);
+    el('div', 'panel-kicker', t('pause.kicker'), panel);
+    el('h2', 'panel-title', t('pause.title'), panel);
     const actions = el('div', 'actions column', undefined, panel);
 
     this.focus = new FocusRing((i) => this.activate(i));
-    const resume = button('RESUME', 'primary', () => this.activate(0));
-    const restart = button('RESTART RACE', '', () => this.activate(1));
-    const quit = button('QUIT TO MENU', 'danger', () => this.activate(2));
+    const resume = button(t('pause.resume'), 'primary', () => this.activate(0));
+    const restart = button(t('pause.restart'), '', () => this.activate(1));
+    const quit = button(t('pause.quit'), 'danger', () => this.activate(2));
     actions.append(resume, restart, quit);
     this.focus.add(resume);
     this.focus.add(restart);
     this.focus.add(quit);
 
-    el('div', 'panel-hint', 'ESC / P  resume   ·   ↑↓  navigate   ·   ENTER  select', panel);
+    el('div', 'panel-hint', t('pause.hint'), panel);
   }
 
   show(): void {

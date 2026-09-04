@@ -5,21 +5,10 @@
 import type { TrackDefinition } from '../core/types';
 import { clamp01 } from '../core/math';
 import { cssHex, el, TextField } from './dom';
+import { t } from '../core/i18n';
+import type { StringKey } from '../core/i18n';
 
-const TIPS: readonly string[] = [
-  'Hold DRIFT (Space / Shift) through a corner and release for a mini-turbo. Longer drift = bigger boost.',
-  'Tap the throttle just as the countdown hits 1 for a rocket start. Hold it too early and you will spin out.',
-  'Hold BRAKE while using a shell to throw it backwards.',
-  'Press Q to look behind you. Check what is coming before dropping a banana.',
-  'Boost pads (glowing chevrons) give a free +45% speed burst. Line them up.',
-  'Item odds depend on your place. Trailing racers get stars, lightning and blue shells.',
-  'A star makes you invincible and destroys any hazard you touch.',
-  'Staying on the road matters: off-road cuts your top speed almost in half.',
-  'Use a mushroom on the long straight, or to recover after a hit.',
-  'Heavy karts bump light karts around. Pick your weight class wisely.',
-  'Hop off jump crests for a small landing boost.',
-  'Press M to mute the audio at any time.',
-];
+const TIPS: readonly StringKey[] = ['tip.0', 'tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip.6', 'tip.7', 'tip.8', 'tip.9', 'tip.10', 'tip.11'];
 
 const TIP_INTERVAL = 2.4;
 
@@ -41,27 +30,27 @@ export class LoadingScreen {
     const panel = el('div', 'loading-panel', undefined, this.rootNode);
     this.band = el('div', 'loading-band', undefined, panel);
     const inner = el('div', 'loading-inner', undefined, panel);
-    el('div', 'loading-kicker', 'NOW LOADING', inner);
+    el('div', 'loading-kicker', t('loading.now'), inner);
     this.title = new TextField(el('h2', 'loading-title', '', inner));
     this.subtitle = new TextField(el('div', 'loading-subtitle', '', inner));
     const track = el('div', 'loading-track', undefined, inner);
     this.bar = el('div', 'loading-bar', undefined, track);
     el('div', 'loading-bar-shimmer', undefined, this.bar);
     this.tipNode = el('div', 'loading-tip', undefined, inner);
-    el('span', 'loading-tip-label', 'TIP', this.tipNode);
+    el('span', 'loading-tip-label', t('loading.tip'), this.tipNode);
     this.tipText = new TextField(el('span', 'loading-tip-text', '', this.tipNode));
   }
 
   show(def: TrackDefinition): void {
     this.title.set(def.name.toUpperCase());
     const stars = '★'.repeat(def.difficulty) + '☆'.repeat(3 - def.difficulty);
-    this.subtitle.set(`${def.laps} LAPS  ·  ${stars}  ·  ${def.theme.toUpperCase()}`);
+    this.subtitle.set(t('loading.subtitle', { laps: def.laps, stars, theme: t(`theme.${def.theme}` as StringKey) }));
     const env = def.environment;
     this.band.style.background = `linear-gradient(90deg, ${cssHex(env.skyTop)}, ${cssHex(env.skyHorizon)}, ${cssHex(
       def.palette.road,
     )})`;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
-    this.tipText.set(TIPS[this.tipIndex]);
+    this.tipText.set(t(TIPS[this.tipIndex]));
     this.tipTimer = 0;
     this.setProgress(0);
     this.rootNode.classList.remove('hidden');
@@ -86,7 +75,7 @@ export class LoadingScreen {
     if (this.tipTimer >= TIP_INTERVAL) {
       this.tipTimer = 0;
       this.tipIndex = (this.tipIndex + 1) % TIPS.length;
-      this.tipText.set(TIPS[this.tipIndex]);
+      this.tipText.set(t(TIPS[this.tipIndex]));
       this.tipNode.classList.remove('tip-in');
       void this.tipNode.offsetWidth;
       this.tipNode.classList.add('tip-in');

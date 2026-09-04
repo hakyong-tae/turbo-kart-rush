@@ -6,6 +6,7 @@ import { Game } from './game/Game';
 import { BALANCE, applyBalanceOverrides } from './core/balance';
 import { el } from './ui/dom';
 import { showToast } from './ui/toast';
+import { t } from './core/i18n';
 
 function hasWebGL2(): boolean {
   try {
@@ -24,7 +25,7 @@ function showFatal(root: HTMLElement, title: string, body: string): void {
   el('div', 'panel-kicker', GAME_TITLE, panel);
   el('h2', 'panel-title', title, panel);
   el('p', 'fatal-body', body, panel);
-  const retry = el('button', 'btn primary', 'RELOAD', panel);
+  const retry = el('button', 'btn primary', t('err.reload'), panel);
   retry.type = 'button';
   retry.addEventListener('click', () => window.location.reload());
 }
@@ -34,12 +35,7 @@ function boot(): void {
   app.id = 'app';
 
   if (!hasWebGL2()) {
-    showFatal(
-      app,
-      'WEBGL2 REQUIRED',
-      'Turbo Kart Rush needs a browser with WebGL 2 and hardware acceleration enabled. ' +
-        'Try the latest Chrome, Edge, Firefox or Safari, and make sure GPU acceleration is switched on.',
-    );
+    showFatal(app, t('err.webgl.title'), t('err.webgl.body'));
     return;
   }
 
@@ -52,11 +48,11 @@ function boot(): void {
     }
   };
   window.addEventListener('error', (ev) => {
-    report(`Runtime error: ${ev.message || 'unknown'}`, ev.error);
+    report(t('err.runtime', { msg: ev.message || 'unknown' }), ev.error);
   });
   window.addEventListener('unhandledrejection', (ev) => {
     const reason = ev.reason instanceof Error ? ev.reason.message : String(ev.reason);
-    report(`Unhandled promise rejection: ${reason}`, ev.reason);
+    report(t('err.rejection', { msg: reason }), ev.reason);
   });
 
   try {
@@ -68,11 +64,7 @@ function boot(): void {
     (window as unknown as { __turboKartRush?: Game }).__turboKartRush = game;
   } catch (err) {
     console.error('[main] failed to start game', err);
-    showFatal(
-      app,
-      'FAILED TO START',
-      'Something went wrong while starting the game. Open the developer console for details, then reload.',
-    );
+    showFatal(app, t('err.start.title'), t('err.start.body'));
   }
 }
 

@@ -6,23 +6,26 @@ import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinitio
 import { events } from '../core/events';
 import { GAME_TITLE, DEFAULT_LAPS } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
+import { getLang, t, t as tt, tOr, toggleLang } from '../core/i18n';
+import type { StringKey } from '../core/i18n';
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
 
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
-const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: 'EASY', normal: 'NORMAL', hard: 'HARD' };
-const DIFFICULTY_BLURB: Record<Difficulty, string> = {
-  easy: 'Relaxed rivals, generous rubber-banding.',
-  normal: 'The classic Grand Prix challenge.',
-  hard: 'Ruthless AI, near-perfect lines, no mercy.',
+const DIFFICULTY_LABEL: Record<Difficulty, StringKey> = { easy: 'diff.easy', normal: 'diff.normal', hard: 'diff.hard' };
+const DIFFICULTY_BLURB: Record<Difficulty, StringKey> = {
+  easy: 'diff.easy.blurb',
+  normal: 'diff.normal.blurb',
+  hard: 'diff.hard.blurb',
 };
-const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: string }[] = [
-  { key: 'speed', label: 'SPD' },
-  { key: 'acceleration', label: 'ACC' },
-  { key: 'handling', label: 'HND' },
-  { key: 'weight', label: 'WGT' },
-  { key: 'miniTurbo', label: 'MT' },
+const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: StringKey }[] = [
+  { key: 'speed', label: 'stat.speed' },
+  { key: 'acceleration', label: 'stat.acceleration' },
+  { key: 'handling', label: 'stat.handling' },
+  { key: 'weight', label: 'stat.weight' },
+  { key: 'miniTurbo', label: 'stat.miniTurbo' },
 ];
+const TIER_KEYS: readonly StringKey[] = ['tier.rookie', 'tier.pro', 'tier.expert'];
 const CHAR_COLUMNS = 4;
 
 export class MainMenu {
@@ -60,6 +63,11 @@ export class MainMenu {
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
+    const langBtn = button(t('title.lang'), 'ghost lang-toggle', () => {
+      toggleLang();
+    });
+    langBtn.dataset.lang = getLang();
+    title.appendChild(langBtn);
     const logoWrap = el('div', 'logo', undefined, title);
     const words = GAME_TITLE.split(' ');
     words.forEach((w, i) => {
@@ -67,26 +75,31 @@ export class MainMenu {
       line.dataset.text = w;
       line.textContent = w;
     });
-    el('div', 'logo-sub', 'ARCADE GRAND PRIX', title);
+    el('div', 'logo-sub', t('title.sub'), title);
     const prompt = el('div', 'press-start', undefined, title);
-    el('span', 'press-start-text', 'PRESS ENTER / CLICK TO START', prompt);
+    el(
+      'span',
+      'press-start-text',
+      window.matchMedia?.('(pointer: coarse)').matches ? t('title.tapStart') : t('title.pressStart'),
+      prompt,
+    );
     const legend = el('div', 'controls-legend glass', undefined, title);
     const keys: [string, string][] = [
-      ['W / ↑', 'Throttle'],
-      ['S / ↓', 'Brake / Reverse'],
-      ['A D / ← →', 'Steer'],
-      ['SPACE / SHIFT', 'Hop · Drift'],
-      ['E / CTRL', 'Use item (hold BRAKE to throw back)'],
-      ['Q', 'Look back'],
-      ['ESC / P', 'Pause'],
-      ['M', 'Mute'],
+      ['W / ↑', t('legend.throttle')],
+      ['S / ↓', t('legend.brake')],
+      ['A D / ← →', t('legend.steer')],
+      ['SPACE / SHIFT', t('legend.drift')],
+      ['E / CTRL', t('legend.item')],
+      ['Q', t('legend.lookBack')],
+      ['ESC / P', t('legend.pause')],
+      ['M', t('legend.mute')],
     ];
     for (const [k, v] of keys) {
       const row = el('div', 'legend-row', undefined, legend);
       el('kbd', '', k, row);
       el('span', '', v, row);
     }
-    el('div', 'version', 'v1.0 · Three.js · 100% procedural · gamepad supported', title);
+    el('div', 'version', t('title.version'), title);
     title.addEventListener('click', () => {
       if (this.panel === 'title') this.goTo('characterSelect', true);
     });
@@ -94,8 +107,8 @@ export class MainMenu {
     // ------------------------------------------------------- character select
     const chars = el('section', 'panel-select panel-chars', undefined, this.rootNode);
     const charHead = el('header', 'select-header', undefined, chars);
-    el('div', 'panel-kicker', 'STEP 1 / 2', charHead);
-    el('h2', 'panel-title', 'CHOOSE YOUR RACER', charHead);
+    el('div', 'panel-kicker', t('menu.step1'), charHead);
+    el('h2', 'panel-title', t('menu.chooseRacer'), charHead);
     const charGrid = el('div', 'card-grid char-grid', undefined, chars);
     characters.forEach((c, i) => {
       const card = this.buildCharacterCard(c);
@@ -113,14 +126,14 @@ export class MainMenu {
     this.charName = new TextField(el('div', 'select-info-name', '', charInfo));
     this.charTagline = new TextField(el('div', 'select-info-tagline', '', charInfo));
     const charActions = el('div', 'actions', undefined, charFoot);
-    charActions.appendChild(button('← BACK', 'ghost', () => this.goTo('title', true)));
-    charActions.appendChild(button('CONTINUE →', 'primary', () => this.goTo('trackSelect', true)));
+    charActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('title', true)));
+    charActions.appendChild(button(t('menu.continue'), 'primary', () => this.goTo('trackSelect', true)));
 
     // ----------------------------------------------------------- track select
     const tr = el('section', 'panel-select panel-tracks', undefined, this.rootNode);
     const trHead = el('header', 'select-header', undefined, tr);
-    el('div', 'panel-kicker', 'STEP 2 / 2', trHead);
-    el('h2', 'panel-title', 'PICK A CIRCUIT', trHead);
+    el('div', 'panel-kicker', t('menu.step2'), trHead);
+    el('h2', 'panel-title', t('menu.pickCircuit'), trHead);
     const trackGrid = el('div', 'card-grid track-grid', undefined, tr);
     tracks.forEach((t, i) => {
       const card = this.buildTrackCard(t);
@@ -140,10 +153,10 @@ export class MainMenu {
     });
     const trFoot = el('footer', 'select-footer glass', undefined, tr);
     const diffWrap = el('div', 'difficulty', undefined, trFoot);
-    el('div', 'difficulty-label', 'DIFFICULTY', diffWrap);
+    el('div', 'difficulty-label', t('menu.difficulty'), diffWrap);
     const seg = el('div', 'segmented', undefined, diffWrap);
     DIFFICULTIES.forEach((d, i) => {
-      const b = el('button', 'seg', DIFFICULTY_LABEL[d], seg);
+      const b = el('button', 'seg', t(DIFFICULTY_LABEL[d]), seg);
       b.type = 'button';
       b.addEventListener('pointerenter', () => {
         this.trackRow = 1;
@@ -158,8 +171,8 @@ export class MainMenu {
     });
     this.diffBlurb = new TextField(el('div', 'difficulty-blurb', '', diffWrap));
     const trActions = el('div', 'actions', undefined, trFoot);
-    trActions.appendChild(button('← BACK', 'ghost', () => this.goTo('characterSelect', true)));
-    this.startButton = button('START RACE', 'primary start', () => this.start());
+    trActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('characterSelect', true)));
+    this.startButton = button(t('menu.startRace'), 'primary start', () => this.start());
     this.startButton.addEventListener('pointerenter', () => {
       this.trackRow = 2;
       this.refreshTrackFocus();
@@ -284,7 +297,7 @@ export class MainMenu {
     });
     const def = this.characters[i];
     this.charName.set(def.name.toUpperCase());
-    this.charTagline.set(def.tagline);
+    this.charTagline.set(tOr(`char.${def.id}.tagline`, def.tagline));
     if (changed) {
       if (sound) events.emit('ui:move', {});
       this.onHighlight?.(def.id);
@@ -304,7 +317,7 @@ export class MainMenu {
     const changed = i !== this.difficultyIndex;
     this.difficultyIndex = i;
     this.diffButtons.forEach((b, k) => b.classList.toggle('selected', k === i));
-    this.diffBlurb.set(DIFFICULTY_BLURB[DIFFICULTIES[i]]);
+    this.diffBlurb.set(t(DIFFICULTY_BLURB[DIFFICULTIES[i]]));
     this.refreshTrackFocus();
     if (changed && sound) events.emit('ui:move', {});
   }
@@ -345,13 +358,13 @@ export class MainMenu {
     el('div', 'char-wheel char-wheel-l', undefined, swatch);
     el('div', 'char-wheel char-wheel-r', undefined, swatch);
     el('div', 'card-name', c.name.toUpperCase(), card);
-    el('div', 'card-tag', c.tagline, card);
-    const pill = el('div', `pill weight-${c.weightClass}`, c.weightClass.toUpperCase(), card);
-    pill.title = 'Weight class';
+    el('div', 'card-tag', tOr(`char.${c.id}.tagline`, c.tagline), card);
+    const pill = el('div', `pill weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
+    pill.title = t('menu.weightClass');
     const stats = el('div', 'stats', undefined, card);
     for (const s of STAT_KEYS) {
       const row = el('div', 'stat', undefined, stats);
-      el('span', 'stat-label', s.label, row);
+      el('span', 'stat-label', t(s.label), row);
       const bar = el('div', 'stat-bar', undefined, row);
       const fill = el('div', 'stat-fill', undefined, bar);
       const v = Math.max(0, Math.min(1, c.stats[s.key]));
@@ -373,16 +386,16 @@ export class MainMenu {
     const road = el('div', 'track-art-road', undefined, art);
     road.style.background = cssHex(t.palette.road);
     road.style.borderColor = cssHex(t.palette.curb);
-    el('div', 'track-theme-pill pill', t.theme.toUpperCase(), art);
+    el('div', 'track-theme-pill pill', tt(`theme.${t.theme}` as StringKey), art);
     const body = el('div', 'track-body', undefined, card);
     const nameRow = el('div', 'track-name-row', undefined, body);
     el('div', 'card-name', t.name.toUpperCase(), nameRow);
     const stars = el('div', 'stars', undefined, nameRow);
     for (let i = 0; i < 3; i++) el('span', i < t.difficulty ? 'star on' : 'star', '★', stars);
-    el('div', 'card-tag', t.description, body);
+    el('div', 'card-tag', tOr(`track.${t.id}.desc`, t.description), body);
     const meta = el('div', 'track-meta', undefined, body);
-    el('span', 'pill', `${t.laps} LAPS`, meta);
-    el('span', 'pill', `${['ROOKIE', 'PRO', 'EXPERT'][t.difficulty - 1] ?? 'PRO'}`, meta);
+    el('span', 'pill', tt('menu.laps', { n: t.laps }), meta);
+    el('span', 'pill', tt(TIER_KEYS[t.difficulty - 1] ?? 'tier.pro'), meta);
     return card;
   }
 }

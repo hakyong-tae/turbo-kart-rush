@@ -6,6 +6,8 @@
 import type { TouchInputSource } from '../core/types';
 import { el } from './dom';
 import { stickToAxes } from './touchMath';
+import { events } from '../core/events';
+import { t } from '../core/i18n';
 
 const STICK_RADIUS = 60;
 const STICK_DEADZONE = 0.12;
@@ -40,6 +42,7 @@ export class TouchControls implements TouchInputSource {
   private baseY = 0;
   private readonly buttonPointers = new Map<number, ButtonKey>();
   private enabled = false;
+  private readonly unsubLang: () => void;
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'touch-controls', undefined, root);
@@ -49,8 +52,8 @@ export class TouchControls implements TouchInputSource {
     el('div', 'touch-stick-ring', undefined, this.stick);
     this.knob = el('div', 'touch-knob', undefined, this.stick);
 
-    this.itemBtn = el('button', 'touch-btn touch-item', 'ITEM', this.rootNode);
-    this.driftBtn = el('button', 'touch-btn touch-drift', 'DRIFT', this.rootNode);
+    this.itemBtn = el('button', 'touch-btn touch-item', t('touch.item'), this.rootNode);
+    this.driftBtn = el('button', 'touch-btn touch-drift', t('touch.drift'), this.rootNode);
     this.pauseBtn = el('button', 'touch-pause', '❚❚', this.rootNode);
     for (const b of [this.itemBtn, this.driftBtn, this.pauseBtn]) (b as HTMLButtonElement).type = 'button';
 
@@ -66,11 +69,17 @@ export class TouchControls implements TouchInputSource {
 
     window.addEventListener('blur', this.releaseAll);
     document.addEventListener('visibilitychange', this.onVisibility);
+    this.unsubLang = events.on('ui:langChange', () => this.setLabels(t('touch.drift'), t('touch.item')));
 
     // Show only on touch-capable devices. `pointer: coarse` catches phones/tablets up front;
     // the one-shot touchstart catches hybrids whose primary pointer is fine.
     if (window.matchMedia?.('(pointer: coarse)').matches) this.setEnabled(true);
     window.addEventListener('touchstart', this.onFirstTouch, { passive: true, once: true });
+  }
+
+  /** The overlay's DOM node (Game re-appends it after rebuilding sibling overlays). */
+  get rootElement(): HTMLElement {
+    return this.rootNode;
   }
 
   /** Whether the device looks touch-capable (controls become visible during races). */
@@ -92,6 +101,7 @@ export class TouchControls implements TouchInputSource {
   }
 
   dispose(): void {
+    this.unsubLang();
     window.removeEventListener('blur', this.releaseAll);
     window.removeEventListener('touchstart', this.onFirstTouch);
     document.removeEventListener('visibilitychange', this.onVisibility);

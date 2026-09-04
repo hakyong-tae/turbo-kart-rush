@@ -4,7 +4,8 @@
  */
 import type { InputState, RaceStanding } from '../core/types';
 import { events } from '../core/events';
-import { formatRaceTime, ordinal } from '../core/math';
+import { formatRaceTime } from '../core/math';
+import { localOrdinal, t } from '../core/i18n';
 import { button, cssHex, el, FocusRing, TextField } from './dom';
 
 const CONFETTI_COUNT = 56;
@@ -28,15 +29,15 @@ export class ResultsScreen {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
     this.confetti = el('div', 'confetti', undefined, this.rootNode);
     this.panel = el('div', 'glass panel results-panel', undefined, this.rootNode);
-    el('div', 'panel-kicker', 'RACE COMPLETE', this.panel);
+    el('div', 'panel-kicker', t('results.kicker'), this.panel);
     this.heading = new TextField(el('h2', 'panel-title results-title', '', this.panel));
     this.subheading = new TextField(el('div', 'results-sub', '', this.panel));
     this.table = el('div', 'standings', undefined, this.panel);
     const actions = el('div', 'actions', undefined, this.panel);
     this.focus = new FocusRing((i) => this.activate(i));
-    const again = button('RACE AGAIN', 'primary', () => this.activate(0));
-    const change = button('CHANGE TRACK', '', () => this.activate(1));
-    const menu = button('MAIN MENU', 'ghost', () => this.activate(2));
+    const again = button(t('results.again'), 'primary', () => this.activate(0));
+    const change = button(t('results.changeTrack'), '', () => this.activate(1));
+    const menu = button(t('results.mainMenu'), 'ghost', () => this.activate(2));
     actions.append(again, change, menu);
     this.focus.add(again);
     this.focus.add(change);
@@ -50,15 +51,15 @@ export class ResultsScreen {
     const place = player ? player.place : standings.length;
     const winnerTime = standings.length > 0 ? standings[0].finishTime : 0;
 
-    this.heading.set(place === 1 ? 'VICTORY!' : `${ordinal(place).toUpperCase()} PLACE`);
+    this.heading.set(place === 1 ? t('results.victory') : t('results.place', { ord: localOrdinal(place).toUpperCase() }));
     this.subheading.set(
       place === 1
-        ? 'Untouchable. The crowd goes wild.'
+        ? t('results.sub.win')
         : place <= 3
-          ? 'Podium finish. Champagne is on ice.'
+          ? t('results.sub.podium')
           : place <= 5
-            ? 'Solid run. The podium is within reach.'
-            : 'Rough race. Time for revenge.',
+            ? t('results.sub.mid')
+            : t('results.sub.rough'),
     );
     this.panel.classList.toggle('gold', place === 1);
 
@@ -67,17 +68,17 @@ export class ResultsScreen {
       row.style.animationDelay = `${0.12 + i * 0.09}s`;
       if (s.isPlayer) row.classList.add('you');
       if (s.place <= 3) row.classList.add(`podium-${s.place}`);
-      el('span', 'standing-place', ordinal(s.place), row);
+      el('span', 'standing-place', localOrdinal(s.place), row);
       const chip = el('span', 'standing-chip', undefined, row);
       chip.style.background = cssHex(s.color);
-      el('span', 'standing-name', s.name + (s.isPlayer ? '  (YOU)' : ''), row);
-      const t = s.finishTime;
+      el('span', 'standing-name', s.name + (s.isPlayer ? `  ${t('results.you')}` : ''), row);
+      const time = s.finishTime;
       const label =
-        !isFinite(t) || t <= 0
-          ? 'DNF'
+        !isFinite(time) || time <= 0
+          ? t('results.dnf')
           : i === 0
-            ? formatRaceTime(t)
-            : `+${(t - winnerTime).toFixed(3)}`;
+            ? formatRaceTime(time)
+            : `+${(time - winnerTime).toFixed(3)}`;
       el('span', 'standing-time', label, row);
     });
 

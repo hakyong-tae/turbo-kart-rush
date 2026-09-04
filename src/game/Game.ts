@@ -48,6 +48,7 @@ import { ResultsScreen } from '../ui/ResultsScreen';
 import { PauseMenu } from '../ui/PauseMenu';
 import { LoadingScreen } from '../ui/LoadingScreen';
 import { TouchControls } from '../ui/TouchControls';
+import { t } from '../core/i18n';
 import { el } from '../ui/dom';
 import { showToast } from '../ui/toast';
 
@@ -100,6 +101,7 @@ export class Game {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly uiRoot: HTMLElement;
   private readonly touch: TouchControls;
+  private unsubLang: (() => void) | null = null;
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
@@ -108,10 +110,10 @@ export class Game {
   private postfxOk = true;
 
   private readonly backdrop: MenuBackdrop;
-  private readonly mainMenu: MainMenu;
-  private readonly results: ResultsScreen;
-  private readonly pauseMenu: PauseMenu;
-  private readonly loading: LoadingScreen;
+  private mainMenu: MainMenu;
+  private results: ResultsScreen;
+  private pauseMenu: PauseMenu;
+  private loading: LoadingScreen;
   private readonly muteIndicator: HTMLElement;
 
   private state: GameState = 'boot';
@@ -178,33 +180,11 @@ export class Game {
 
     // ---------------------------------------------------------- ui
     this.backdrop = new MenuBackdrop();
-    this.mainMenu = new MainMenu(this.uiRoot, CHARACTERS as readonly CharacterDef[], TRACKS as readonly TrackDefinition[]);
-    this.mainMenu.onHighlight = (id) => this.backdrop.setCharacter(getCharacter(id));
-    this.mainMenu.onPanelChange = (panel) => this.onMenuPanel(panel);
-    this.mainMenu.onStart = (settings) => this.startRace(settings);
-
-    this.results = new ResultsScreen(this.uiRoot);
-    this.results.onRaceAgain = () => {
-      if (this.race) this.startRace(this.race.settings);
-    };
-    this.results.onChangeTrack = () => this.returnToMenu('trackSelect');
-    this.results.onMainMenu = () => this.returnToMenu('title');
-
-    this.pauseMenu = new PauseMenu(this.uiRoot);
-    this.pauseMenu.onResume = () => this.resume();
-    this.pauseMenu.onRestart = () => {
-      const settings = this.race?.settings;
-      this.leavePause();
-      if (settings) this.startRace(settings);
-      else this.returnToMenu('title');
-    };
-    this.pauseMenu.onQuit = () => {
-      this.leavePause();
-      this.returnToMenu('title');
-    };
-
+    this.mainMenu = this.buildMainMenu();
+    this.results = this.buildResults();
+    this.pauseMenu = this.buildPauseMenu();
     this.loading = new LoadingScreen(this.uiRoot);
-    this.muteIndicator = el('div', 'mute-indicator', '🔇 MUTED', this.uiRoot);
+    this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
 
@@ -215,6 +195,7 @@ export class Game {
     window.addEventListener('keydown', this.onGesture);
     window.addEventListener('blur', this.onBlur);
     document.addEventListener('visibilitychange', this.onVisibility);
+    this.unsubLang = events.on('ui:langChange', () => this.onLangChange());
 
     this.onResize();
   }
@@ -252,6 +233,8 @@ export class Game {
     this.pauseMenu.dispose();
     this.loading.dispose();
     this.muteIndicator.remove();
+    this.unsubLang?.();
+    this.unsubLang = null;
     this.input.attachTouch(null);
     this.touch.dispose();
     this.input.dispose();
@@ -261,6 +244,64 @@ export class Game {
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.uiRoot.remove();
+  }
+
+  // ------------------------------------------------------------- ui builders
+
+  private buildMainMenu(): MainMenu {
+    const menu = new MainMenu(this.uiRoot, CHARACTERS as readonly CharacterDef[], TRACKS as readonly TrackDefinition[]);
+    menu.onHighlight = (id) => this.backdrop.setCharacter(getCharacter(id));
+    menu.onPanelChange = (panel) => this.onMenuPanel(panel);
+    menu.onStart = (settings) => this.startRace(settings);
+    return menu;
+  }
+
+  private buildResults(): ResultsScreen {
+    const results = new ResultsScreen(this.uiRoot);
+    results.onRaceAgain = () => {
+      if (this.race) this.startRace(this.race.settings);
+    };
+    results.onChangeTrack = () => this.returnToMenu('trackSelect');
+    results.onMainMenu = () => this.returnToMenu('title');
+    return results;
+  }
+
+  private buildPauseMenu(): PauseMenu {
+    const pauseMenu = new PauseMenu(this.uiRoot);
+    pauseMenu.onResume = () => this.resume();
+    pauseMenu.onRestart = () => {
+      const settings = this.race?.settings;
+      this.leavePause();
+      if (settings) this.startRace(settings);
+      else this.returnToMenu('title');
+    };
+    pauseMenu.onQuit = () => {
+      this.leavePause();
+      this.returnToMenu('title');
+    };
+    return pauseMenu;
+  }
+
+  /**
+   * Language switched on the title screen: the long-lived overlays are stateless DOM built
+   * once, so rebuild them in place. The HUD is rebuilt per race anyway.
+   */
+  private onLangChange(): void {
+    const panel = this.mainMenu.currentPanel;
+    const wasMenu = this.state === 'title' || this.state === 'characterSelect' || this.state === 'trackSelect';
+    this.mainMenu.dispose();
+    this.results.dispose();
+    this.pauseMenu.dispose();
+    this.loading.dispose();
+    this.mainMenu = this.buildMainMenu();
+    this.results = this.buildResults();
+    this.pauseMenu = this.buildPauseMenu();
+    this.loading = new LoadingScreen(this.uiRoot);
+    // Keep the mute indicator / touch layer above the rebuilt overlays.
+    this.uiRoot.appendChild(this.muteIndicator);
+    this.uiRoot.appendChild(this.touch.rootElement);
+    this.muteIndicator.textContent = t('mute');
+    if (wasMenu) this.mainMenu.show(panel);
   }
 
   // ------------------------------------------------------------- main loop
@@ -340,7 +381,7 @@ export class Game {
         this.buildRace(settings);
       } catch (err) {
         console.error('[Game] failed to build race', err);
-        showToast('Could not build the race. Check the console for details.', 'error');
+        showToast(t('err.buildRace'), 'error');
         this.pendingSettings = null;
         this.loading.hide();
         this.showMenu('title');
@@ -569,7 +610,7 @@ export class Game {
       trackDef = TRACKS[0] as TrackDefinition;
     }
     if (!trackDef) {
-      showToast('No tracks are available yet.', 'error');
+      showToast(t('err.noTracks'), 'error');
       this.showMenu('title');
       return;
     }

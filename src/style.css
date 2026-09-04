@@ -2063,3 +2063,43 @@ kbd {
   transform: translateX(-50%) scale(0.5);
   transform-origin: top center;
 }
+
+/* Language toggle on the title screen */
+.panel-title-screen {
+  position: relative;
+}
+.lang-toggle {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  pointer-events: auto;
+  font-size: 13px;
+  padding: 8px 12px;
+  z-index: 2;
+}
+
+/* Korean: Impact has no Hangul, so glyphs fall through to a Gothic face; loosen uppercase tracking. */
+html[lang='ko'] {
+  --display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Apple SD Gothic Neo', 'Noto Sans KR',
+    'Malgun Gothic', system-ui, sans-serif;
+}
+html[lang='ko'] .btn,
+html[lang='ko'] .panel-title,
+html[lang='ko'] .panel-kicker,
+html[lang='ko'] .card-name,
+html[lang='ko'] .card-tag,
+html[lang='ko'] .pill,
+html[lang='ko'] .seg,
+html[lang='ko'] .difficulty-label,
+html[lang='ko'] .select-info-name,
+html[lang='ko'] .select-info-tagline,
+html[lang='ko'] .hud-msg,
+html[lang='ko'] .hud-lap-label,
+html[lang='ko'] .loading-kicker,
+html[lang='ko'] .loading-tip-label,
+html[lang='ko'] .results-title,
+html[lang='ko'] .standing-name,
+html[lang='ko'] .touch-btn {
+  letter-spacing: 0.01em;
+  word-break: keep-all;
+}

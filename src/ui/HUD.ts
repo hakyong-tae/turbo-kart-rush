@@ -6,26 +6,12 @@ import type { IKart, ITrack, ItemType } from '../core/types';
 import { ALL_ITEM_TYPES } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED } from '../core/constants';
-import { clamp01, damp, formatRaceTime, ordinal } from '../core/math';
+import { clamp01, damp, formatRaceTime } from '../core/math';
+import { localOrdinal, localOrdinalSuffix, t } from '../core/i18n';
+import type { StringKey } from '../core/i18n';
 import { el, restartAnimation, TextField } from './dom';
 import { Minimap } from './Minimap';
 
-const ITEM_LABEL: Record<ItemType, string> = {
-  none: '',
-  banana: 'BANANA',
-  triple_banana: 'BANANA ×3',
-  green_shell: 'GREEN SHELL',
-  triple_green_shell: 'GREEN ×3',
-  red_shell: 'RED SHELL',
-  triple_red_shell: 'RED ×3',
-  blue_shell: 'BLUE SHELL',
-  mushroom: 'MUSHROOM',
-  triple_mushroom: 'MUSHROOM ×3',
-  golden_mushroom: 'GOLDEN',
-  star: 'STAR',
-  lightning: 'LIGHTNING',
-  bob_omb: 'BOB-OMB',
-};
 
 const ITEM_FALLBACK_COLOR: Record<ItemType, string> = {
   none: '#333',
@@ -111,7 +97,7 @@ export class HUD {
     // Top-right: lap + timer
     const topRight = el('div', 'hud-topright', undefined, this.rootNode);
     const lapBox = el('div', 'hud-lap glass', undefined, topRight);
-    el('span', 'hud-lap-label', 'LAP', lapBox);
+    el('span', 'hud-lap-label', t('hud.lap'), lapBox);
     this.lapText = new TextField(el('span', 'hud-lap-value', '', lapBox));
     this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
 
@@ -153,7 +139,7 @@ export class HUD {
     this.center = el('div', 'hud-center', undefined, this.rootNode);
     this.wrongWay = el('div', 'hud-wrongway', undefined, this.rootNode);
     el('span', 'wrongway-arrow', '⟲', this.wrongWay);
-    el('span', 'wrongway-text', 'WRONG WAY', this.wrongWay);
+    el('span', 'wrongway-text', t('hud.wrongWay'), this.wrongWay);
     this.vignette = el('div', 'hud-vignette', undefined, this.rootNode);
     this.boostGlow = el('div', 'hud-boostglow', undefined, this.rootNode);
 
@@ -185,9 +171,8 @@ export class HUD {
     const place = s.place > 0 ? s.place : karts.length;
     if (place !== this.lastPlace) {
       this.lastPlace = place;
-      const ord = ordinal(place);
       this.placeNum.set(String(place));
-      this.placeSuffix.set(ord.slice(String(place).length));
+      this.placeSuffix.set(localOrdinalSuffix(place));
       this.placeNode.classList.toggle('gold', place === 1);
       this.placeNode.classList.toggle('silver', place === 2);
       this.placeNode.classList.toggle('bronze', place === 3);
@@ -276,17 +261,17 @@ export class HUD {
         this.flashCenter(String(e.count), 'hud-count', 0.95);
       }),
       on('race:start', () => {
-        this.flashCenter('GO!', 'hud-count hud-go', 1.1);
+        this.flashCenter(t('hud.go'), 'hud-count hud-go', 1.1);
       }),
       on('race:lap', (e) => {
         if (!e.isPlayer) return;
-        if (e.isFinalLap) this.flashCenter('FINAL LAP!', 'hud-banner final', 2.4);
-        else if (e.lap > 1) this.flashCenter(`LAP ${e.lap}`, 'hud-banner lap', 1.4);
+        if (e.isFinalLap) this.flashCenter(t('hud.finalLap'), 'hud-banner final', 2.4);
+        else if (e.lap > 1) this.flashCenter(t('hud.lapN', { n: e.lap }), 'hud-banner lap', 1.4);
       }),
       on('race:positionChange', (e) => {
         if (!e.isPlayer) return;
         const up = e.to < e.from;
-        this.flashCenter(`${up ? '▲' : '▼'} ${ordinal(e.to).toUpperCase()}`, `hud-posflash ${up ? 'up' : 'down'}`, 1.0);
+        this.flashCenter(`${up ? '▲' : '▼'} ${localOrdinal(e.to).toUpperCase()}`, `hud-posflash ${up ? 'up' : 'down'}`, 1.0);
       }),
       on('item:hit', (e) => {
         if (!e.isPlayer) return;
@@ -295,8 +280,8 @@ export class HUD {
       }),
       on('race:finish', (e) => {
         if (!e.isPlayer) return;
-        const node = this.flashCenter('FINISH', 'hud-finish', 4.5);
-        el('div', 'hud-finish-place', ordinal(e.place).toUpperCase() + ' PLACE', node);
+        const node = this.flashCenter(t('hud.finish'), 'hud-finish', 4.5);
+        el('div', 'hud-finish-place', t('results.place', { ord: localOrdinal(e.place).toUpperCase() }), node);
       }),
       on('kart:respawn', (e) => {
         if (e.kartId !== this.playerId) return;
@@ -348,7 +333,7 @@ export class HUD {
       this.itemIconHost.appendChild(this.getIcon(item));
     }
     this.itemFrame.classList.toggle('has-item', item !== 'none');
-    this.itemLabel.set(this.rouletteVisual ? '' : ITEM_LABEL[item]);
+    this.itemLabel.set(this.rouletteVisual || item === 'none' ? '' : t(`item.${item}` as StringKey));
     if (pop) restartAnimation(this.itemFrame, 'pop');
   }
 
