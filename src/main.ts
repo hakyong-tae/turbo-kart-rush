@@ -7,6 +7,7 @@ import { BALANCE, applyBalanceOverrides } from './core/balance';
 import { el } from './ui/dom';
 import { showToast } from './ui/toast';
 import { t } from './core/i18n';
+import { initEmbedHandshake } from './verse8/embed';
 
 function hasWebGL2(): boolean {
   try {
@@ -31,6 +32,7 @@ function showFatal(root: HTMLElement, title: string, body: string): void {
 }
 
 function boot(): void {
+  initEmbedHandshake();
   const app = document.getElementById('app') ?? el('div', '', undefined, document.body);
   app.id = 'app';
 
