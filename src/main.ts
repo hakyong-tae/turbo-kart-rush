@@ -3,6 +3,7 @@
  */
 import { GAME_TITLE } from './core/constants';
 import { Game } from './game/Game';
+import { BALANCE, applyBalanceOverrides } from './core/balance';
 import { el } from './ui/dom';
 import { showToast } from './ui/toast';
 
@@ -59,6 +60,9 @@ function boot(): void {
   });
 
   try {
+    const balanceWarnings = applyBalanceOverrides(BALANCE, new URLSearchParams(location.search));
+    for (const w of balanceWarnings) console.warn('[balance]', w);
+    (window as unknown as { __balance?: typeof BALANCE }).__balance = BALANCE;
     const game = new Game(app);
     game.start();
     (window as unknown as { __turboKartRush?: Game }).__turboKartRush = game;

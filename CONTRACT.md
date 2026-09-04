@@ -154,4 +154,6 @@ chromatic aberration + vignette + hit tint + flash, `OutputPass`. Must gracefull
 
 ## Contract additions
 
-(None yet. If you must add an optional member to a core type, list it here with your workstream letter.)
+- **(local-mods)** `src/core/balance.ts` — `BALANCE` tuning object. Kart/ItemManager/AIDriver/RaceManager read their feel constants from here instead of module-level consts. Values unchanged. URL override `?b.<path>=<number>`; `window.__balance`.
+- **(local-mods)** `src/core/types.ts` — `TouchInputSource` interface. `InputManager.attachTouch()` merges a DOM virtual controller (`src/ui/TouchControls.ts`).
+- **(local-mods)** `src/core/i18n.ts` + `src/core/locales/{en,ko}.ts` — `t(key)` string table; `events.ts` gains `'ui:langChange'`.

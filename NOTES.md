@@ -133,6 +133,8 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 
 ## 4. 밸런스/데이터 파일 (여기만 바꿔도 게임이 달라지는 곳)
 
+> **26-09-04부터** 느낌 상수는 전부 `src/core/balance.ts`의 `BALANCE`에 모여 있다(값은 원본 그대로). `?b.kart.accelBase=11` 식 URL 오버라이드, 콘솔 `__balance` 실시간 수정 가능(AI 프로필은 다음 레이스부터). 아래 표의 Kart.ts/ItemManager/AIDriver/RaceManager 위치는 원본 기준이며 지금은 `BALANCE.kart / .drift / .status / .items / .itemTable / .ai / .race`에서 찾으면 된다.
+
 | 항목 | 위치 | 내용 |
 |---|---|---|
 | **트랙 4개** | `src/track/tracks/*.ts` | `TrackDefinition`: controlPoints(x,y,z 폐루프) · halfWidth(s) · wallHalfWidthFactor · itemBoxRows[t] · boostPads[t] · voidRanges · environment(sky/fog/sun/ambient) · palette(road/curb/offroad/wall/ground). 새 트랙 = 파일 1개 + `tracks/index.ts` 배열 추가. DEV에서 `validate.ts`가 자동 검증 |
