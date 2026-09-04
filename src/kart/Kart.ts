@@ -24,44 +24,12 @@ import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_RADIUS } from '../core/constants';
 import { TAU, clamp, clamp01, damp, lerp, smoothstep, wrapAngle } from '../core/math';
 import { buildKartModel, type KartModelPartsEx } from './KartModel';
+import { BALANCE } from '../core/balance';
 
 // --- tuning ------------------------------------------------------------------
-/** m/s^2 at (0.5 + acceleration stat) = 1. Medium kart 0 -> 95% top in ~2.5 s. */
-const ACCEL_BASE = 9.0;
-/** Proportional approach toward target speed (1/s). */
-const ACCEL_APPROACH = 2.2;
-/** Acceleration cap / approach while boosting (reaches ~95% of boosted top speed in ~0.3 s). */
-const BOOST_ACCEL = 45;
-const BOOST_APPROACH = 7;
-const OVER_SPEED_DECEL_MAX = 10;
-const OVER_SPEED_APPROACH = 2.0;
-const BRAKE_DECEL = 16;
-const COAST_DECEL = 4.5;
-const REVERSE_FRACTION = 0.35;
-const REVERSE_ACCEL = 5;
-/** Full-lock yaw rate (rad/s) before handling/speed scaling: ~1.2 rad/s at top speed (r ≈ 19 m). */
-const STEER_RATE = 1.9;
-/** Drift yaw rate base: inward ≈ 1.4 rad/s (r ≈ 16 m), neutral ≈ 1.1, counter-steer ≈ 0.77 at top speed. */
-const DRIFT_STEER_RATE = 1.9;
-const HOP_VELOCITY = 4.5;
-const HOP_DRIFT_DELAY = 0.15;
-const DRIFT_MIN_SPEED = 0.45;
-const DRIFT_KEEP_SPEED = 0.3;
-/** Max angle (rad) the movement direction lags the heading while drifting (~28 deg). */
-const DRIFT_SLIP_MAX = 0.49;
-const DRIFT_SPEED_FACTOR = 0.965;
-const DRIFT_STAGE_THRESHOLDS: readonly number[] = [1.0, 2.0, 3.2];
-const DRIFT_BOOST_DURATIONS: readonly number[] = [0, 0.7, 1.2, 1.8];
-const DRIFT_BOOST_STRENGTH = 0.4;
-const SPIN_DURATION = 1.1;
-const LATERAL_GRIP_ROAD = 8;
-const LATERAL_GRIP_OFFROAD = 4;
-const WALL_RESTITUTION = 0.3;
+// Feel constants live in src/core/balance.ts (read every frame so console edits apply live).
+const B = BALANCE;
 const WALL_MARGIN = KART_RADIUS * 0.6;
-const OFFROAD_FACTOR = 0.55;
-const SHRUNK_FACTOR = 0.65;
-const STAR_FACTOR = 1.2;
-const SQUISH_FACTOR = 0.5;
 /** Ground sticky zone: within this height above the road we count as grounded. */
 const GROUND_STICK = 0.12;
 /** Relative upward velocity above which we always count as airborne (hops). */
@@ -250,13 +218,13 @@ export class Kart implements IKart {
     // Drift slide: movement direction lags the heading (kart slides outward).
     // Increasing heading turns left, so a right drift (+1) needs a positive slip.
     const slipTarget = s.isDrifting
-      ? s.driftDirection * DRIFT_SLIP_MAX * (0.75 + 0.25 * clamp01(this.input.steer * s.driftDirection))
+      ? s.driftDirection * B.drift.slipMax * (0.75 + 0.25 * clamp01(this.input.steer * s.driftDirection))
       : 0;
     this.slip = damp(this.slip, slipTarget, s.isDrifting ? 5 : 7, dt);
 
     // Lateral grip.
     if (!s.isAirborne) {
-      const grip = s.surface === 'offroad' ? LATERAL_GRIP_OFFROAD : LATERAL_GRIP_ROAD;
+      const grip = s.surface === 'offroad' ? B.kart.lateralGripOffroad : B.kart.lateralGripRoad;
       this.lateralVel = damp(this.lateralVel, 0, grip, dt);
     }
 
@@ -318,7 +286,7 @@ export class Kart implements IKart {
     let spinYaw = 0;
     let spinHop = 0;
     if (s.isSpinning) {
-      const prog = clamp01(1 - s.spinTimer / SPIN_DURATION);
+      const prog = clamp01(1 - s.spinTimer / B.status.spinDuration);
       const eased = 1 - (1 - prog) * (1 - prog);
       spinYaw = eased * TAU;
       spinHop = Math.sin(prog * Math.PI) * 0.22;
@@ -410,7 +378,7 @@ export class Kart implements IKart {
     const s = this.state;
     if (s.isInvincible || s.isSpinning) return false;
     s.isSpinning = true;
-    s.spinTimer = SPIN_DURATION;
+    s.spinTimer = B.status.spinDuration;
     if (s.isDrifting) this.endDrift(false);
     s.isBoosting = false;
     s.boostTimer = 0;
@@ -538,11 +506,11 @@ export class Kart implements IKart {
     const s = this.state;
     let v = this.baseTopSpeed();
     const protectedSpeed = s.isBoosting || s.isInvincible;
-    if (s.surface === 'offroad' && !protectedSpeed) v *= OFFROAD_FACTOR;
-    if (s.isShrunk) v *= SHRUNK_FACTOR;
-    if (s.isInvincible) v *= STAR_FACTOR;
+    if (s.surface === 'offroad' && !protectedSpeed) v *= B.status.offroadFactor;
+    if (s.isShrunk) v *= B.status.shrunkFactor;
+    if (s.isInvincible) v *= B.status.starFactor;
     if (s.isBoosting) v *= 1 + s.boostStrength;
-    if (s.isSquished) v *= SQUISH_FACTOR;
+    if (s.isSquished) v *= B.status.squishFactor;
     return v;
   }
 
@@ -648,36 +616,36 @@ export class Kart implements IKart {
       return;
     }
 
-    const maxAccel = ACCEL_BASE * (0.5 + s.character.stats.acceleration);
+    const maxAccel = B.kart.accelBase * (0.5 + s.character.stats.acceleration);
     const throttle = s.isBoosting ? 1 : inp.throttle;
     const brake = inp.brake;
 
     if (brake > 0.05 && speed > 0.3 && brake >= throttle) {
-      speed = Math.max(0, speed - BRAKE_DECEL * brake * dt);
+      speed = Math.max(0, speed - B.kart.brakeDecel * brake * dt);
     } else if (throttle > 0.05 && throttle >= brake) {
       let target = top * throttle;
-      if (s.isDrifting) target *= DRIFT_SPEED_FACTOR;
+      if (s.isDrifting) target *= B.drift.speedFactor;
       if (speed < target) {
-        const cap = s.isBoosting ? BOOST_ACCEL : maxAccel;
-        const approach = s.isBoosting ? BOOST_APPROACH : ACCEL_APPROACH;
+        const cap = s.isBoosting ? B.kart.boostAccel : maxAccel;
+        const approach = s.isBoosting ? B.kart.boostApproach : B.kart.accelApproach;
         speed += Math.min(cap, (target - speed) * approach + 0.8) * dt;
         if (speed > target) speed = target;
       } else {
-        speed += Math.max(-OVER_SPEED_DECEL_MAX, (target - speed) * OVER_SPEED_APPROACH) * dt;
+        speed += Math.max(-B.kart.overSpeedDecelMax, (target - speed) * B.kart.overSpeedApproach) * dt;
         if (speed < target) speed = target;
       }
     } else if (brake > 0.05) {
-      const target = -REVERSE_FRACTION * top * brake;
+      const target = -B.kart.reverseFraction * top * brake;
       if (speed > target) {
-        speed -= Math.min(REVERSE_ACCEL, (speed - target) * 2 + 0.5) * dt;
+        speed -= Math.min(B.kart.reverseAccel, (speed - target) * 2 + 0.5) * dt;
         if (speed < target) speed = target;
       } else {
         speed += Math.min(6, (target - speed) * 2) * dt;
       }
     } else {
-      speed = approachZero(speed, (COAST_DECEL + 0.06 * Math.abs(speed)) * dt);
+      speed = approachZero(speed, (B.kart.coastDecel + 0.06 * Math.abs(speed)) * dt);
       if (speed > top) {
-        speed += Math.max(-OVER_SPEED_DECEL_MAX, (top - speed) * OVER_SPEED_APPROACH) * dt;
+        speed += Math.max(-B.kart.overSpeedDecelMax, (top - speed) * B.kart.overSpeedApproach) * dt;
         if (speed < top) speed = top;
       }
     }
@@ -698,7 +666,7 @@ export class Kart implements IKart {
       this.hop();
     }
 
-    if (!s.isDrifting && driftHeld && s.isHopping && this.hopTimer >= HOP_DRIFT_DELAY) {
+    if (!s.isDrifting && driftHeld && s.isHopping && this.hopTimer >= B.drift.hopDriftDelay) {
       this.tryStartDrift();
     }
 
@@ -706,7 +674,7 @@ export class Kart implements IKart {
 
     if (!driftHeld) {
       this.endDrift(true);
-    } else if (Math.abs(s.speed) < DRIFT_KEEP_SPEED * base) {
+    } else if (Math.abs(s.speed) < B.drift.keepSpeed * base) {
       this.endDrift(false);
     } else if (s.isAirborne && ((!s.isHopping && s.airTime > 0.4) || s.airTime > 0.9)) {
       this.endDrift(false);
@@ -714,9 +682,9 @@ export class Kart implements IKart {
       const inward = clamp01(inp.steer * s.driftDirection);
       this.absCharge += (0.55 + 0.6 * s.character.stats.miniTurbo) * (0.6 + 0.8 * inward) * dt;
       let stage: 0 | 1 | 2 | 3 = 0;
-      if (this.absCharge >= DRIFT_STAGE_THRESHOLDS[2]) stage = 3;
-      else if (this.absCharge >= DRIFT_STAGE_THRESHOLDS[1]) stage = 2;
-      else if (this.absCharge >= DRIFT_STAGE_THRESHOLDS[0]) stage = 1;
+      if (this.absCharge >= B.drift.stageThresholds[2]) stage = 3;
+      else if (this.absCharge >= B.drift.stageThresholds[1]) stage = 2;
+      else if (this.absCharge >= B.drift.stageThresholds[0]) stage = 1;
       if (stage > s.driftStage) {
         s.driftStage = stage;
         events.emit('kart:driftStage', { kartId: s.id, stage: stage as 1 | 2 | 3 });
@@ -724,8 +692,8 @@ export class Kart implements IKart {
       if (stage === 3) {
         s.driftCharge = 1;
       } else {
-        const lo = stage === 0 ? 0 : DRIFT_STAGE_THRESHOLDS[stage - 1];
-        const hi = DRIFT_STAGE_THRESHOLDS[stage];
+        const lo = stage === 0 ? 0 : B.drift.stageThresholds[stage - 1];
+        const hi = B.drift.stageThresholds[stage];
         s.driftCharge = clamp01((this.absCharge - lo) / (hi - lo));
       }
     }
@@ -737,7 +705,7 @@ export class Kart implements IKart {
     s.isAirborne = true;
     s.airTime = 0;
     this.hopTimer = 0;
-    this.vy = HOP_VELOCITY + Math.max(0, this.groundVy);
+    this.vy = B.kart.hopVelocity + Math.max(0, this.groundVy);
     this.freeY = s.position.y + 0.001;
     this.pendingHop = true;
     events.emit('kart:hop', { kartId: s.id });
@@ -748,7 +716,7 @@ export class Kart implements IKart {
     const inp = this.input;
     if (s.isDrifting || s.isSpinning) return;
     if (Math.abs(inp.steer) <= 0.3) return;
-    if (s.speed <= DRIFT_MIN_SPEED * this.baseTopSpeed()) return;
+    if (s.speed <= B.drift.minSpeed * this.baseTopSpeed()) return;
     s.isDrifting = true;
     s.driftDirection = inp.steer > 0 ? 1 : -1;
     s.driftStage = 0;
@@ -767,7 +735,7 @@ export class Kart implements IKart {
     s.driftCharge = 0;
     this.absCharge = 0;
     events.emit('kart:driftEnd', { kartId: s.id, boostStage });
-    if (boostStage > 0) this.applyBoost(DRIFT_BOOST_STRENGTH, DRIFT_BOOST_DURATIONS[boostStage], 'drift');
+    if (boostStage > 0) this.applyBoost(B.drift.boostStrength, B.drift.boostDurations[boostStage], 'drift');
   }
 
   private updateYaw(dt: number, canControl: boolean): void {
@@ -781,12 +749,12 @@ export class Kart implements IKart {
     if (s.isDrifting) {
       const inward = (inp.steer * s.driftDirection + 1) * 0.5;
       const falloff = lerp(1, 0.72, smoothstep(0.2, 1, ratio));
-      yawRate = s.driftDirection * (0.55 + 0.45 * inward) * DRIFT_STEER_RATE * handling * falloff;
+      yawRate = s.driftDirection * (0.55 + 0.45 * inward) * B.kart.driftSteerRate * handling * falloff;
     } else {
       const falloff = lerp(1, 0.6, smoothstep(0.15, 1, ratio));
       const lowSpeed = Math.min(1, absSpeed / 2.5);
       const steer = s.speed < -0.5 ? -inp.steer : inp.steer;
-      yawRate = steer * STEER_RATE * handling * falloff * lowSpeed;
+      yawRate = steer * B.kart.steerRate * handling * falloff * lowSpeed;
       if (s.isSquished) yawRate *= 0.6;
     }
     if (s.isAirborne) yawRate *= s.isHopping ? 0.45 : 0.15;
@@ -825,8 +793,8 @@ export class Kart implements IKart {
         if (vOut > 0) {
           const hSpeed = Math.hypot(vel.x, vel.z);
           const sinAngle = clamp01(vOut / Math.max(0.5, hSpeed));
-          vel.x -= b.x * sign * vOut * (1 + WALL_RESTITUTION);
-          vel.z -= b.z * sign * vOut * (1 + WALL_RESTITUTION);
+          vel.x -= b.x * sign * vOut * (1 + B.kart.wallRestitution);
+          vel.z -= b.z * sign * vOut * (1 + B.kart.wallRestitution);
           if (vOut > 1.0 && this.wallCooldown <= 0) {
             const keep = 1 - lerp(0.25, 0.45, sinAngle);
             vel.x *= keep;

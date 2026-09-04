@@ -5,25 +5,22 @@
  */
 import * as THREE from 'three';
 import type { Difficulty, IKart, ITrack, RaceSettings, RaceStanding, TrackSample } from '../core/types';
+import { BALANCE } from '../core/balance';
 import { events } from '../core/events';
 import { CHECKPOINT_COUNT, COUNTDOWN_STEP_SECONDS, VOID_Y } from '../core/constants';
 import { seededRandom, trackDelta, wrap01 } from '../core/math';
 
 export type RacePhase = 'grid' | 'countdown' | 'racing' | 'complete';
 
+// Feel constants live in src/core/balance.ts.
+const B = BALANCE;
 const PLAYER_GRID_SLOT = 7;
 const COUNTDOWN_STEPS = 3;
-const START_BOOST_WINDOW = 0.6;
-const START_BOOST_WEAK_WINDOW = 1.2;
-const START_SPINOUT_HOLD = 2.6;
-const WRONG_WAY_SECONDS = 1.2;
 const WRONG_WAY_SPEED = -1;
 const VOID_SECONDS = 1.5;
-const STUCK_SECONDS = 6;
 const STUCK_SPEED = 0.5;
 const RESPAWN_FREEZE_SECONDS = 0.6;
 const PLACE_DEBOUNCE_SECONDS = 0.3;
-const FINISH_GRACE_SECONDS = 12;
 /** A checkpoint counts as reached while the kart is within this many sectors past it. */
 const CHECKPOINT_WINDOW_SECTORS = 1.9;
 
@@ -256,11 +253,11 @@ export class RaceManager {
     const p = this.playerTracker;
     if (p) {
       const held = p.throttleStreak;
-      if (held >= START_SPINOUT_HOLD) {
+      if (held >= B.race.startSpinoutHold) {
         p.kart.applyHit('collision', -1);
-      } else if (held > 0.02 && held <= START_BOOST_WINDOW) {
+      } else if (held > 0.02 && held <= B.race.startBoostWindow) {
         p.kart.applyBoost(0.4, 1.0, 'start');
-      } else if (held > START_BOOST_WINDOW && held <= START_BOOST_WEAK_WINDOW) {
+      } else if (held > B.race.startBoostWindow && held <= B.race.startBoostWeakWindow) {
         p.kart.applyBoost(0.2, 0.6, 'start');
       }
     }
@@ -281,7 +278,7 @@ export class RaceManager {
 
     if (this.phase === 'racing' && this.playerFinishedAt >= 0 && !this.allFinishedEmitted) {
       const allDone = this.finishedCount >= this.trackers.length;
-      if (allDone || this.time - this.playerFinishedAt >= FINISH_GRACE_SECONDS) {
+      if (allDone || this.time - this.playerFinishedAt >= B.race.finishGraceSeconds) {
         this.forceFinishRemaining();
         this.phase = 'complete';
         this.allFinishedEmitted = true;
@@ -328,7 +325,7 @@ export class RaceManager {
       const along = s.velocity.x * smp.tangent.x + s.velocity.y * smp.tangent.y + s.velocity.z * smp.tangent.z;
       if (along < WRONG_WAY_SPEED) {
         tr.wrongWayTimer += dt;
-        if (tr.wrongWayTimer >= WRONG_WAY_SECONDS && !s.wrongWay) {
+        if (tr.wrongWayTimer >= B.race.wrongWaySeconds && !s.wrongWay) {
           s.wrongWay = true;
           events.emit('race:wrongWay', { kartId: s.id, wrongWay: true });
         }
@@ -359,7 +356,7 @@ export class RaceManager {
       const wantsToMove = s.isPlayer ? kart.input.throttle > 0.3 || kart.input.brake > 0.3 : true;
       if (Math.abs(s.speed) < STUCK_SPEED && wantsToMove && !s.isSpinning && !s.isSquished) {
         tr.stuckTimer += dt;
-        if (tr.stuckTimer >= STUCK_SECONDS) respawn = true;
+        if (tr.stuckTimer >= B.race.stuckSeconds) respawn = true;
       } else {
         tr.stuckTimer = 0;
       }

@@ -17,6 +17,7 @@ import type {
   TrackSample,
 } from '../core/types';
 import { events } from '../core/events';
+import { BALANCE } from '../core/balance';
 import { GRAVITY, ITEM_BOX_RESPAWN_SECONDS, ITEM_ROULETTE_SECONDS, KART_RADIUS } from '../core/constants';
 import { TAU, clamp, lerp, trackDelta, wrap01 } from '../core/math';
 import { baseItemType, buildItemMesh, disposeItemVisualCaches } from './itemVisuals';
@@ -25,25 +26,16 @@ import { baseItemType, buildItemMesh, disposeItemVisualCaches } from './itemVisu
 // Tuning
 // ---------------------------------------------------------------------------
 
+// Feel constants live in src/core/balance.ts.
+const B = BALANCE;
 const MAX_HAZARDS = 40;
-const OWNER_GRACE = 0.35;
 const BOX_SIZE = 0.95;
 const BOX_HOVER = 1.05;
 const BOX_PICKUP_RADIUS = KART_RADIUS + 0.9;
 const BOX_SCALE_IN = 0.4;
 const ROULETTE_TICKS = 10;
-const LIGHTNING_COOLDOWN = 20;
-const GOLDEN_MIN_SPACING = 0.25;
 
-const GREEN_SPEED = 34;
-const RED_SPEED = 30;
-const BLUE_SPEED = 45;
 const SHELL_HEIGHT = 0.35;
-const GREEN_LIFE = 9;
-const RED_LIFE = 8;
-const BANANA_LIFE = 40;
-const BOMB_FUSE = 2.5;
-const EXPLOSION_RADIUS = 4;
 const ORBIT_RADIUS = 1.5;
 const ORBIT_HEIGHT = 0.55;
 const ORBIT_SPEED = 2.4;
@@ -102,28 +94,6 @@ interface BoxSlot {
   scale: number;
   phase: number;
 }
-
-type WeightRow = Partial<Record<ItemType, number>>;
-
-/** Place-weighted item table (index = place - 1). Tuned to feel like Mario Kart. */
-const ITEM_TABLE: readonly WeightRow[] = [
-  // 1st
-  { banana: 35, green_shell: 35, triple_banana: 10, bob_omb: 5, red_shell: 15 },
-  // 2nd
-  { banana: 22, green_shell: 26, red_shell: 22, triple_green_shell: 12, mushroom: 10, bob_omb: 8 },
-  // 3rd
-  { banana: 16, green_shell: 22, red_shell: 26, triple_green_shell: 14, mushroom: 14, bob_omb: 8 },
-  // 4th
-  { red_shell: 26, triple_red_shell: 14, mushroom: 26, triple_mushroom: 14, bob_omb: 12, star: 8 },
-  // 5th
-  { red_shell: 22, triple_red_shell: 16, mushroom: 22, triple_mushroom: 18, bob_omb: 12, star: 10 },
-  // 6th
-  { triple_mushroom: 28, star: 20, red_shell: 15, lightning: 10, golden_mushroom: 22, triple_red_shell: 5 },
-  // 7th
-  { star: 22, lightning: 13, golden_mushroom: 24, blue_shell: 12, triple_mushroom: 19, triple_red_shell: 10 },
-  // 8th
-  { star: 22, lightning: 17, golden_mushroom: 22, blue_shell: 16, triple_mushroom: 15, triple_red_shell: 8 },
-];
 
 /** Roulette tick intervals (seconds), decelerating and summing to ~ITEM_ROULETTE_SECONDS. */
 const TICK_INTERVALS: number[] = (() => {
@@ -568,8 +538,8 @@ export class ItemManager implements IItemManager {
   }
 
   private rollItem(place: number): ItemType {
-    const row = ITEM_TABLE[clamp(Math.round(place), 1, ITEM_TABLE.length) - 1];
-    const allowLightning = this.time - this.lastLightningTime > LIGHTNING_COOLDOWN;
+    const row = B.itemTable[clamp(Math.round(place), 1, B.itemTable.length) - 1];
+    const allowLightning = this.time - this.lastLightningTime > B.items.lightningCooldown;
     let total = 0;
     for (const key in row) {
       const item = key as ItemType;
@@ -602,7 +572,7 @@ export class ItemManager implements IItemManager {
     const item = s.item;
     const base = baseItemType(item);
 
-    if (item === 'golden_mushroom' && rec && this.time - rec.lastUseTime < GOLDEN_MIN_SPACING) return;
+    if (item === 'golden_mushroom' && rec && this.time - rec.lastUseTime < B.items.goldenMinSpacing) return;
 
     const speed = s.speed;
     const top = kart.topSpeed();
@@ -706,7 +676,7 @@ export class ItemManager implements IItemManager {
       ownerId: owner.state.id,
       mesh,
       age: 0,
-      life: kind === 'banana' ? BANANA_LIFE : kind === 'green_shell' ? GREEN_LIFE : kind === 'red_shell' ? RED_LIFE : 30,
+      life: kind === 'banana' ? B.items.bananaLife : kind === 'green_shell' ? B.items.greenLife : kind === 'red_shell' ? B.items.redLife : 30,
       hintT: owner.state.trackT,
       speed: 0,
       bounces: 0,
@@ -715,7 +685,7 @@ export class ItemManager implements IItemManager {
       targetId: -1,
       airborne: false,
       resting: false,
-      fuse: BOMB_FUSE,
+      fuse: B.items.bombFuse,
       blinkPhase: 0,
       wobblePhase: Math.random() * TAU,
       bodyMat,
@@ -761,16 +731,16 @@ export class ItemManager implements IItemManager {
     h.hintT = q.t;
     h.position.y = q.groundY + SHELL_HEIGHT;
     if (kind === 'green_shell') {
-      h.speed = GREEN_SPEED;
+      h.speed = B.items.greenSpeed;
       h.maxBounces = 6;
       h.homing = false;
     } else if (aimBack) {
       // red shell thrown backwards behaves like a green shell
-      h.speed = RED_SPEED;
+      h.speed = B.items.redSpeed;
       h.maxBounces = 6;
       h.homing = false;
     } else {
-      h.speed = RED_SPEED;
+      h.speed = B.items.redSpeed;
       h.maxBounces = 0;
       h.targetId = this.findRedTarget(kart);
       h.homing = h.targetId >= 0;
@@ -812,11 +782,11 @@ export class ItemManager implements IItemManager {
     h.position.copy(kart.state.position).addScaledVector(_fwd, 1.5);
     h.position.y += 1.0;
     h.flightT = kart.state.trackT;
-    h.speed = BLUE_SPEED;
+    h.speed = B.items.blueSpeed;
     h.targetId = target ? target.state.id : -1;
     h.homing = true;
     h.life = 30;
-    h.velocity.copy(_fwd).multiplyScalar(BLUE_SPEED);
+    h.velocity.copy(_fwd).multiplyScalar(B.items.blueSpeed);
     h.mesh.position.copy(h.position);
     h.hidden = true;
     events.emit('item:blueShellLaunch', { targetKartId: h.targetId });
@@ -1067,7 +1037,7 @@ export class ItemManager implements IItemManager {
 
   private blinkBomb(h: Hazard, dt: number): void {
     if (!h.bodyMat) return;
-    const urgency = clamp(1 - h.fuse / BOMB_FUSE, 0, 1);
+    const urgency = clamp(1 - h.fuse / B.items.bombFuse, 0, 1);
     h.blinkPhase += dt * (5 + urgency * 22);
     const on = Math.sin(h.blinkPhase) > 0.2;
     if (on) {
@@ -1106,7 +1076,7 @@ export class ItemManager implements IItemManager {
         if (h.airborne) m.rotation.x += 6 * dt;
         else {
           m.rotation.x = 0;
-          m.rotation.z = Math.sin(this.time * 18) * 0.06 * clamp(1 - h.fuse / BOMB_FUSE, 0, 1);
+          m.rotation.z = Math.sin(this.time * 18) * 0.06 * clamp(1 - h.fuse / B.items.bombFuse, 0, 1);
         }
         break;
     }
@@ -1123,7 +1093,7 @@ export class ItemManager implements IItemManager {
       const rr = KART_RADIUS + h.radius;
       for (const kart of this.karts) {
         const s = kart.state;
-        if (s.id === h.ownerId && h.age < OWNER_GRACE) continue;
+        if (s.id === h.ownerId && h.age < B.items.ownerGrace) continue;
         if (s.isSpinning || s.finished) continue;
         const dx = s.position.x - h.position.x;
         const dy = s.position.y + 0.45 - h.position.y;
@@ -1206,13 +1176,13 @@ export class ItemManager implements IItemManager {
     for (const kart of this.karts) {
       const s = kart.state;
       const d = s.position.distanceTo(position);
-      if (d > EXPLOSION_RADIUS + KART_RADIUS) continue;
+      if (d > B.items.explosionRadius + KART_RADIUS) continue;
       if (s.isInvincible) continue;
       const landed = kart.applyHit(cause, ownerId);
       _v1.subVectors(s.position, position);
       _v1.y = 0;
       if (_v1.lengthSq() < 1e-4) _v1.set(Math.random() - 0.5, 0, Math.random() - 0.5);
-      _v1.normalize().multiplyScalar(8 * clamp(1 - d / (EXPLOSION_RADIUS + KART_RADIUS), 0.3, 1));
+      _v1.normalize().multiplyScalar(8 * clamp(1 - d / (B.items.explosionRadius + KART_RADIUS), 0.3, 1));
       _v1.y = 6;
       kart.applyImpulse(_v1);
       if (landed || cause === 'blue_shell') {
@@ -1227,7 +1197,7 @@ export class ItemManager implements IItemManager {
       }
     }
     this.debugCounts.explosion++;
-    events.emit('item:explosion', { position: position.clone(), radius: EXPLOSION_RADIUS });
+    events.emit('item:explosion', { position: position.clone(), radius: B.items.explosionRadius });
     this.particles?.emit('explosion', position, { scale: 1.2 });
   }
 

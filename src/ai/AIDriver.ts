@@ -19,6 +19,7 @@ import type {
   TrackSample,
 } from '../core/types';
 import { createEmptyInput } from '../core/types';
+import { BALANCE, type DifficultyProfile } from '../core/balance';
 import { events } from '../core/events';
 import { clamp, damp, seededRandom, trackDelta, wrap01 } from '../core/math';
 
@@ -26,65 +27,14 @@ import { clamp, damp, seededRandom, trackDelta, wrap01 } from '../core/math';
 // Tuning
 // ---------------------------------------------------------------------------
 
-const K_P = 2.2;
-const K_D = 0.15;
-const LOOKAHEAD_MIN = 8;
-const LOOKAHEAD_MAX = 30;
-const HAZARD_LOOKAHEAD = 25;
+// Feel constants live in src/core/balance.ts (profiles are captured per AIDriver at construction).
+const B = BALANCE;
 const HAZARD_LATERAL = 2.2;
 const DODGE_CLEARANCE = 2.6;
-const BOX_SEEK_DISTANCE = 60;
 const STUCK_SECONDS = 1.5;
 const REVERSE_SECONDS = 0.8;
 const RECOVER_COOLDOWN = 2.5;
 
-interface DifficultyProfile {
-  noise: number;
-  reactionMin: number;
-  reactionMax: number;
-  driftThreshold: number;
-  releaseStage: 1 | 2 | 3;
-  brakeLatAccel: number;
-  easeThrottle: number;
-  usesMushrooms: boolean;
-  startThrottleBeforeGo: number;
-}
-
-const PROFILES: Record<Difficulty, DifficultyProfile> = {
-  easy: {
-    noise: 0.09,
-    reactionMin: 1.0,
-    reactionMax: 1.5,
-    driftThreshold: 0.45,
-    releaseStage: 1,
-    brakeLatAccel: 34,
-    easeThrottle: 0.6,
-    usesMushrooms: false,
-    startThrottleBeforeGo: 0.55,
-  },
-  normal: {
-    noise: 0.045,
-    reactionMin: 0.6,
-    reactionMax: 1.0,
-    driftThreshold: 0.35,
-    releaseStage: 2,
-    brakeLatAccel: 46,
-    easeThrottle: 0.65,
-    usesMushrooms: true,
-    startThrottleBeforeGo: 0.45,
-  },
-  hard: {
-    noise: 0.015,
-    reactionMin: 0.4,
-    reactionMax: 0.6,
-    driftThreshold: 0.3,
-    releaseStage: 3,
-    brakeLatAccel: 62,
-    easeThrottle: 0.75,
-    usesMushrooms: true,
-    startThrottleBeforeGo: 0.3,
-  },
-};
 
 // ---------------------------------------------------------------------------
 // Module scratch
@@ -178,7 +128,7 @@ export class AIDriver implements IAIDriver {
     installListeners();
     this.kart = kart;
     this.difficulty = difficulty;
-    this.profile = PROFILES[difficulty];
+    this.profile = B.ai.profiles[difficulty];
     this.rng = seededRandom(personalitySeed);
     const r = this.rng;
     this.baseOffset = (r() * 2 - 1) * 0.45;
@@ -194,7 +144,7 @@ export class AIDriver implements IAIDriver {
 
   setDifficulty(d: Difficulty): void {
     this.difficulty = d;
-    this.profile = PROFILES[d];
+    this.profile = B.ai.profiles[d];
   }
 
   // -------------------------------------------------------------------------
@@ -266,7 +216,7 @@ export class AIDriver implements IAIDriver {
     // ----- track frames ------------------------------------------------------
     const len = Math.max(1, track.length);
     const t = s.trackT;
-    const L = clamp(Math.max(speed, 0) * 0.9, LOOKAHEAD_MIN, LOOKAHEAD_MAX);
+    const L = clamp(Math.max(speed, 0) * 0.9, B.ai.lookaheadMin, B.ai.lookaheadMax);
     track.sample(t, _s0);
     track.sample(wrap01(t + L / len), _s1);
     track.sample(wrap01(t + (2 * L) / len), _s2);
@@ -307,7 +257,7 @@ export class AIDriver implements IAIDriver {
     // item boxes when empty-handed
     if (s.item === 'none' && !s.itemRouletteActive) {
       const boxes = items.getActiveBoxPositions();
-      let bestAhead = BOX_SEEK_DISTANCE;
+      let bestAhead = B.ai.boxSeekDistance;
       let found = false;
       let boxAhead = 0;
       let boxX = 0;
@@ -329,14 +279,14 @@ export class AIDriver implements IAIDriver {
       if (found) {
         track.sample(wrap01(t + boxAhead / len), _s3);
         const boxLat = (boxX - _s3.position.x) * _s3.binormal.x + (boxZ - _s3.position.z) * _s3.binormal.z;
-        const w = clamp(1.15 - boxAhead / BOX_SEEK_DISTANCE, 0.35, 1);
+        const w = clamp(1.15 - boxAhead / B.ai.boxSeekDistance, 0.35, 1);
         latTarget = latTarget + (clamp(boxLat, -hw + 0.8, hw - 0.8) - latTarget) * w;
       }
     }
 
     // ----- hazards: dodge + detect incoming shells -----------------------------
     let dodgeTarget = 0;
-    let nearestHazard = HAZARD_LOOKAHEAD;
+    let nearestHazard = B.ai.hazardLookahead;
     let threatBehind = false;
     const hazards = items.getHazards();
     for (let i = 0; i < hazards.length; i++) {
@@ -346,7 +296,7 @@ export class AIDriver implements IAIDriver {
       const ahead = dx * _fwd.x + dz * _fwd.z;
       const lat = dx * _right.x + dz * _right.z;
       const vAlong = h.velocity.x * _fwd.x + h.velocity.z * _fwd.z;
-      if (ahead > 0 && ahead < HAZARD_LOOKAHEAD) {
+      if (ahead > 0 && ahead < B.ai.hazardLookahead) {
         if (h.ownerId === s.id && vAlong > 5) continue; // our own shell running away
         // moving hazards: predict where they will be when we get there
         let predLat = lat;
@@ -357,7 +307,7 @@ export class AIDriver implements IAIDriver {
           const roomRight = hw - hazardTrackLat;
           const roomLeft = hw + hazardTrackLat;
           const side = roomRight > roomLeft ? 1 : -1;
-          const urgency = 0.55 + 0.45 * (1 - ahead / HAZARD_LOOKAHEAD);
+          const urgency = 0.55 + 0.45 * (1 - ahead / B.ai.hazardLookahead);
           dodgeTarget = (side * DODGE_CLEARANCE - predLat) * urgency;
         }
       } else if (ahead < 0 && ahead > -12 && vAlong > 4 && Math.abs(lat) < 2.2) {
@@ -382,7 +332,7 @@ export class AIDriver implements IAIDriver {
     dAngle = clamp(dAngle, -6, 6);
     this.prevAngle = angle;
     this.hasPrev = true;
-    let steer = K_P * angle + K_D * dAngle;
+    let steer = B.ai.kP * angle + B.ai.kD * dAngle;
     steer += prof.noise * Math.sin(this.time * 1.9 + this.offsetPhase) * Math.sin(this.time * 0.73 + this.offsetPhase * 2);
     if (s.surface === 'offroad') steer *= 1.3;
     steer = clamp(steer, -1, 1);
@@ -405,7 +355,7 @@ export class AIDriver implements IAIDriver {
 
     // ----- drifting -----------------------------------------------------------------
     // turnP: heading change needed over the next ~1.2 s; turnFar: over the next ~2.4 s.
-    const Lp = clamp(Math.max(speed, 0) * 1.2, 6, LOOKAHEAD_MAX);
+    const Lp = clamp(Math.max(speed, 0) * 1.2, 6, B.ai.lookaheadMax);
     track.sample(wrap01(t + Lp / len), _s3);
     const turnP = signedTurn(_fwd, _s3.tangent);
     const turnFar = turnP + signedTurn(_s3.tangent, _s2.tangent);
@@ -512,15 +462,8 @@ export class AIDriver implements IAIDriver {
   // -------------------------------------------------------------------------
 
   private speedFactor(gap: number): number {
-    switch (this.difficulty) {
-      case 'easy':
-        return clamp(0.86 + 0.06 * Math.tanh(gap / 120), 0.82, 0.96);
-      case 'normal':
-        return clamp(0.94 + 0.05 * Math.tanh(gap / 100), 0.9, 1.0);
-      case 'hard':
-      default:
-        return clamp(0.985 + 0.02 * Math.tanh(gap / 150), 0.97, 1.0);
-    }
+    const r = this.profile.rubber;
+    return clamp(r.base + r.amp * Math.tanh(gap / r.scale), r.min, r.max);
   }
 
   /** Decides whether to use the held item now: 0 = no, 1 = forward, 2 = backward. */
