@@ -2299,3 +2299,100 @@ html[lang='ko'] .touch-btn {
   height: 22px;
   accent-color: var(--blue);
 }
+
+/* Online lobby / room */
+.online-toggle {
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  top: calc(60px + env(safe-area-inset-top, 0px));
+}
+.online-panel {
+  width: min(640px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.online.busy .btn {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.online-status {
+  color: var(--ink-dim);
+  font-size: 13px;
+  min-height: 1.2em;
+  margin: 6px 0;
+}
+.online-code-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.online-code {
+  width: 7em;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+.online-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+.online-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.online-room-row {
+  justify-content: flex-start;
+  text-align: left;
+}
+.online-room-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.online-players {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 10px;
+}
+.online-player {
+  display: grid;
+  grid-template-columns: 1fr 8em 7em;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+.online-player.me {
+  background: rgba(55, 168, 255, 0.18);
+  border: 1px solid rgba(55, 168, 255, 0.45);
+}
+.online-player-kart {
+  color: var(--ink-dim);
+}
+.online-player-ready {
+  color: var(--ink-faint);
+  font-family: var(--display);
+  letter-spacing: 0.06em;
+  text-align: right;
+}
+.online-player-ready.on {
+  color: var(--green);
+}
+.online-select {
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.segmented.wrap {
+  flex-wrap: wrap;
+}
+.btn.small {
+  font-size: 12px;
+  padding: 6px 10px;
+}

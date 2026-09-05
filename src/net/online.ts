@@ -1,0 +1,265 @@
+/**
+ * Online race orchestration: owns the transport + lobby, turns a room into RaceSettings when
+ * START fires, and wires host/client sessions to the running race. Game.ts talks only to this.
+ *
+ * mode 'real'     → agent8 relay (inside the Verse8 host)
+ * mode 'loopback' → in-page hub with one bot racer (local demo / tests)
+ */
+import type { Difficulty, IKart, RaceSettings } from '../core/types';
+import { createEmptyInput } from '../core/types';
+import { CHARACTERS } from '../kart/roster';
+import type { RaceManager } from '../game/RaceManager';
+import { ClientSession } from './client-session';
+import { HostSession } from './host-session';
+import { Lobby } from './lobby';
+import { createLoopbackHub, type LoopbackHub } from './loopback';
+import { MSG, PHASE, encodeInput, type RacePhase, type RosterEntry, type StandingMsg, type StartMsg } from './protocol';
+import { buildRoster, kartIdOf } from './roster';
+import { makeAgent8Transport } from './transport';
+import type { Transport } from './types';
+
+export type OnlineMode = 'real' | 'loopback';
+
+export interface OnlineRaceHooks {
+  karts: readonly IKart[];
+  raceManager: RaceManager;
+  totalLaps: number;
+  roster: readonly RosterEntry[];
+}
+
+const PHASE_MAP: Record<string, RacePhase> = {
+  grid: PHASE.grid,
+  countdown: PHASE.countdown,
+  racing: PHASE.racing,
+  complete: PHASE.complete,
+};
+
+export class OnlineController {
+  /** Fired on host and clients alike when a race should start. */
+  onRaceStart: ((settings: RaceSettings) => void) | null = null;
+  onPhase: ((phase: RacePhase) => void) | null = null;
+  onResults: ((standings: StandingMsg[]) => void) | null = null;
+  onHostLost: ((standings: StandingMsg[]) => void) | null = null;
+  onHumanLeft: ((kartId: number, nick: string) => void) | null = null;
+
+  readonly transport: Transport;
+  readonly lobby: Lobby;
+  hostSession: HostSession | null = null;
+  clientSession: ClientSession | null = null;
+  roster: RosterEntry[] = [];
+  private hub: LoopbackHub | null = null;
+  private bot: LoopbackBot | null = null;
+  private hostEpoch = 0;
+
+  constructor(
+    readonly mode: OnlineMode,
+    private readonly me: { nick: string; characterId: string },
+    defaults: { trackId: string; difficulty: Difficulty; laps: number },
+  ) {
+    if (mode === 'loopback') {
+      this.hub = createLoopbackHub();
+      this.transport = this.hub.endpoint('me');
+    } else {
+      this.transport = makeAgent8Transport();
+    }
+    this.lobby = new Lobby(this.transport, me, defaults);
+    this.transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+  }
+
+  get isHost(): boolean {
+    return this.lobby.view.isHost;
+  }
+
+  get localKartId(): number {
+    return kartIdOf(this.roster, this.transport.account) ?? 0;
+  }
+
+  async connect(): Promise<Transport['status']> {
+    const st = await this.transport.connect();
+    if (this.mode === 'loopback' && this.hub) {
+      this.bot = new LoopbackBot(this.hub.endpoint('bot'));
+    }
+    return st;
+  }
+
+  /** Loopback demo: after we are in a room, the bot joins and readies up. */
+  async inviteBot(): Promise<void> {
+    if (this.bot && this.lobby.key) await this.bot.join(this.lobby.key);
+  }
+
+  /** Host: freeze the roster, announce START, and start locally. */
+  async startRaceAsHost(): Promise<void> {
+    const v = this.lobby.view;
+    if (!v.isHost) return;
+    this.hostEpoch++;
+    const roster = buildRoster(
+      v.players.map((p) => ({ account: p.account, nick: p.nick, characterId: p.characterId, joinedAt: p.joinedAt })),
+      v.hostAccount,
+    );
+    const msg: StartMsg = { trackId: v.trackId, difficulty: v.difficulty, laps: v.laps, roster, hostEpoch: this.hostEpoch };
+    await this.lobby.setStarted(true).catch(() => {});
+    this.beginRace(msg, 'host');
+    this.hostSession?.sendStart(msg);
+  }
+
+  /** Game calls this once the race objects exist (both roles). */
+  attachRace(hooks: OnlineRaceHooks): void {
+    if (this.hostSession) {
+      const rm = hooks.raceManager;
+      this.hostSession.attach({
+        karts: hooks.karts,
+        phase: () => PHASE_MAP[rm.currentPhase] ?? PHASE.grid,
+        countdown: () => 0,
+        raceTime: () => rm.raceTime,
+        standings: () =>
+          rm.getStandings().map((s) => ({
+            kartId: s.kartId,
+            name: this.nickOf(s.kartId) ?? s.name,
+            color: s.color,
+            place: s.place,
+            finishTime: s.finishTime,
+            account: this.roster.find((r) => r.kartId === s.kartId)?.account,
+          })),
+      });
+    }
+    if (this.clientSession) {
+      this.clientSession.attach({ karts: hooks.karts, totalLaps: hooks.totalLaps });
+      this.clientSession.sendLoaded();
+    }
+  }
+
+  /** Host: apply the latest remote inputs to the karts they drive. */
+  applyRemoteInputs(karts: readonly IKart[]): void {
+    const hs = this.hostSession;
+    if (!hs) return;
+    for (const r of this.roster) {
+      if (r.kartId === this.localKartId) continue;
+      const inp = hs.inputFor(r.kartId);
+      if (inp) karts[r.kartId]?.setInput(inp);
+    }
+  }
+
+  nickOf(kartId: number): string | null {
+    return this.roster.find((r) => r.kartId === kartId)?.nick ?? null;
+  }
+
+  isHumanKart(kartId: number): boolean {
+    return this.roster.some((r) => r.kartId === kartId);
+  }
+
+  /** After results: back to the room (host clears READY + started). */
+  async backToRoom(): Promise<void> {
+    this.teardownSessions();
+    if (this.lobby.view.isHost) {
+      await this.lobby.setStarted(false).catch(() => {});
+      await this.lobby.resetReady().catch(() => {});
+    }
+  }
+
+  async leave(): Promise<void> {
+    this.clientSession?.sendLeave();
+    this.teardownSessions();
+    await this.lobby.leave().catch(() => {});
+  }
+
+  dispose(): void {
+    this.teardownSessions();
+    this.lobby.dispose();
+    this.bot?.dispose();
+  }
+
+  // ------------------------------------------------------------------ private
+
+  private onMessage(event: string, payload: unknown, from: string): void {
+    if (event === MSG.START && from !== this.transport.account) {
+      const msg = payload as StartMsg;
+      if (!msg || !Array.isArray(msg.roster)) return;
+      if (kartIdOf(msg.roster, this.transport.account) === null) return; // not in this race
+      this.beginRace(msg, 'client');
+    } else if (event === MSG.LEAVE) {
+      const acct = (payload as { account?: string })?.account ?? from;
+      const entry = this.roster.find((r) => r.account === acct);
+      if (entry) this.onHumanLeft?.(entry.kartId, entry.nick);
+    }
+  }
+
+  private beginRace(msg: StartMsg, role: 'host' | 'client'): void {
+    this.teardownSessions();
+    this.roster = msg.roster;
+    this.hostEpoch = msg.hostEpoch;
+    const localKartId = kartIdOf(msg.roster, this.transport.account) ?? 0;
+    if (role === 'host') {
+      this.hostSession = new HostSession(this.transport, msg.roster);
+      this.hostSession.onHumanLeft = (id) => this.onHumanLeft?.(id, this.nickOf(id) ?? '?');
+    } else {
+      this.clientSession = new ClientSession(this.transport, msg.roster, localKartId);
+      this.clientSession.onPhase = (p) => this.onPhase?.(p);
+      this.clientSession.onResults = (s) => this.onResults?.(s);
+      this.clientSession.onHostLost = (s) => this.onHostLost?.(s);
+    }
+    const me = msg.roster.find((r) => r.kartId === localKartId);
+    const settings: RaceSettings = {
+      characterId: me?.characterId ?? this.me.characterId,
+      trackId: msg.trackId,
+      difficulty: msg.difficulty as Difficulty,
+      laps: msg.laps,
+      online: { role, roster: msg.roster, localKartId },
+    };
+    this.onRaceStart?.(settings);
+  }
+
+  private teardownSessions(): void {
+    this.hostSession?.dispose();
+    this.clientSession?.dispose();
+    this.hostSession = null;
+    this.clientSession = null;
+    // Re-register our own listener (sessions replaced the transport handler).
+    this.transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+  }
+}
+
+/**
+ * Loopback demo racer: joins, readies up, and on START drives flat out with a gentle steer so
+ * the host has something to simulate. No local simulation of its own.
+ */
+class LoopbackBot {
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private seq = 0;
+  private started = false;
+
+  constructor(private readonly t: Transport) {
+    t.onMessage((event, payload, from) => {
+      if (from === t.account) return;
+      if (event === MSG.START) {
+        this.started = true;
+        this.t.send(MSG.LOADED, { account: t.account });
+      } else if (event === MSG.RESULTS) {
+        this.started = false;
+      }
+    });
+  }
+
+  async join(key: string): Promise<void> {
+    await this.t.joinRoom(key);
+    await this.t.updateRoomState({
+      ['p_' + this.t.account]: { nick: 'Bot', characterId: CHARACTERS[4]?.id ?? 'juno', ready: true, joinedAt: Date.now() },
+    });
+    this.timer = setInterval(() => this.pump(), 50);
+  }
+
+  private pump(): void {
+    if (!this.started) return;
+    this.seq = (this.seq + 1) & 0xffff;
+    const input = { ...createEmptyInput(), throttle: 1, steer: 0 };
+    this.t.send(
+      MSG.INPUT,
+      encodeInput({ seq: this.seq, steer: input.steer, throttle: input.throttle, brake: 0, drift: false, useItemHeld: false, lookBack: false }),
+      true,
+    );
+  }
+
+  dispose(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+}
