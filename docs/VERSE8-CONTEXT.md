@@ -39,3 +39,12 @@ bun install
 bun run build
 ```
 - 호스트 안에서만 검증 가능: 실 광고(SSV), 실 결제(`$onItemPurchased`), 실 랭킹, 핸드셰이크. 톱프레임(로컬)은 전부 mock.
+
+## 6. 온라인 멀티 (스펙 B, 아이템 OFF)
+- 구조: **호스트(방장 브라우저) 권위 시뮬** + 클라 자기 카트 예측/보정. 서버(`server.js`)는 릴레이·방 목록·roomState만. `$roomTick` 미사용.
+- `relayHot`(스냅샷·입력, 3틱=50ms, 클라 `throttle: 50`)과 `relay`(START/LOADED/RESULTS/LEAVE) 함수 이름을 **합치지 말 것**(호출 캡이 함수별).
+- 방 목록 컬렉션 `tkr_rooms`: 방장이 5s 하트비트 `touchRoom`, 목록은 90s 스테일 필터. `updateCollectionItem(collectionId, item)` **2인자**(3인자는 조용히 no-op).
+- 코드: `src/net/{protocol,roster,host-session,client-session,lobby,online,transport,loopback}.ts`, UI `src/ui/OnlinePanel.ts`. `KartState.isPlayer`는 각 클라에서 자기 카트만 true; Game은 `r.localKartId`를 쓴다.
+- 로컬 검증: 타이틀 ONLINE → "Local loopback demo" (같은 페이지 봇 1명). 실 2인 E2E는 배포 후 Puppeteer 2개(`--disable-background-timer-throttling` 등, VERSE8-MULTIPLAYER.md §9).
+- 2단계 예정: 호스트 권위 아이템, 호스트 승격(hostEpoch), 카트 위 닉네임.
+

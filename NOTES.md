@@ -64,6 +64,7 @@ turbo-kart-rush/
     │   ├── PauseMenu.ts (76), ResultsScreen.ts (134) 결과표+컨페티
     │   ├── TouchControls.ts / touchMath.ts ★(local-mods) 가상 스틱(좌)+DRIFT/ITEM/⏸(우), TouchInputSource 구현
     │   ├── LockSheet.ts / LeaderboardPanel.ts / SettingsPanel.ts ★(v8) 프리미엄 잠금 시트 · 트랙 기록 · 닉네임/언어/음소거
+    │   ├── OnlinePanel.ts ★(online) 로비(퀵/생성/코드/목록) + 방(슬롯·READY·설정·START)
     │   └── dom.ts (106) `el()` 헬퍼, toast.ts (27)
     │
     ├── kart/                [B] 카트 물리·모델·입력·로스터
@@ -81,6 +82,7 @@ turbo-kart-rush/
     │   └── tracks/          ★ 데이터 파일 — sunny / coral(beach★★) / dune / frostbite / neon / magma(volcano★★★) + validate.ts(DEV 검증)
     │
     ├── verse8/              [F] ★(v8) embed(핸드셰이크) · server(agent8 래퍼) · ads · shop(VXShop) · entitlements(서버권위 캐시+mock) · nickname
+    ├── net/                 [G] ★(online) protocol(INPUT 6B/SNAPSHOT 153B) · roster · host-session · client-session(보간·보정) · lobby · online(컨트롤러+루프백 봇) · transport · loopback · FakeTrack(테스트)
     ├── items/               [D] 아이템
     │   ├── ItemManager.ts (1340) 박스 스폰/리스폰, 순위별 룰렛 확률표(ITEM_TABLE), 발사체·해저드 시뮬, 충돌, 삼단 오빗
     │   └── itemVisuals.ts (907) 아이템 3D 메쉬 + `buildItemIcon()` 64px 캔버스 아이콘
@@ -176,7 +178,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | 1 | ~~모바일 터치 입력 없음~~ | ✅ **완료(local-mods)** `ui/TouchControls.ts` — 왼쪽 플로팅 스틱(12시 가속/6시 브레이크/좌우 조향) + DRIFT·ITEM·⏸. `pointer: coarse`거나 첫 touchstart 시 활성, 레이스 중에만 표시. 터치 모드에선 미니맵을 상단 중앙으로 축소 배치 | 실기기 테스트는 미완(패널 에뮬레이션만) |
 | 2 | 로딩이 rAF 의존 | 탭 백그라운드면 진행 안 됨 | `loadingElapsed`를 `performance.now()` 기반으로 바꾸면 해결 |
 | 3 | ~~세이브/기록 없음~~ ✅ **완료(v8-integration)** 루트 `server.js` + `src/verse8/`. 트랙별 완주시간 리더보드(계정당 1건), 닉네임(설정), 프리미엄 카트 3종 = 리워드 광고 3회권/VXShop 100VX(서버 유저스테이트). 실 호스트 검증은 배포 후 | 베스트랩·완주 기록 로컬스토리지 없음 | agent8 리더보드 붙이기 좋은 자리 = `race:finish` 이벤트(kartId 0, time) |
-| 4 | 싱글플레이 전용 (→ 다음: V8 연동 스펙) | 네트워크 코드 0 | 멀티는 `Kart.setInput`이 외부 InputState를 받는 구조여서 록스텝/입력동기 방식이 자연스러움 |
+| 4 | ~~싱글플레이 전용~~ ✅ **MVP 완료(online-multi)** 호스트 권위 스냅샷+예측, 2~8인+AI, 퀵/목록/코드 방, 아이템 OFF. 실 2인 검증은 V8 배포 후. 2단계: 아이템·호스트 승격 | 네트워크 코드 0 | 멀티는 `Kart.setInput`이 외부 InputState를 받는 구조여서 록스텝/입력동기 방식이 자연스러움 |
 | 5 | ~~영문 UI 하드코딩~~ | ✅ **완료(local-mods)** `core/i18n.ts` ko/en, 타이틀 우상단 KO\|EN 토글(메뉴·오버레이 재구축), localStorage `tkr.lang`, navigator.language ko 자동. 캐릭터/트랙 이름은 영문 유지 | 토글은 타이틀에서만 |
 | 6 | 텍스처 전부 CanvasTexture | 로딩 시 CPU로 생성 | 저사양에서 첫 로딩 수 초. 캐싱 or 해상도 옵션 여지 |
 | 7 | `PCFSoftShadowMap` deprecated 경고 | three 0.185에서 PCF로 폴백 | 무해. `Game.ts` 렌더러 설정에서 `PCFShadowMap`으로 바꾸면 경고 제거 |
