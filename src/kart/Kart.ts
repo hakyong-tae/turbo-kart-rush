@@ -18,6 +18,7 @@ import type {
   ItemType,
   KartState,
   SurfaceQuery,
+  NetKartPose,
 } from '../core/types';
 import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
@@ -452,6 +453,31 @@ export class Kart implements IKart {
       this.slip = 0;
       this.frozenThrottleTime = 0;
     }
+  }
+
+  /** Online multiplayer: adopt a host-authored pose for a remote (or corrected local) kart. */
+  applyNetState(pose: NetKartPose): void {
+    const s = this.state;
+    s.position.set(pose.x, pose.y, pose.z);
+    s.heading = pose.heading;
+    s.quaternion.setFromEuler(_euler.set(0, pose.heading, 0));
+    s.speed = pose.speed;
+    _v.set(-Math.sin(pose.heading), 0, -Math.cos(pose.heading)).multiplyScalar(pose.speed);
+    s.velocity.copy(_v);
+    s.isDrifting = pose.isDrifting;
+    s.driftStage = pose.driftStage;
+    s.isBoosting = pose.isBoosting;
+    s.isAirborne = pose.isAirborne;
+    s.isSpinning = pose.isSpinning;
+    s.isFrozen = pose.isFrozen;
+    s.finished = pose.finished;
+    s.wrongWay = pose.wrongWay;
+    s.lap = pose.lap;
+    s.place = pose.place;
+    s.checkpointIndex = pose.checkpointIndex;
+    s.finishTime = pose.finishTime;
+    this.freeY = pose.y;
+    this.lastGroundY = pose.y;
   }
 
   resetTo(position: THREE.Vector3, quaternion: THREE.Quaternion): void {

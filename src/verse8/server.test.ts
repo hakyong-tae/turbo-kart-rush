@@ -4,10 +4,30 @@ import serverSource from '../../server.js?raw';
 
 // server.js is a bare `class Server` (platform convention: no exports). Evaluate it with
 // fake $global/$sender injected and grab the class from the end of the source.
-function loadServer(global: unknown, sender: unknown): any {
-  const factory = new Function('$global', '$sender', `${serverSource}\nreturn Server;`);
-  const Server = factory(global, sender);
+function loadServer(global: unknown, sender: unknown, room: unknown = fakeRoom()): any {
+  const factory = new Function('$global', '$sender', '$room', `${serverSource}\nreturn Server;`);
+  const Server = factory(global, sender, room);
   return new Server();
+}
+
+function fakeRoom() {
+  let state: Row = {};
+  const broadcasts: { event: string; msg: unknown }[] = [];
+  return {
+    broadcasts,
+    async getRoomState() {
+      return { ...state };
+    },
+    async updateRoomState(patch: Row) {
+      for (const k of Object.keys(patch)) {
+        if (patch[k] === null) delete state[k];
+        else state[k] = patch[k];
+      }
+    },
+    broadcastToRoom(event: string, msg: unknown) {
+      broadcasts.push({ event, msg });
+    },
+  };
 }
 
 type Row = Record<string, any>;
@@ -51,9 +71,12 @@ function fakeGlobal() {
       (collections[id] ??= []).push(row);
       return row;
     },
-    async updateCollectionItem(id: string, rowId: string, data: Row) {
-      const row = (collections[id] ?? []).find((r) => r.__id === rowId);
-      if (row) Object.assign(row, data);
+    // Platform signature: (collectionId, item) with item.__id. A 3-arg call must silently do nothing
+    // (that is exactly how the real API behaves — see VERSE8-MULTIPLAYER.md §3).
+    async updateCollectionItem(id: string, item: Row, extra?: unknown) {
+      if (extra !== undefined || typeof item !== 'object' || item === null || !item.__id) return undefined;
+      const row = (collections[id] ?? []).find((r) => r.__id === item.__id);
+      if (row) Object.assign(row, item);
       return row;
     },
     async deleteCollectionItem(id: string, rowId: string) {
@@ -65,6 +88,13 @@ function fakeGlobal() {
     async updateUserState(account: string, patch: Row) {
       users[account] = { ...(users[account] ?? {}), ...patch };
       return users[account];
+    },
+    joined: [] as string[],
+    async joinRoom(key: string) {
+      this.joined.push(key);
+    },
+    async leaveRoom() {
+      return 'left';
     },
   };
 }
@@ -138,5 +168,55 @@ describe('server.js', () => {
 
   it('consumePremiumRace refuses with no races', async () => {
     expect((await me.consumePremiumRace('bram')).ok).toBe(false);
+  });
+
+  describe('rooms', () => {
+    it('createRoom yields a 4-char code and registers a listing; touchRoom upserts with 2-arg update', async () => {
+      const room = fakeRoom();
+      const srv = loadServer(g, { account: '0xH' }, room);
+      const { roomId } = await srv.createRoom();
+      expect(roomId).toMatch(/^[A-HJ-NP-Z2-9]{4}$/);
+      expect(g.joined).toEqual([roomId]);
+      expect(g.collections.tkr_rooms).toHaveLength(1);
+      const firstId = g.collections.tkr_rooms[0].__id;
+      await room.updateRoomState({ p_0xH: { nick: 'H' }, p_0xC: { nick: 'C' } });
+      await srv.touchRoom(roomId, 'magma_ridge', true);
+      expect(g.collections.tkr_rooms).toHaveLength(1); // updated in place, not duplicated
+      expect(g.collections.tkr_rooms[0].__id).toBe(firstId);
+      expect(g.collections.tkr_rooms[0]).toMatchObject({ key: roomId, count: 2, trackId: 'magma_ridge', started: true });
+    });
+
+    it('quick join picks an open, unstarted room; otherwise makes a new code', async () => {
+      const srv = loadServer(g, { account: '0xA' });
+      await g.addCollectionItem('tkr_rooms', { key: 'FULL', count: 8, started: false, at: Date.now() });
+      await g.addCollectionItem('tkr_rooms', { key: 'GONE', count: 1, started: true, at: Date.now() });
+      await g.addCollectionItem('tkr_rooms', { key: 'OPEN', count: 3, started: false, at: Date.now() });
+      await g.addCollectionItem('tkr_rooms', { key: 'OLD1', count: 1, started: false, at: Date.now() - 200000 });
+      expect((await srv.joinRoom(null)).roomId).toBe('OPEN');
+      g.collections.tkr_rooms = g.collections.tkr_rooms.filter((r) => r.key !== 'OPEN');
+      const fresh = (await srv.joinRoom(null)).roomId;
+      expect(['FULL', 'GONE', 'OLD1']).not.toContain(fresh);
+      expect(fresh).toHaveLength(4);
+    });
+
+    it('listRooms hides stale rooms and dedupes by key', async () => {
+      const srv = loadServer(g, { account: '0xA' });
+      await g.addCollectionItem('tkr_rooms', { key: 'AAAA', count: 1, started: false, at: Date.now() - 1000 });
+      await g.addCollectionItem('tkr_rooms', { key: 'AAAA', count: 2, started: false, at: Date.now() });
+      await g.addCollectionItem('tkr_rooms', { key: 'ZZZZ', count: 1, started: false, at: Date.now() - 500000 });
+      const list = await srv.listRooms();
+      expect(list).toEqual([{ key: 'AAAA', count: 2, trackId: '', started: false }]);
+    });
+
+    it('relay and relayHot broadcast on the relay channel with the sender', () => {
+      const room = fakeRoom();
+      const srv = loadServer(g, { account: '0xA' }, room);
+      srv.relay('start', { a: 1 });
+      srv.relayHot('snap', 'b64');
+      expect(room.broadcasts).toEqual([
+        { event: 'relay', msg: { event: 'start', payload: { a: 1 }, from: '0xA' } },
+        { event: 'relay', msg: { event: 'snap', payload: 'b64', from: '0xA' } },
+      ]);
+    });
   });
 });
