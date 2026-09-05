@@ -157,3 +157,5 @@ chromatic aberration + vignette + hit tint + flash, `OutputPass`. Must gracefull
 - **(local-mods)** `src/core/balance.ts` — `BALANCE` tuning object. Kart/ItemManager/AIDriver/RaceManager read their feel constants from here instead of module-level consts. Values unchanged. URL override `?b.<path>=<number>`; `window.__balance`.
 - **(local-mods)** `src/core/types.ts` — `TouchInputSource` interface. `InputManager.attachTouch()` merges a DOM virtual controller (`src/ui/TouchControls.ts`).
 - **(local-mods)** `src/core/i18n.ts` + `src/core/locales/{en,ko}.ts` — `t(key)` string table; `events.ts` gains `'ui:langChange'`.
+- **(v8-integration)** `CharacterDef.premium?: true` — kart locked behind a rewarded ad (3 races) or the `remove-ads` purchase.
+- **(v8-integration)** Workstream **F — Verse8**: `src/verse8/**` (embed, server wrapper, ads, shop, entitlements, nickname) and root `server.js` (agent8 server functions). UI for it lives in `src/ui/{LockSheet,LeaderboardPanel,SettingsPanel}.ts`; `Game.ts` wires it. See `docs/VERSE8-CONTEXT.md`.

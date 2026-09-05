@@ -15,11 +15,13 @@ export class ResultsScreen {
   onRaceAgain: (() => void) | null = null;
   onChangeTrack: (() => void) | null = null;
   onMainMenu: (() => void) | null = null;
+  onRecords: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly panel: HTMLElement;
   private readonly heading: TextField;
   private readonly subheading: TextField;
+  private readonly rankBanner: TextField;
   private readonly table: HTMLElement;
   private readonly confetti: HTMLElement;
   private readonly focus: FocusRing;
@@ -32,16 +34,19 @@ export class ResultsScreen {
     el('div', 'panel-kicker', t('results.kicker'), this.panel);
     this.heading = new TextField(el('h2', 'panel-title results-title', '', this.panel));
     this.subheading = new TextField(el('div', 'results-sub', '', this.panel));
+    this.rankBanner = new TextField(el('div', 'results-rank hidden', '', this.panel));
     this.table = el('div', 'standings', undefined, this.panel);
     const actions = el('div', 'actions', undefined, this.panel);
     this.focus = new FocusRing((i) => this.activate(i));
     const again = button(t('results.again'), 'primary', () => this.activate(0));
     const change = button(t('results.changeTrack'), '', () => this.activate(1));
     const menu = button(t('results.mainMenu'), 'ghost', () => this.activate(2));
-    actions.append(again, change, menu);
+    const records = button(t('lb.button'), 'ghost', () => this.activate(3));
+    actions.append(records, again, change, menu);
     this.focus.add(again);
     this.focus.add(change);
     this.focus.add(menu);
+    this.focus.add(records);
   }
 
   show(standings: readonly RaceStanding[]): void {
@@ -62,6 +67,8 @@ export class ResultsScreen {
             : t('results.sub.rough'),
     );
     this.panel.classList.toggle('gold', place === 1);
+    this.rankBanner.set('');
+    this.rankBanner.node.classList.add('hidden');
 
     standings.forEach((s, i) => {
       const row = el('div', 'standing-row', undefined, this.table);
@@ -113,10 +120,17 @@ export class ResultsScreen {
     this.rootNode.remove();
   }
 
+  /** Show a one-line "RANK #n!" under the subheading once the server has ranked the run. */
+  showRankBanner(text: string): void {
+    this.rankBanner.set(text);
+    this.rankBanner.node.classList.remove('hidden');
+  }
+
   private activate(i: number): void {
     events.emit(i === 2 ? 'ui:back' : 'ui:select', {});
     if (i === 0) this.onRaceAgain?.();
     else if (i === 1) this.onChangeTrack?.();
+    else if (i === 3) this.onRecords?.();
     else this.onMainMenu?.();
   }
 
