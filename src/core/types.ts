@@ -392,6 +392,11 @@ export interface IKart {
   setFrozen(frozen: boolean): void;
   /** Teleport to a pose and zero velocity (respawn / grid placement). */
   resetTo(position: THREE.Vector3, quaternion: THREE.Quaternion): void;
+  /**
+   * Contract addition (online multiplayer): adopt a network pose (position, heading, speed,
+   * status flags, race bookkeeping) without touching the physics integrator's internals.
+   */
+  applyNetState?(pose: NetKartPose): void;
   forwardDir(out?: THREE.Vector3): THREE.Vector3;
   /** Convenience: scaled top speed for this character (m/s). */
   topSpeed(): number;
@@ -518,6 +523,37 @@ export interface RaceSettings {
   trackId: string;
   difficulty: Difficulty;
   laps: number;
+  /** Contract addition (online multiplayer). Absent = offline race against AI. */
+  online?: OnlineRaceConfig;
+}
+
+/** Contract addition (online multiplayer). Kart slots come from the roster; the rest are AI. */
+export interface OnlineRaceConfig {
+  role: 'host' | 'client';
+  roster: readonly { account: string; nick: string; characterId: string; kartId: number }[];
+  localKartId: number;
+}
+
+/** Contract addition (online multiplayer): one kart's state as carried by a snapshot. */
+export interface NetKartPose {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  speed: number;
+  isDrifting: boolean;
+  isBoosting: boolean;
+  isAirborne: boolean;
+  isSpinning: boolean;
+  isFrozen: boolean;
+  finished: boolean;
+  wrongWay: boolean;
+  driftStage: 0 | 1 | 2 | 3;
+  lap: number;
+  place: number;
+  checkpointIndex: number;
+  finishTime: number;
 }
 
 export interface RaceStanding {

@@ -26,6 +26,11 @@ const GRANT_SIZE = 3;
 const GRANT_CAP = 9;
 const GRANTS_PER_DAY = 10;
 
+const ROOMS_ID = 'tkr_rooms';
+const ROOM_CAP = 8;
+const ROOM_STALE_MS = 90000;
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
 // Mirror of src/verse8/nickname.ts — keep in sync.
 const BLOCKED = ['nigger', 'faggot', 'retard', '씨발', '시발', '병신', '좆'];
 function normalizeNickname(raw) {
@@ -151,7 +156,8 @@ class Server {
     const mine = await $global.getCollectionItems(RANKING_ID, {
       filters: [{ field: 'account', operator: '==', value: $sender.account }],
     });
-    for (const row of mine) await $global.updateCollectionItem(RANKING_ID, row.__id, { name: nickname });
+    // updateCollectionItem is (collectionId, item) — the item carries its own __id. A 3-arg call is a silent no-op.
+    for (const row of mine) await $global.updateCollectionItem(RANKING_ID, { ...row, name: nickname });
     return { nickname };
   }
 
@@ -191,5 +197,128 @@ class Server {
       await $global.updateUserState(account, { adsRemoved: true });
     }
     return { success: true };
+  }
+
+  // ── Rooms (online multiplayer) ───────────────────────────────────────────
+  // Relay + state store only: the host browser runs the authoritative 60 Hz sim
+  // (see docs/VERSE8-CONTEXT.md and src/net/*). Rules from verse8-starter/docs/VERSE8-MULTIPLAYER.md:
+  //   * updateCollectionItem takes (collectionId, item) — 2 args — or it silently no-ops.
+  //   * relay vs relayHot split the per-function call cap; hot = throttled latest-wins.
+  //   * Room listing = heartbeat (touchRoom every 5 s) + 90 s stale filter (tab throttling).
+
+  now() {
+    return Date.now();
+  }
+
+  async _upsertRoom(key, data) {
+    const rooms = await $global.getCollectionItems(ROOMS_ID, { limit: 100 }).catch(() => []);
+    const existing = rooms.find((r) => r.key === key);
+    const item = { ...(existing || {}), key, ...data, at: Date.now() };
+    if (existing && existing.__id) await $global.updateCollectionItem(ROOMS_ID, item);
+    else await $global.addCollectionItem(ROOMS_ID, item);
+  }
+
+  async _roomCount() {
+    const s = await $room.getRoomState();
+    return Object.keys(s || {}).filter((k) => k.startsWith('p_')).length;
+  }
+
+  _newCode(taken) {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      let code = '';
+      for (let i = 0; i < 4; i++) code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+      if (!taken.has(code)) return code;
+    }
+    return 'R' + String(Date.now() % 1000).padStart(3, '0');
+  }
+
+  async listRooms() {
+    const rooms = await $global.getCollectionItems(ROOMS_ID, { limit: 100 }).catch(() => []);
+    const cutoff = Date.now() - ROOM_STALE_MS;
+    const fresh = [];
+    for (const r of rooms) {
+      if ((r.at || 0) >= cutoff) fresh.push(r);
+      else if (r.__id) $global.deleteCollectionItem(ROOMS_ID, r.__id).catch(() => {});
+    }
+    const byKey = new Map();
+    for (const r of fresh) {
+      const prev = byKey.get(r.key);
+      if (!prev || (r.at || 0) > (prev.at || 0)) byKey.set(r.key, r);
+    }
+    return [...byKey.values()].map((r) => ({
+      key: r.key,
+      count: r.count || 0,
+      trackId: r.trackId || '',
+      started: !!r.started,
+    }));
+  }
+
+  /** key: 4-char code to join, or null for quick race (open room or a new one). */
+  async joinRoom(key) {
+    const rooms = await $global.getCollectionItems(ROOMS_ID, { limit: 100 }).catch(() => []);
+    const cutoff = Date.now() - ROOM_STALE_MS;
+    const live = rooms.filter((r) => (r.at || 0) >= cutoff);
+    let target = typeof key === 'string' && key.trim() ? key.trim().toUpperCase() : '';
+    if (!target) {
+      for (const r of live) {
+        if ((r.count || 0) < ROOM_CAP && !r.started) {
+          target = r.key;
+          break;
+        }
+      }
+      if (!target) target = this._newCode(new Set(rooms.map((r) => r.key)));
+    }
+    await $global.joinRoom(target);
+    const existing = rooms.find((r) => r.key === target);
+    await this._upsertRoom(target, {
+      count: await this._roomCount(),
+      trackId: existing?.trackId || '',
+      started: !!existing?.started,
+    }).catch(() => {});
+    return { roomId: target };
+  }
+
+  /** Create a brand-new room (never joins an existing one). */
+  async createRoom() {
+    const rooms = await $global.getCollectionItems(ROOMS_ID, { limit: 100 }).catch(() => []);
+    const code = this._newCode(new Set(rooms.map((r) => r.key)));
+    await $global.joinRoom(code);
+    await this._upsertRoom(code, { count: await this._roomCount(), trackId: '', started: false }).catch(() => {});
+    return { roomId: code };
+  }
+
+  async touchRoom(key, trackId, started) {
+    await this._upsertRoom(key, {
+      count: await this._roomCount(),
+      trackId: typeof trackId === 'string' ? trackId : '',
+      started: !!started,
+    });
+  }
+
+  async leaveRoom() {
+    try {
+      await $room.updateRoomState({ ['p_' + $sender.account]: null });
+    } catch (_e) {
+      /* ignore */
+    }
+    return $global.leaveRoom();
+  }
+
+  async getRoomState() {
+    return $room.getRoomState();
+  }
+
+  async updateRoomState(patch) {
+    await $room.updateRoomState(patch);
+    $room.broadcastToRoom('state', await $room.getRoomState());
+  }
+
+  relay(event, payload) {
+    $room.broadcastToRoom('relay', { event, payload, from: $sender.account });
+  }
+
+  /** High-frequency latest-wins channel (snapshots / inputs) — clients call with { throttle: 50 }. */
+  relayHot(event, payload) {
+    $room.broadcastToRoom('relay', { event, payload, from: $sender.account });
   }
 }

@@ -37,6 +37,7 @@ export class MainMenu {
   onLockedAttempt: ((character: CharacterDef) => void) | null = null;
   onRecords: (() => void) | null = null;
   onSettings: (() => void) | null = null;
+  onOnline: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly panels: Record<MenuPanel, HTMLElement>;
@@ -75,6 +76,8 @@ export class MainMenu {
     title.appendChild(settingsBtn);
     const recordsBtn = button(t('lb.button'), 'ghost title-corner records-toggle', () => this.onRecords?.());
     title.appendChild(recordsBtn);
+    const onlineBtn = button(t('online.button'), 'primary title-corner online-toggle', () => this.onOnline?.());
+    title.appendChild(onlineBtn);
     const logoWrap = el('div', 'logo', undefined, title);
     const words = GAME_TITLE.split(' ');
     words.forEach((w, i) => {

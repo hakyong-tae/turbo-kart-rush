@@ -21,7 +21,7 @@ import type {
   TrackDefinition,
 } from '../core/types';
 import { events } from '../core/events';
-import { COUNTDOWN_STEP_SECONDS, FIXED_DT, KART_COUNT, MAX_FRAME_DT } from '../core/constants';
+import { COUNTDOWN_STEP_SECONDS, DEFAULT_LAPS, FIXED_DT, KART_COUNT, MAX_FRAME_DT } from '../core/constants';
 import { clamp, clamp01, damp } from '../core/math';
 
 import { Kart } from '../kart/Kart';
@@ -59,6 +59,12 @@ import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
 import { buyRemoveAds } from '../verse8/shop';
 import { inVerse8Host } from '../verse8/embed';
 import { submitTime, type SubmitResult } from '../verse8/server';
+import { OnlineController, type OnlineMode } from '../net/online';
+import { OnlinePanel } from '../ui/OnlinePanel';
+import { PHASE, type StandingMsg } from '../net/protocol';
+import { assignSlotCharacters } from '../net/roster';
+import type { OnlineRaceConfig, RaceStanding } from '../core/types';
+import { getEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
@@ -102,6 +108,12 @@ interface RaceContext {
   background: THREE.Color;
   unsubs: (() => void)[];
   resultsTimer: number;
+  /** Online race config (null = offline vs AI). */
+  online: OnlineRaceConfig | null;
+  /** Kart index the local player controls / the camera follows. */
+  localKartId: number;
+  /** Items are disabled in online races (phase 2). */
+  itemsEnabled: boolean;
 }
 
 export class Game {
@@ -116,6 +128,8 @@ export class Game {
   private leaderboard: LeaderboardPanel;
   private settings: SettingsPanel;
   private lastSubmit: SubmitResult | null = null;
+  private online: OnlineController | null = null;
+  private onlinePanel: OnlinePanel;
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
@@ -201,6 +215,7 @@ export class Game {
     this.lockSheet = new LockSheet(this.uiRoot);
     this.leaderboard = this.buildLeaderboard();
     this.settings = this.buildSettings();
+    this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
@@ -258,6 +273,8 @@ export class Game {
     this.lockSheet.dispose();
     this.leaderboard.dispose();
     this.settings.dispose();
+    this.onlinePanel.dispose();
+    this.online?.dispose();
     this.input.dispose();
     this.safe(() => this.audio.dispose());
     this.safe(() => this.particles.dispose());
@@ -277,19 +294,27 @@ export class Game {
     menu.onLockedAttempt = (c) => this.lockSheet.show(c, this.lockSheetHandlers(c));
     menu.onRecords = () => this.leaderboard.show(TRACKS[0]?.id ?? 'sunny_circuit');
     menu.onSettings = () => this.settings.show();
+    menu.onOnline = () => this.onlinePanel.show();
     return menu;
   }
 
   private buildResults(): ResultsScreen {
     const results = new ResultsScreen(this.uiRoot);
     results.onRaceAgain = () => {
-      if (this.race) void this.startRaceGated(this.race.settings);
+      if (this.race?.online) this.returnToRoom();
+      else if (this.race) void this.startRaceGated(this.race.settings);
     };
     results.onRecords = () => {
       if (this.race) this.leaderboard.show(this.race.trackDef.id, { submit: this.lastSubmit });
     };
-    results.onChangeTrack = () => this.returnToMenu('trackSelect');
-    results.onMainMenu = () => this.returnToMenu('title');
+    results.onChangeTrack = () => {
+      if (this.race?.online) this.returnToRoom();
+      else this.returnToMenu('trackSelect');
+    };
+    results.onMainMenu = () => {
+      if (this.race?.online) void this.online?.leave();
+      this.returnToMenu('title');
+    };
     return results;
   }
 
@@ -328,6 +353,83 @@ export class Game {
         /* ignore */
       }
     });
+  }
+
+  private buildOnlinePanel(): OnlinePanel {
+    const panel = new OnlinePanel(
+      this.uiRoot,
+      this.online,
+      TRACKS as readonly TrackDefinition[],
+      CHARACTERS as readonly CharacterDef[],
+      (mode) => this.getOnline(mode),
+    );
+    panel.onLockedKart = (c) => this.lockSheet.show(c, this.lockSheetHandlers(c));
+    return panel;
+  }
+
+  /** Lazily create (or swap) the online controller; the panel binds to it. */
+  private getOnline(mode: OnlineMode): OnlineController {
+    if (this.online && this.online.mode === mode) return this.online;
+    this.online?.dispose();
+    const ent = getEntitlements();
+    const nick = ent.nickname || 'RACER';
+    const c = new OnlineController(
+      mode,
+      { nick, characterId: this.mainMenu.highlightedCharacter.id },
+      { trackId: TRACKS[0]?.id ?? 'sunny_circuit', difficulty: 'normal', laps: DEFAULT_LAPS },
+    );
+    c.onRaceStart = (settings) => {
+      if (isPremium(settings.characterId)) void consumeTicket(settings.characterId);
+      this.onlinePanel.hide();
+      this.startRace(settings);
+    };
+    c.onPhase = (phase) => {
+      const r = this.race;
+      if (!r || r.online?.role !== 'client') return;
+      if (phase === PHASE.countdown && r.raceManager.currentPhase === 'grid') r.raceManager.startCountdown();
+    };
+    c.onResults = (standings) => this.showOnlineResults(standings);
+    c.onHostLost = (standings) => {
+      showToast(t('online.hostLeft'), 'error');
+      this.showOnlineResults(standings);
+    };
+    c.onHumanLeft = (kartId, nick2) => {
+      const r = this.race;
+      if (!r || r.online?.role !== 'host') return;
+      if (kartId === r.localKartId) return;
+      if (!r.aiDrivers.some((d) => (d as unknown as { kartId?: number }).kartId === kartId)) {
+        const drv = new AIDriver(r.karts[kartId], r.settings.difficulty, kartId);
+        (drv as unknown as { kartId?: number }).kartId = kartId;
+        r.aiDrivers.push(drv);
+      }
+      showToast(t('online.playerLeft', { name: nick2 }), 'info');
+    };
+    this.online = c;
+    return c;
+  }
+
+  private returnToRoom(): void {
+    void this.online?.backToRoom();
+    this.returnToMenu('title');
+    this.onlinePanel.returnToRoom();
+  }
+
+  /** Results delivered by the host (client side) or synthesised after the host vanished. */
+  private showOnlineResults(standings: StandingMsg[]): void {
+    const r = this.race;
+    if (!r || !r.online || this.state === 'results') return;
+    const mapped: RaceStanding[] = standings.map((s) => ({
+      kartId: s.kartId,
+      name: this.online?.nickOf(s.kartId) ?? s.name,
+      color: s.color,
+      place: s.place,
+      finishTime: s.finishTime,
+      isPlayer: s.kartId === r.localKartId,
+    }));
+    r.hud.hide();
+    this.results.show(mapped);
+    this.setState('results');
+    this.playMusic('results');
   }
 
   private buildLeaderboard(): LeaderboardPanel {
@@ -389,6 +491,7 @@ export class Game {
   }
 
   private maybeSubmitTime(r: RaceContext, seconds: number): void {
+    if (r.online) return; // multiplayer times are not ranked (spec B MVP)
     const params = new URLSearchParams(location.search);
     if (params.has('auto') || r.playerAutoDriverBeforeFinish) return;
     if (Array.from(params.keys()).some((k) => k.startsWith('b.'))) return;
@@ -429,6 +532,10 @@ export class Game {
     this.leaderboard = this.buildLeaderboard();
     this.settings = this.buildSettings();
     if (settingsWasOpen) this.settings.show();
+    const onlineWasOpen = this.onlinePanel.isVisible;
+    this.onlinePanel.dispose();
+    this.onlinePanel = this.buildOnlinePanel();
+    if (onlineWasOpen) this.onlinePanel.show();
     this.mainMenu = this.buildMainMenu();
     this.results = this.buildResults();
     this.pauseMenu = this.buildPauseMenu();
@@ -463,10 +570,12 @@ export class Game {
 
   private frame(dt: number, input: InputState): void {
     // Modal overlays (settings / records / lock sheet) swallow menu input while open.
-    if (this.settings.isVisible || this.leaderboard.isVisible || this.lockSheet.isVisible) {
+    if (this.settings.isVisible || this.leaderboard.isVisible || this.lockSheet.isVisible || this.onlinePanel.isVisible) {
       if (this.settings.isVisible) this.settings.handleInput(input);
       else if (this.leaderboard.isVisible) this.leaderboard.handleInput(input);
-      else if (input.back) this.lockSheet.hide();
+      else if (this.lockSheet.isVisible) {
+        if (input.back) this.lockSheet.hide();
+      } else this.onlinePanel.handleInput(input);
       input = createEmptyInput();
     }
     switch (this.state) {
@@ -542,7 +651,12 @@ export class Game {
     if (this.race && ready) {
       // Warm the remaining passes (shadow depth, post-processing) behind the overlay.
       this.renderRace(dt, false);
-      if (this.loadingElapsed >= MIN_LOADING_SECONDS && this.loadingProgress > 0.985) this.enterCountdown();
+      if (this.loadingElapsed >= MIN_LOADING_SECONDS && this.loadingProgress > 0.985) {
+        const hs = this.online?.hostSession;
+        const hostWaiting =
+          this.race.online?.role === 'host' && hs !== undefined && hs !== null && !hs.allLoaded && this.loadingElapsed < MIN_LOADING_SECONDS + 10;
+        if (!hostWaiting) this.enterCountdown();
+      }
     }
   }
 
@@ -590,7 +704,7 @@ export class Game {
 
   private step(dt: number, r: RaceContext, input: InputState, useItem: boolean): void {
     const { track, karts, items } = r;
-    const player = karts[0];
+    const player = karts[r.localKartId];
 
     // Player input (or auto-drive after finishing).
     if (r.playerAutoDriver) {
@@ -614,6 +728,16 @@ export class Game {
       player.setInput(p);
     }
 
+    if (r.online?.role === 'client') {
+      // Client: predict only our own kart; everything else comes from host snapshots.
+      player.update(dt, track, karts);
+      if (r.raceManager.currentPhase === 'countdown') r.raceManager.update(dt);
+      this.online?.clientSession?.tick60(player.input);
+      return;
+    }
+
+    if (r.online?.role === 'host') this.online?.applyRemoteInputs(karts);
+
     for (let i = 0; i < r.aiDrivers.length; i++) {
       r.aiDrivers[i].update(dt, track, karts, items, player);
     }
@@ -622,16 +746,18 @@ export class Game {
       karts[i].update(dt, track, karts);
     }
 
-    for (let i = 0; i < karts.length; i++) {
-      const k = karts[i];
-      const inp = k.input;
-      if (inp.useItem && !k.state.itemRouletteActive && k.state.item !== 'none') {
-        items.requestUse(k, inp.brake > 0.5 || inp.lookBack);
+    if (r.itemsEnabled) {
+      for (let i = 0; i < karts.length; i++) {
+        const k = karts[i];
+        const inp = k.input;
+        if (inp.useItem && !k.state.itemRouletteActive && k.state.item !== 'none') {
+          items.requestUse(k, inp.brake > 0.5 || inp.lookBack);
+        }
       }
+      items.update(dt);
     }
-
-    items.update(dt);
     r.raceManager.update(dt);
+    if (r.online?.role === 'host') this.online?.hostSession?.tick60();
   }
 
   private renderRace(dt: number, lookBack: boolean): void {
@@ -640,14 +766,15 @@ export class Game {
       this.render(dt);
       return;
     }
-    const player = r.karts[0];
+    const player = r.karts[r.localKartId];
     for (let i = 0; i < r.karts.length; i++) r.karts[i].updateVisuals(dt);
     r.track.update(dt, this.elapsed);
     r.followCamera.update(dt, player, lookBack);
     this.updateSun(r, player);
     this.particles.update(dt, r.karts, this.camera);
     this.audio.update(dt, r.karts, player.state.id, this.camera);
-    r.hud.update(dt, player, r.karts, r.raceManager.raceTime, r.raceManager.totalLaps);
+    const raceTime = r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime;
+    r.hud.update(dt, player, r.karts, raceTime, r.raceManager.totalLaps);
     this.updatePostFxFeel(dt, player);
 
     if (this.state === 'finished' && r.resultsTimer > 0) {
@@ -792,30 +919,44 @@ export class Game {
     const env = trackDef.environment;
     const karts = partial.karts;
 
-    // Karts: player 0 with the chosen character, AI 1..7 with the rest shuffled.
+    // Karts. Offline: player 0 with the chosen character, AI 1..7 with the rest shuffled.
+    // Online: slots come from the roster (same on every client); the rest are AI on the host.
     let playerChar: CharacterDef;
     try {
       playerChar = getCharacter(settings.characterId) as CharacterDef;
     } catch {
       playerChar = CHARACTERS[0] as CharacterDef;
     }
-    const others = (CHARACTERS as readonly CharacterDef[]).filter((c) => c.id !== playerChar.id);
-    for (let i = others.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const t = others[i];
-      others[i] = others[j];
-      others[j] = t;
-    }
-    karts.push(new Kart(0, playerChar, true));
-    for (let id = 1; id < KART_COUNT; id++) {
-      const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;
-      karts.push(new Kart(id, def, false));
-    }
-
-    const difficulty: Difficulty = settings.difficulty;
+    const localKartId = settings.online?.localKartId ?? 0;
     const aiDrivers: IAIDriver[] = [];
-    for (let id = 1; id < karts.length; id++) {
-      aiDrivers.push(new AIDriver(karts[id], difficulty, id));
+    const difficulty: Difficulty = settings.difficulty;
+    if (settings.online) {
+      const slots = assignSlotCharacters(settings.online.roster, CHARACTERS as readonly CharacterDef[]);
+      for (let id = 0; id < KART_COUNT; id++) karts.push(new Kart(id, slots[id], id === localKartId));
+      if (settings.online.role === 'host') {
+        for (let id = 0; id < karts.length; id++) {
+          if (settings.online.roster.some((e) => e.kartId === id)) continue;
+          const drv = new AIDriver(karts[id], difficulty, id);
+          (drv as unknown as { kartId?: number }).kartId = id;
+          aiDrivers.push(drv);
+        }
+      }
+    } else {
+      const others = (CHARACTERS as readonly CharacterDef[]).filter((c) => c.id !== playerChar.id);
+      for (let i = others.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = others[i];
+        others[i] = others[j];
+        others[j] = t;
+      }
+      karts.push(new Kart(0, playerChar, true));
+      for (let id = 1; id < KART_COUNT; id++) {
+        const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;
+        karts.push(new Kart(id, def, false));
+      }
+      for (let id = 1; id < karts.length; id++) {
+        aiDrivers.push(new AIDriver(karts[id], difficulty, id));
+      }
     }
 
     const items: IItemManager = new ItemManager(this.particles);
@@ -886,8 +1027,15 @@ export class Game {
       background,
       unsubs: [],
       resultsTimer: 0,
+      online: settings.online ?? null,
+      localKartId,
+      itemsEnabled: !settings.online,
     };
     this.race = r;
+    if (settings.online) {
+      items.object.visible = false;
+      this.online?.attachRace({ karts, raceManager, totalLaps: raceManager.totalLaps, roster: settings.online.roster });
+    }
     this.accumulator = 0;
     this.pendingUseItem = false;
     this.speedFx = 0;
@@ -897,7 +1045,7 @@ export class Game {
     if (import.meta.env.DEV) {
       // Dev-only: `?auto=1` lets the AI drive the player for soak testing.
       if (new URLSearchParams(location.search).has('auto')) {
-        r.playerAutoDriver = new AIDriver(karts[0], 'hard', 0);
+        r.playerAutoDriver = new AIDriver(karts[localKartId], 'hard', 0);
         r.playerAutoDriverBeforeFinish = true;
       }
       (window as unknown as { __tkr?: unknown }).__tkr = {
@@ -910,8 +1058,8 @@ export class Game {
 
     // Sync visuals once so the first rendered frame is sane.
     for (const k of karts) k.updateVisuals(0);
-    followCamera.snapTo(karts[0]);
-    this.updateSun(r, karts[0]);
+    followCamera.snapTo(karts[localKartId]);
+    this.updateSun(r, karts[localKartId]);
 
     r.unsubs.push(
       events.on('race:start', () => {
@@ -957,10 +1105,10 @@ export class Game {
       for (let i = 0; i < n; i++) center.add(grid[i].position);
       center.multiplyScalar(1 / n);
     } else {
-      center.copy(r.karts[0].state.position);
+      center.copy(r.karts[r.localKartId].state.position);
     }
     const forward = this.tmpB;
-    r.karts[0].forwardDir(forward);
+    r.karts[r.localKartId].forwardDir(forward);
     if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
     forward.y = 0;
     forward.normalize();
@@ -971,7 +1119,7 @@ export class Game {
     look.y += 0.8;
     r.followCamera.setCinematic(from, look, 3 * COUNTDOWN_STEP_SECONDS, 46);
 
-    r.raceManager.startCountdown();
+    if (r.online?.role !== 'client') r.raceManager.startCountdown();
     this.setState('countdown');
     this.playMusic('race');
   }
@@ -979,7 +1127,7 @@ export class Game {
   private onPlayerFinished(r: RaceContext): void {
     if (this.state !== 'racing' && this.state !== 'countdown') return;
     try {
-      r.playerAutoDriver = new AIDriver(r.karts[0], 'normal', 0);
+      r.playerAutoDriver = new AIDriver(r.karts[r.localKartId], 'normal', 0);
     } catch (err) {
       console.warn('[Game] could not create auto-driver for the player', err);
       r.playerAutoDriver = null;
