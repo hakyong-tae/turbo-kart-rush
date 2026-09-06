@@ -12,3 +12,9 @@ dist/
 .vite/
 *.log
 .DS_Store
+
+# marketing scratch (frames, offline-rendered music, 35 MB master; the -web mp4 + thumbnail are committed)
+marketing/.frames/
+marketing/.race-music.wav
+marketing/.frame*.png
+marketing/drift-dash-gp-15s-1x1.mp4
