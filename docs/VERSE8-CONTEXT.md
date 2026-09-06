@@ -40,11 +40,12 @@ bun run build
 ```
 - 호스트 안에서만 검증 가능: 실 광고(SSV), 실 결제(`$onItemPurchased`), 실 랭킹, 핸드셰이크. 톱프레임(로컬)은 전부 mock.
 
-## 6. 온라인 멀티 (스펙 B, 아이템 OFF)
+## 6. 온라인 멀티 (스펙 B + C: 아이템 동기화)
 - 구조: **호스트(방장 브라우저) 권위 시뮬** + 클라 자기 카트 예측/보정. 서버(`server.js`)는 릴레이·방 목록·roomState만. `$roomTick` 미사용.
 - `relayHot`(스냅샷·입력, 3틱=50ms, 클라 `throttle: 50`)과 `relay`(START/LOADED/RESULTS/LEAVE) 함수 이름을 **합치지 말 것**(호출 캡이 함수별).
 - 방 목록 컬렉션 `tkr_rooms`: 방장이 5s 하트비트 `touchRoom`, 목록은 90s 스테일 필터. `updateCollectionItem(collectionId, item)` **2인자**(3인자는 조용히 no-op).
 - 코드: `src/net/{protocol,roster,host-session,client-session,lobby,online,transport,loopback}.ts`, UI `src/ui/OnlinePanel.ts`. `KartState.isPlayer`는 각 클라에서 자기 카트만 true; Game은 `r.localKartId`를 쓴다.
 - 로컬 검증: 타이틀 ONLINE → "Local loopback demo" (같은 페이지 봇 1명). 실 2인 E2E는 배포 후 Puppeteer 2개(`--disable-background-timer-throttling` 등, VERSE8-MULTIPLAYER.md §9).
-- 2단계 예정: 호스트 권위 아이템, 호스트 승격(hostEpoch), 카트 위 닉네임.
+- **아이템(스펙 C)**: 호스트만 `ItemManager` 시뮬. 클라는 `setNetMode('mirror')`로 박스 비트마스크·해저드(id별)·카트 아이템 슬롯/상태 플래그를 스냅샷에서 받아 그리기만 한다. 클라의 아이템 사용은 INPUT `useSeq` 증가 → 호스트 `requestUse`. 효과(픽업·룰렛·사용·히트·파괴·바운스·폭발·번개·박스 리스폰)는 호스트가 `MSG.FX`로 배치 방송 → 클라가 같은 이벤트를 로컬 버스에 재방출. 방 설정 ITEMS ON/OFF(기본 ON). 스냅샷 ≈ 300B(8카트+10해저드).
+- 3단계 예정: 호스트 승격(hostEpoch), 카트 위 닉네임, 관전.
 

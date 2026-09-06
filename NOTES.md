@@ -178,7 +178,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | 1 | ~~모바일 터치 입력 없음~~ | ✅ **완료(local-mods)** `ui/TouchControls.ts` — 왼쪽 플로팅 스틱(12시 가속/6시 브레이크/좌우 조향) + DRIFT·ITEM·⏸. `pointer: coarse`거나 첫 touchstart 시 활성, 레이스 중에만 표시. 터치 모드에선 미니맵을 상단 중앙으로 축소 배치 | 실기기 테스트는 미완(패널 에뮬레이션만) |
 | 2 | 로딩이 rAF 의존 | 탭 백그라운드면 진행 안 됨 | `loadingElapsed`를 `performance.now()` 기반으로 바꾸면 해결 |
 | 3 | ~~세이브/기록 없음~~ ✅ **완료(v8-integration)** 루트 `server.js` + `src/verse8/`. 트랙별 완주시간 리더보드(계정당 1건), 닉네임(설정), 프리미엄 카트 3종 = 리워드 광고 3회권/VXShop 100VX(서버 유저스테이트). 실 호스트 검증은 배포 후 | 베스트랩·완주 기록 로컬스토리지 없음 | agent8 리더보드 붙이기 좋은 자리 = `race:finish` 이벤트(kartId 0, time) |
-| 4 | ~~싱글플레이 전용~~ ✅ **MVP 완료(online-multi)** 호스트 권위 스냅샷+예측, 2~8인+AI, 퀵/목록/코드 방, 아이템 OFF. 실 2인 검증은 V8 배포 후. 2단계: 아이템·호스트 승격 | 네트워크 코드 0 | 멀티는 `Kart.setInput`이 외부 InputState를 받는 구조여서 록스텝/입력동기 방식이 자연스러움 |
+| 4 | ~~싱글플레이 전용~~ ✅ **완료(online-multi + item-sync)** 호스트 권위 스냅샷+예측, 2~8인+AI, 퀵/목록/코드 방, **아이템 동기화**(미러 모드·FX 재방출·useSeq). 실 2인 검증은 V8 호스트에서. 3단계: 호스트 승격·카트 위 닉네임 | 네트워크 코드 0 | 멀티는 `Kart.setInput`이 외부 InputState를 받는 구조여서 록스텝/입력동기 방식이 자연스러움 |
 | 5 | ~~영문 UI 하드코딩~~ | ✅ **완료(local-mods)** `core/i18n.ts` ko/en, 타이틀 우상단 KO\|EN 토글(메뉴·오버레이 재구축), localStorage `tkr.lang`, navigator.language ko 자동. 캐릭터/트랙 이름은 영문 유지 | 토글은 타이틀에서만 |
 | 6 | 텍스처 전부 CanvasTexture | 로딩 시 CPU로 생성 | 저사양에서 첫 로딩 수 초. 캐싱 or 해상도 옵션 여지 |
 | 7 | `PCFSoftShadowMap` deprecated 경고 | three 0.185에서 PCF로 폴백 | 무해. `Game.ts` 렌더러 설정에서 `PCFShadowMap`으로 바꾸면 경고 제거 |
