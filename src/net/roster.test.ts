@@ -44,3 +44,13 @@ describe('roster', () => {
     expect(slots.every((c) => c.id === 'kai')).toBe(true);
   });
 });
+
+describe('pickNextHost', () => {
+  it('picks the lowest remaining kart id, skipping accounts that are gone', async () => {
+    const { pickNextHost } = await import('./roster');
+    const r = buildRoster(players, '0xH'); // H:0, A:1, B:2
+    expect(pickNextHost(r, new Set(['0xH']))?.account).toBe('0xA');
+    expect(pickNextHost(r, new Set(['0xH', '0xA']))?.account).toBe('0xB');
+    expect(pickNextHost(r, new Set(['0xH', '0xA', '0xB']))).toBeNull();
+  });
+});

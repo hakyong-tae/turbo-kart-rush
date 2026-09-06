@@ -55,3 +55,12 @@ export function kartIdOf(roster: readonly RosterEntry[], account: string): numbe
   const e = roster.find((r) => r.account === account);
   return e ? e.kartId : null;
 }
+
+/**
+ * Host migration: the remaining human with the lowest kart id (= earliest joiner) takes over.
+ * Deterministic on every client as long as they agree on who has left.
+ */
+export function pickNextHost(roster: readonly RosterEntry[], gone: ReadonlySet<string>): RosterEntry | null {
+  const alive = roster.filter((r) => !gone.has(r.account)).sort((a, b) => a.kartId - b.kartId);
+  return alive[0] ?? null;
+}

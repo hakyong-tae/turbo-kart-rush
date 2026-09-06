@@ -104,7 +104,7 @@ export const ko: Record<StringKey, string> = {
   'touch.item': '아이템',
   'err.webgl.title': 'WEBGL2 필요',
   'err.webgl.body':
-    'Turbo Kart Rush는 WebGL 2와 하드웨어 가속이 켜진 브라우저가 필요합니다. 최신 Chrome, Edge, Firefox, Safari에서 GPU 가속을 켜고 다시 시도하세요.',
+    'Drift Dash GP는 WebGL 2와 하드웨어 가속이 켜진 브라우저가 필요합니다. 최신 Chrome, Edge, Firefox, Safari에서 GPU 가속을 켜고 다시 시도하세요.',
   'err.start.title': '시작 실패',
   'err.start.body': '게임을 시작하는 중 문제가 생겼습니다. 개발자 콘솔을 확인한 뒤 새로고침하세요.',
   'err.reload': '새로고침',
@@ -209,4 +209,7 @@ export const ko: Record<StringKey, string> = {
   'online.backToRoom': '방으로 돌아가기',
   'online.loading': '레이서 로딩 대기 중… {n}/{total}',
   'online.demo': '로컬 루프백 데모 (봇 1명)',
+  'online.hostChanged': '새 방장: {name}',
+  'online.promoted': '방장이 나가서 이제 당신이 방장입니다.',
+  'online.migrating': '방장 연결 끊김, 인수인계 중…',
 };

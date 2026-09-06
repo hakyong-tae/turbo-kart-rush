@@ -61,7 +61,7 @@ import { inVerse8Host } from '../verse8/embed';
 import { submitTime, type SubmitResult } from '../verse8/server';
 import { OnlineController, type OnlineMode } from '../net/online';
 import { OnlinePanel } from '../ui/OnlinePanel';
-import { PHASE, type StandingMsg } from '../net/protocol';
+import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
 import { getEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
@@ -393,6 +393,9 @@ export class Game {
       showToast(t('online.hostLeft'), 'error');
       this.showOnlineResults(standings);
     };
+    c.onMigrating = () => showToast(t('online.migrating'), 'info');
+    c.onHostChanged = (nick2) => showToast(t('online.hostChanged', { name: nick2 }), 'info');
+    c.onPromoted = (snap) => this.promoteToHost(snap);
     c.onHumanLeft = (kartId, nick2) => {
       const r = this.race;
       if (!r || r.online?.role !== 'host') return;
@@ -406,6 +409,39 @@ export class Game {
     };
     this.online = c;
     return c;
+  }
+
+  /** Host migration: we were a client; take over the simulation from the last mirrored snapshot. */
+  private promoteToHost(snap: Snapshot | null): void {
+    const r = this.race;
+    const c = this.online;
+    if (!r || !r.online || !c) return;
+    r.online.role = 'host';
+    // AI for every slot that is not a live human (empty slots + everyone who left, incl. the old host).
+    for (let id = 0; id < r.karts.length; id++) {
+      if (id === r.localKartId) continue;
+      const entry = r.online.roster.find((e) => e.kartId === id);
+      if (entry && !c.isGone(entry.account)) continue;
+      if (r.aiDrivers.some((d) => (d as unknown as { kartId?: number }).kartId === id)) continue;
+      const drv = new AIDriver(r.karts[id], r.settings.difficulty, id);
+      (drv as unknown as { kartId?: number }).kartId = id;
+      r.aiDrivers.push(drv);
+    }
+    if (r.online.items) {
+      r.items.setNetMode?.('authority');
+      r.items.reset(); // mirrored hazards have no physics; start clean (boxes all live again)
+      r.itemsEnabled = true;
+    }
+    const phase = snap?.phase ?? PHASE.racing;
+    r.raceManager.adoptFromKarts(snap?.raceTime ?? 0, phase === PHASE.countdown || phase === PHASE.grid ? 'countdown' : phase === PHASE.complete ? 'complete' : 'racing');
+    c.attachRace({
+      karts: r.karts,
+      raceManager: r.raceManager,
+      totalLaps: r.raceManager.totalLaps,
+      roster: r.online.roster,
+      items: r.online.items ? r.items : undefined,
+    });
+    showToast(t('online.promoted'), 'info');
   }
 
   private returnToRoom(): void {

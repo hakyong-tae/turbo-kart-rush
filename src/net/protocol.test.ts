@@ -62,11 +62,13 @@ describe('protocol', () => {
 
   it('snapshot round-trips 8 karts with status + item slot', () => {
     const karts = Array.from({ length: 8 }, (_, i) => pose(i, { x: i * 10, finished: i === 0, finishTime: 95.3, place: i + 1 }));
-    const buf = encodeSnapshot({ tick: 123456, phase: 2, countdown: 0, raceTime: 42.7, karts, items: noItems });
+    const buf = encodeSnapshot({ tick: 123456, hostEpoch: 3, phase: 2, countdown: 0, raceTime: 42.7, karts, items: noItems });
     expect(buf.byteLength).toBe(SNAPSHOT_HEADER_BYTES + 8 * SNAPSHOT_KART_BYTES + 2);
+    expect(SNAPSHOT_HEADER_BYTES).toBe(10);
     const s = decodeSnapshot(buf)!;
     expect(s.tick).toBe(123456);
     expect(s.phase).toBe(2);
+    expect(s.hostEpoch).toBe(3);
     expect(s.raceTime).toBeCloseTo(42.7, 5);
     expect(s.karts).toHaveLength(8);
     const k = s.karts[3];
@@ -96,7 +98,7 @@ describe('protocol', () => {
       { id: 65000, kind: 'bob_omb', ownerId: -1, x: -5, y: 3, z: 8, hidden: true, airborne: true, resting: false },
       { id: 9, kind: 'banana', ownerId: 0, x: 0, y: 0, z: 0, hidden: false, airborne: false, resting: true },
     ];
-    const buf = encodeSnapshot({ tick: 1, phase: 2, countdown: 0, raceTime: 3, karts: [pose(0)], items: { boxes, hazards } });
+    const buf = encodeSnapshot({ tick: 1, hostEpoch: 1, phase: 2, countdown: 0, raceTime: 3, karts: [pose(0)], items: { boxes, hazards } });
     expect(buf.byteLength).toBe(snapshotBytes(1, 20, 3));
     const s = decodeSnapshot(buf)!;
     expect(s.items.boxes).toEqual(boxes);
@@ -108,14 +110,14 @@ describe('protocol', () => {
   });
 
   it('heading wraps into [-pi, pi]', () => {
-    const s = decodeSnapshot(encodeSnapshot({ tick: 0, phase: 1, countdown: 3, raceTime: 0, karts: [pose(0, { heading: 7 })], items: noItems }))!;
+    const s = decodeSnapshot(encodeSnapshot({ tick: 0, hostEpoch: 1, phase: 1, countdown: 3, raceTime: 0, karts: [pose(0, { heading: 7 })], items: noItems }))!;
     expect(s.karts[0].heading).toBeCloseTo(7 - Math.PI * 2, 3);
     expect(s.countdown).toBe(3);
   });
 
   it('rejects truncated buffers', () => {
     expect(decodeSnapshot(new ArrayBuffer(3))).toBeNull();
-    const buf = encodeSnapshot({ tick: 0, phase: 0, countdown: 0, raceTime: 0, karts: [pose(0)], items: noItems });
+    const buf = encodeSnapshot({ tick: 0, hostEpoch: 1, phase: 0, countdown: 0, raceTime: 0, karts: [pose(0)], items: noItems });
     expect(decodeSnapshot(buf.slice(0, buf.byteLength - 1))).toBeNull();
   });
 });

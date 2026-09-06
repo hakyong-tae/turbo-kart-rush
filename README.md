@@ -1,4 +1,8 @@
-# Turbo Kart Rush
+# Drift Dash GP
+
+> Verse8 edition of **Turbo Kart Rush** (bridge-mind, MIT). Adds touch controls, six tracks, ko/en, Verse8 leaderboard / premium karts / settings, and host-authoritative online multiplayer with item sync. Original README follows.
+
+# Turbo Kart Rush (upstream)
 
 **An arcade kart racer in the spirit of Mario Kart, built entirely with Three.js. Every mesh, texture, sound effect and music track is generated in code at load time. There are no asset files in this repository.**
 
