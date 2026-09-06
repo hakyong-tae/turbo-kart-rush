@@ -420,6 +420,10 @@ export interface IItemManager {
   getActiveBoxPositions(): readonly THREE.Vector3[];
   reset(): void;
   dispose(): void;
+  /** Contract additions (item sync). 'mirror' = render network state only. */
+  setNetMode?(mode: 'authority' | 'mirror'): void;
+  getNetItems?(): NetItems;
+  applyNetItems?(items: NetItems): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +536,8 @@ export interface OnlineRaceConfig {
   role: 'host' | 'client';
   roster: readonly { account: string; nick: string; characterId: string; kartId: number }[];
   localKartId: number;
+  /** Items on (host simulates, clients mirror). */
+  items: boolean;
 }
 
 /** Contract addition (online multiplayer): one kart's state as carried by a snapshot. */
@@ -554,6 +560,33 @@ export interface NetKartPose {
   place: number;
   checkpointIndex: number;
   finishTime: number;
+  // phase 2: status + item slot
+  isInvincible: boolean;
+  isShrunk: boolean;
+  isSquished: boolean;
+  isHopping: boolean;
+  item: ItemType;
+  itemCount: number;
+  rouletteActive: boolean;
+}
+
+/** Contract addition (item sync): one hazard as carried by a snapshot. */
+export interface NetHazard {
+  id: number;
+  kind: 'banana' | 'green_shell' | 'red_shell' | 'blue_shell' | 'bob_omb';
+  ownerId: number; // -1 = none
+  x: number;
+  y: number;
+  z: number;
+  hidden: boolean;
+  airborne: boolean;
+  resting: boolean;
+}
+
+/** Contract addition (item sync): item boxes + hazards in a snapshot. */
+export interface NetItems {
+  boxes: boolean[];
+  hazards: NetHazard[];
 }
 
 export interface RaceStanding {

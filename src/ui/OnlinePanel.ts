@@ -86,7 +86,7 @@ export class OnlinePanel {
     }
     this.kartSelect.addEventListener('change', () => void this.pickKart(this.kartSelect.value));
     this.settingsBox = el('div', 'online-settings', undefined, this.roomView);
-    el('div', 'settings-hint', t('online.items') + ' · ' + t('online.aiFill'), this.roomView);
+    el('div', 'settings-hint', t('online.aiFill'), this.roomView);
     this.waitText = new TextField(el('div', 'online-status', '', this.roomView));
     const roomActions = el('div', 'actions', undefined, this.roomView);
     this.readyBtn = button(t('online.imReady'), 'primary', () => void this.toggleReady());
@@ -307,6 +307,18 @@ export class OnlinePanel {
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         void this.run(() => this.ctl().lobby.setSettings({ difficulty: d }));
+      });
+    }
+    const itemRow = el('div', 'settings-field settings-row', undefined, this.settingsBox);
+    el('span', 'settings-label', t('online.itemsLabel'), itemRow);
+    const itemSeg = el('div', 'segmented', undefined, itemRow);
+    for (const on of [true, false]) {
+      const b = el('button', 'seg' + (on === v.items ? ' selected' : ''), on ? t('online.on') : t('online.off'), itemSeg);
+      b.type = 'button';
+      b.disabled = !v.isHost;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void this.run(() => this.ctl().lobby.setSettings({ items: on }));
       });
     }
     const lapRow = el('div', 'settings-field settings-row', undefined, this.settingsBox);

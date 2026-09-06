@@ -476,8 +476,27 @@ export class Kart implements IKart {
     s.place = pose.place;
     s.checkpointIndex = pose.checkpointIndex;
     s.finishTime = pose.finishTime;
+    s.isInvincible = pose.isInvincible;
+    s.isShrunk = pose.isShrunk;
+    s.isSquished = pose.isSquished;
+    s.isHopping = pose.isHopping;
+    s.item = pose.item;
+    s.itemCount = pose.itemCount;
+    s.itemRouletteActive = pose.rouletteActive;
     this.freeY = pose.y;
     this.lastGroundY = pose.y;
+  }
+
+  /** Item sync: adopt only the host's item slot + status flags (local predicted kart). */
+  applyNetStatus(pose: NetKartPose): void {
+    const s = this.state;
+    s.isInvincible = pose.isInvincible;
+    s.isShrunk = pose.isShrunk;
+    s.isSquished = pose.isSquished;
+    s.isSpinning = pose.isSpinning;
+    s.item = pose.item;
+    s.itemCount = pose.itemCount;
+    s.itemRouletteActive = pose.rouletteActive;
   }
 
   resetTo(position: THREE.Vector3, quaternion: THREE.Quaternion): void {
