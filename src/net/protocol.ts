@@ -10,6 +10,7 @@ export const MSG = {
   INPUT: 'in', // client → host, hot
   SNAPSHOT: 'snap', // host → all, hot
   FX: 'fx', // host → all: batched item events for audio/particles/HUD
+  HOST: 'host', // new host → all: { account, hostEpoch } after a migration
   START: 'start', // host → all: race settings + roster
   LOADED: 'loaded', // client → host: my race is built
   RESULTS: 'results', // host → all: final standings
@@ -68,6 +69,8 @@ export const PHASE = { grid: 0, countdown: 1, racing: 2, complete: 3 } as const;
 
 export interface Snapshot {
   tick: number;
+  /** Host generation (split-brain guard). Clients ignore snapshots from an older epoch. */
+  hostEpoch: number;
   phase: RacePhase;
   countdown: number;
   raceTime: number;
@@ -75,7 +78,7 @@ export interface Snapshot {
   items: NetItems;
 }
 
-export const SNAPSHOT_HEADER_BYTES = 9;
+export const SNAPSHOT_HEADER_BYTES = 10;
 export const SNAPSHOT_KART_BYTES = 21;
 export const SNAPSHOT_HAZARD_BYTES = 11;
 
@@ -115,6 +118,7 @@ export function encodeSnapshot(s: Snapshot): ArrayBuffer {
   v.setUint8(5, clamp(Math.round(s.countdown), 0, 255));
   v.setUint16(6, clamp(Math.round(s.raceTime * 10), 0, 65535));
   v.setUint8(8, s.karts.length);
+  v.setUint8(9, clamp(s.hostEpoch, 0, 255));
   let o = SNAPSHOT_HEADER_BYTES;
   for (const k of s.karts) {
     v.setUint8(o, k.id);
@@ -245,6 +249,7 @@ export function decodeSnapshot(buf: ArrayBuffer): Snapshot | null {
   }
   return {
     tick: v.getUint32(0),
+    hostEpoch: v.getUint8(9),
     phase: (v.getUint8(4) & 3) as RacePhase,
     countdown: v.getUint8(5),
     raceTime: v.getUint16(6) / 10,

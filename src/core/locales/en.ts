@@ -110,7 +110,7 @@ export const en = {
   // errors
   'err.webgl.title': 'WEBGL2 REQUIRED',
   'err.webgl.body':
-    'Turbo Kart Rush needs a browser with WebGL 2 and hardware acceleration enabled. Try the latest Chrome, Edge, Firefox or Safari, and make sure GPU acceleration is switched on.',
+    'Drift Dash GP needs a browser with WebGL 2 and hardware acceleration enabled. Try the latest Chrome, Edge, Firefox or Safari, and make sure GPU acceleration is switched on.',
   'err.start.title': 'FAILED TO START',
   'err.start.body': 'Something went wrong while starting the game. Open the developer console for details, then reload.',
   'err.reload': 'RELOAD',
@@ -221,6 +221,9 @@ export const en = {
   'online.backToRoom': 'BACK TO ROOM',
   'online.loading': 'Waiting for racers to load… {n}/{total}',
   'online.demo': 'Local loopback demo (1 bot)',
+  'online.hostChanged': 'New host: {name}',
+  'online.promoted': 'The host left — you are hosting now.',
+  'online.migrating': 'Host lost, handing over…',
 } as const;
 
 export type StringKey = keyof typeof en;

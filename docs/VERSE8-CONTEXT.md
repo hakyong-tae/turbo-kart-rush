@@ -1,4 +1,4 @@
-# Turbo Kart Rush — Verse8 컨텍스트 (V8 AI / CLI 에이전트용)
+# Drift Dash GP (구 Turbo Kart Rush) — Verse8 컨텍스트 (V8 AI / CLI 에이전트용)
 
 이 문서는 Verse8 워크스페이스의 AI와 로컬 CLI 에이전트가 **먼저 읽어야 하는** 규칙이다. 구조 분석은 `NOTES.md`, 모듈 계약은 `CONTRACT.md`.
 
@@ -47,5 +47,6 @@ bun run build
 - 코드: `src/net/{protocol,roster,host-session,client-session,lobby,online,transport,loopback}.ts`, UI `src/ui/OnlinePanel.ts`. `KartState.isPlayer`는 각 클라에서 자기 카트만 true; Game은 `r.localKartId`를 쓴다.
 - 로컬 검증: 타이틀 ONLINE → "Local loopback demo" (같은 페이지 봇 1명). 실 2인 E2E는 배포 후 Puppeteer 2개(`--disable-background-timer-throttling` 등, VERSE8-MULTIPLAYER.md §9).
 - **아이템(스펙 C)**: 호스트만 `ItemManager` 시뮬. 클라는 `setNetMode('mirror')`로 박스 비트마스크·해저드(id별)·카트 아이템 슬롯/상태 플래그를 스냅샷에서 받아 그리기만 한다. 클라의 아이템 사용은 INPUT `useSeq` 증가 → 호스트 `requestUse`. 효과(픽업·룰렛·사용·히트·파괴·바운스·폭발·번개·박스 리스폰)는 호스트가 `MSG.FX`로 배치 방송 → 클라가 같은 이벤트를 로컬 버스에 재방출. 방 설정 ITEMS ON/OFF(기본 ON). 스냅샷 ≈ 300B(8카트+10해저드).
-- 3단계 예정: 호스트 승격(hostEpoch), 카트 위 닉네임, 관전.
+- **호스트 승격(스펙 D)**: 스냅샷 헤더 `hostEpoch`. 8초 무스냅샷 → kartId 최소 생존자가 승격(`promote()` → 새 HostSession, `adoptFromKarts`, 아이템 authority 전환, roomState hostAccount 갱신). 클라는 낮은 epoch 무시. 후보 무응답 시 8초 후 다음 후보.
+- 다음 예정: 카트 위 닉네임, 관전.
 

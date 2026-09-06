@@ -61,9 +61,11 @@ export class HostSession {
   constructor(
     private readonly transport: Transport,
     readonly roster: readonly RosterEntry[],
+    readonly hostEpoch = 1,
+    register = true,
   ) {
     for (const r of roster) this.humans.add(r.account);
-    transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+    if (register) transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
     const pos = (p: { x: number; y: number; z: number }): [number, number, number] => [p.x, p.y, p.z];
     this.unsubs.push(
       events.on('race:allFinished', () => this.sendResults()),
@@ -96,6 +98,20 @@ export class HostSession {
     this.transport.send(MSG.START, msg);
   }
 
+  /** Migration: everyone is already racing, nobody needs to load. */
+  markAllLoaded(): void {
+    for (const r of this.roster) this.loaded.add(r.account);
+  }
+
+  /** Migration: accounts already known to be gone (old host, earlier leavers). */
+  markGone(accounts: Iterable<string>): void {
+    for (const a of accounts) this.humans.delete(a);
+  }
+
+  announce(): void {
+    this.transport.send(MSG.HOST, { account: this.transport.account, hostEpoch: this.hostEpoch });
+  }
+
   attach(race: HostRaceView): void {
     this.race = race;
     this.tick = 0;
@@ -114,6 +130,7 @@ export class HostSession {
       MSG.SNAPSHOT,
       encodeSnapshot({
         tick: this.tick,
+        hostEpoch: this.hostEpoch,
         phase: r.phase(),
         countdown: r.countdown(),
         raceTime: r.raceTime(),
@@ -156,6 +173,11 @@ export class HostSession {
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
     this.race = null;
+  }
+
+  /** Feed a relay message (used by OnlineController, which owns the transport handler). */
+  handleMessage(event: string, payload: unknown, from: string): void {
+    this.onMessage(event, payload, from);
   }
 
   private onMessage(event: string, payload: unknown, from: string): void {

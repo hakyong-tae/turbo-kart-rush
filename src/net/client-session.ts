@@ -46,6 +46,8 @@ export class ClientSession {
   onPhase: ((phase: RacePhase, countdown: number) => void) | null = null;
   onResults: ((standings: StandingMsg[]) => void) | null = null;
   onHostLost: ((lastStandings: StandingMsg[]) => void) | null = null;
+  /** A snapshot from a newer host epoch arrived (migration completed). */
+  onHostChanged: ((account: string, hostEpoch: number) => void) | null = null;
 
   private race: ClientRaceView | null = null;
   private tick = 0;
@@ -56,6 +58,8 @@ export class ClientSession {
   private lastSnapshotAt = 0;
   private lastLocal: NetKartPose | null = null;
   private hostLost = false;
+  private hostEpoch = 0;
+  private hostAccount = '';
   private resultsReceived = false;
   private mirroredLap = -1;
   private mirroredPlace = -1;
@@ -67,8 +71,27 @@ export class ClientSession {
     readonly roster: readonly RosterEntry[],
     readonly localKartId: number,
     private readonly now: () => number = () => performance.now(),
+    initialHostEpoch = 0,
+    initialHostAccount = '',
+    register = true,
   ) {
-    transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+    this.hostEpoch = initialHostEpoch;
+    this.hostAccount = initialHostAccount;
+    if (register) transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+  }
+
+  /** Feed a relay message (used by OnlineController, which owns the transport handler). */
+  handleMessage(event: string, payload: unknown, from: string): void {
+    this.onMessage(event, payload, from);
+  }
+
+  get currentHost(): { account: string; hostEpoch: number } {
+    return { account: this.hostAccount, hostEpoch: this.hostEpoch };
+  }
+
+  /** Newest snapshot (for a promoted host to adopt the world state). */
+  latest(): Snapshot | null {
+    return this.buffer[this.buffer.length - 1]?.snap ?? null;
   }
 
   get raceTime(): number {
@@ -163,6 +186,19 @@ export class ClientSession {
         if (!(payload instanceof ArrayBuffer)) return;
         const snap = decodeSnapshot(payload);
         if (!snap) return;
+        // Split-brain guard: only the newest epoch counts, and within an epoch only its sender.
+        if (snap.hostEpoch < this.hostEpoch) return;
+        if (snap.hostEpoch === this.hostEpoch && this.hostAccount && from !== this.hostAccount) return;
+        if (snap.hostEpoch > this.hostEpoch || !this.hostAccount) {
+          const changed = this.hostAccount !== '' && from !== this.hostAccount;
+          this.hostEpoch = snap.hostEpoch;
+          this.hostAccount = from;
+          this.hostLost = false; // a live host again
+          // A new host restarts its tick counter: drop the old host's buffered snapshots so the
+          // out-of-order guard below does not reject the new stream.
+          if (changed) this.buffer.length = 0;
+          if (changed) this.onHostChanged?.(from, snap.hostEpoch);
+        }
         this.pushSnapshot(snap);
         return;
       }

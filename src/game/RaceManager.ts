@@ -150,6 +150,44 @@ export class RaceManager {
     for (const tr of this.trackers) tr.kart.setFrozen(true);
   }
 
+  /**
+   * Host migration: this RaceManager only mirrored a race so far (laps / places / finishes came
+   * from the previous host's snapshots). Rebuild the trackers from the kart states and take over
+   * as the authority. `phase` is what the last snapshot reported.
+   */
+  adoptFromKarts(raceTime: number, phase: 'countdown' | 'racing' | 'complete'): void {
+    this.time = Math.max(0, raceTime);
+    this.finishedCount = 0;
+    this.playerFinishedAt = -1;
+    this.allFinishedEmitted = false;
+    const n = this.checkpointT.length;
+    for (const tr of this.trackers) {
+      const s = tr.kart.state;
+      tr.respawnFreeze = 0;
+      tr.wrongWayTimer = 0;
+      tr.voidTimer = 0;
+      tr.stuckTimer = 0;
+      tr.throttleStreak = 0;
+      tr.started = true;
+      tr.lapsCompleted = Math.max(0, s.lap - 1);
+      tr.nextCheckpoint = ((s.checkpointIndex % n) + n) % n;
+      if (s.finished) this.finishedCount++;
+      if (s.finished && s.isPlayer && this.playerFinishedAt < 0) this.playerFinishedAt = Math.min(this.time, s.finishTime);
+      tr.emittedPlace = s.place;
+      tr.candidatePlace = s.place;
+      tr.candidateTimer = 0;
+      s.raceProgress = this.computeProgress(tr);
+    }
+    this.sortOrder();
+    if (phase === 'countdown') {
+      this.phase = 'grid';
+      this.startCountdown();
+      return;
+    }
+    for (const tr of this.trackers) if (tr.kart.state.isFrozen) tr.kart.setFrozen(false);
+    this.phase = phase === 'complete' ? 'racing' : 'racing';
+  }
+
   update(dt: number): void {
     switch (this.phase) {
       case 'grid':

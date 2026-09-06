@@ -1,9 +1,9 @@
 {
-  "name": "turbo-kart-rush",
+  "name": "drift-dash-gp",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "TURBO KART RUSH - a AAA-quality Mario Kart style arcade racer built with Three.js. Fully procedural: no external assets.",
+  "description": "DRIFT DASH GP - arcade kart racer built with Three.js (based on Turbo Kart Rush, MIT). Fully procedural: no external assets. Verse8 edition with online multiplayer.",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",

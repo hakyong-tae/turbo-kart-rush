@@ -13,8 +13,9 @@ import { ClientSession } from './client-session';
 import { HostSession } from './host-session';
 import { Lobby } from './lobby';
 import { createLoopbackHub, type LoopbackHub } from './loopback';
-import { MSG, PHASE, encodeInput, type RacePhase, type RosterEntry, type StandingMsg, type StartMsg } from './protocol';
-import { buildRoster, kartIdOf } from './roster';
+import { MSG, PHASE, encodeInput, type RacePhase, type RosterEntry, type Snapshot, type StandingMsg, type StartMsg } from './protocol';
+import { buildRoster, kartIdOf, pickNextHost } from './roster';
+import { HOST_TIMEOUT_MS } from './client-session';
 import { makeAgent8Transport } from './transport';
 import type { Transport } from './types';
 
@@ -43,6 +44,10 @@ export class OnlineController {
   onResults: ((standings: StandingMsg[]) => void) | null = null;
   onHostLost: ((standings: StandingMsg[]) => void) | null = null;
   onHumanLeft: ((kartId: number, nick: string) => void) | null = null;
+  /** We were promoted to host mid-race; adopt the last mirrored snapshot (may be null). */
+  onPromoted: ((snapshot: Snapshot | null) => void) | null = null;
+  onHostChanged: ((nick: string) => void) | null = null;
+  onMigrating: (() => void) | null = null;
 
   readonly transport: Transport;
   readonly lobby: Lobby;
@@ -52,6 +57,8 @@ export class OnlineController {
   private hub: LoopbackHub | null = null;
   private bot: LoopbackBot | null = null;
   private hostEpoch = 0;
+  private readonly gone = new Set<string>();
+  private migrationTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     readonly mode: OnlineMode,
@@ -179,7 +186,17 @@ export class OnlineController {
 
   // ------------------------------------------------------------------ private
 
+  isGone(account: string): boolean {
+    return this.gone.has(account);
+  }
+
   private onMessage(event: string, payload: unknown, from: string): void {
+    this.hostSession?.handleMessage(event, payload, from);
+    this.clientSession?.handleMessage(event, payload, from);
+    if (event === MSG.LEAVE) {
+      const acct = (payload as { account?: string })?.account ?? from;
+      this.gone.add(acct);
+    }
     if (event === MSG.START && from !== this.transport.account) {
       const msg = payload as StartMsg;
       if (!msg || !Array.isArray(msg.roster)) return;
@@ -197,14 +214,21 @@ export class OnlineController {
     this.roster = msg.roster;
     this.hostEpoch = msg.hostEpoch;
     const localKartId = kartIdOf(msg.roster, this.transport.account) ?? 0;
+    this.gone.clear();
     if (role === 'host') {
-      this.hostSession = new HostSession(this.transport, msg.roster);
+      this.hostSession = new HostSession(this.transport, msg.roster, msg.hostEpoch, false);
       this.hostSession.onHumanLeft = (id) => this.onHumanLeft?.(id, this.nickOf(id) ?? '?');
     } else {
-      this.clientSession = new ClientSession(this.transport, msg.roster, localKartId);
+      const hostAccount = msg.roster.find((r) => r.kartId === 0)?.account ?? '';
+      this.clientSession = new ClientSession(this.transport, msg.roster, localKartId, () => performance.now(), msg.hostEpoch, hostAccount, false);
       this.clientSession.onPhase = (p) => this.onPhase?.(p);
       this.clientSession.onResults = (s) => this.onResults?.(s);
-      this.clientSession.onHostLost = (s) => this.onHostLost?.(s);
+      this.clientSession.onHostLost = (s) => this.handleHostLost(s);
+      this.clientSession.onHostChanged = (acct, epoch) => {
+        this.hostEpoch = epoch;
+        this.clearMigrationTimer();
+        this.onHostChanged?.(this.roster.find((r) => r.account === acct)?.nick ?? acct);
+      };
     }
     const me = msg.roster.find((r) => r.kartId === localKartId);
     const settings: RaceSettings = {
@@ -217,13 +241,63 @@ export class OnlineController {
     this.onRaceStart?.(settings);
   }
 
+  // ------------------------------------------------------------ host migration
+
+  /** The current host stopped sending snapshots: the earliest remaining racer takes over. */
+  private handleHostLost(standings: StandingMsg[]): void {
+    const cs = this.clientSession;
+    if (!cs) return;
+    const oldHost = cs.currentHost.account || this.roster.find((r) => r.kartId === 0)?.account || '';
+    if (oldHost) this.gone.add(oldHost);
+    const next = pickNextHost(this.roster, this.gone);
+    if (!next) {
+      this.onHostLost?.(standings);
+      return;
+    }
+    if (next.account === this.transport.account) {
+      this.promote();
+      return;
+    }
+    // Somebody else should promote; if their snapshots never show up, skip them and retry.
+    this.onMigrating?.();
+    this.clearMigrationTimer();
+    this.migrationTimer = setTimeout(() => {
+      this.migrationTimer = null;
+      const live = this.clientSession;
+      if (!live || live.currentHost.account !== oldHost) return; // a new host took over
+      this.gone.add(next.account);
+      this.handleHostLost(live.standingsFromLatest());
+    }, HOST_TIMEOUT_MS);
+  }
+
+  private promote(): void {
+    const cs = this.clientSession;
+    const snap = cs?.latest() ?? null;
+    const epoch = Math.max(this.hostEpoch, cs?.currentHost.hostEpoch ?? 0) + 1;
+    this.hostEpoch = epoch;
+    cs?.dispose();
+    this.clientSession = null;
+    const hs = new HostSession(this.transport, this.roster, epoch, false);
+    hs.markGone(this.gone);
+    hs.markAllLoaded();
+    hs.onHumanLeft = (id) => this.onHumanLeft?.(id, this.nickOf(id) ?? '?');
+    this.hostSession = hs;
+    void this.transport.updateRoomState({ hostAccount: this.transport.account, hostEpoch: epoch }).catch(() => {});
+    this.onPromoted?.(snap); // Game re-attaches the race → hs.attach(...), then we announce
+    hs.announce();
+  }
+
+  private clearMigrationTimer(): void {
+    if (this.migrationTimer) clearTimeout(this.migrationTimer);
+    this.migrationTimer = null;
+  }
+
   private teardownSessions(): void {
+    this.clearMigrationTimer();
     this.hostSession?.dispose();
     this.clientSession?.dispose();
     this.hostSession = null;
     this.clientSession = null;
-    // Re-register our own listener (sessions replaced the transport handler).
-    this.transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
   }
 }
 
