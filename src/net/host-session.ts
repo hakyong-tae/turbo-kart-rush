@@ -1,9 +1,10 @@
 /**
  * Host side of an online race. The host browser runs the authoritative simulation (the normal
- * Game.step); this class only feeds remote inputs into karts, broadcasts snapshots every
- * SNAPSHOT_EVERY ticks, and relays start/results.
+ * Game.step, items included); this class feeds remote inputs into karts, turns useSeq changes
+ * into item-use requests, broadcasts snapshots every SNAPSHOT_EVERY ticks, batches item FX
+ * events, and relays start/results.
  */
-import type { IKart, InputState } from '../core/types';
+import type { IKart, InputState, NetItems } from '../core/types';
 import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
 import {
@@ -11,6 +12,7 @@ import {
   PHASE,
   decodeInput,
   encodeSnapshot,
+  type NetFx,
   type NetKartPose,
   type RacePhase,
   type ResultsMsg,
@@ -29,7 +31,16 @@ export interface HostRaceView {
   countdown: () => number;
   raceTime: () => number;
   standings: () => StandingMsg[];
+  /** Item state source (undefined when items are off). */
+  items?: () => NetItems;
 }
+
+export interface UseRequest {
+  kartId: number;
+  aimBack: boolean;
+}
+
+const EMPTY_ITEMS: NetItems = { boxes: [], hazards: [] };
 
 export class HostSession {
   /** A human left; the host should attach an AI driver to their kart. */
@@ -39,9 +50,12 @@ export class HostSession {
   private tick = 0;
   private readonly inputs = new Map<number, InputState>();
   private readonly lastSeq = new Map<number, number>();
+  private readonly lastUseSeq = new Map<number, number>();
+  private useRequests: UseRequest[] = [];
   private readonly loaded = new Set<string>();
   private readonly humans = new Set<string>();
   private readonly unsubs: (() => void)[] = [];
+  private fx: NetFx[] = [];
   private resultsSent = false;
 
   constructor(
@@ -50,8 +64,18 @@ export class HostSession {
   ) {
     for (const r of roster) this.humans.add(r.account);
     transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+    const pos = (p: { x: number; y: number; z: number }): [number, number, number] => [p.x, p.y, p.z];
     this.unsubs.push(
       events.on('race:allFinished', () => this.sendResults()),
+      events.on('item:pickup', (e) => this.fx.push({ e: 'pickup', k: e.kartId, p: pos(e.position) })),
+      events.on('item:rouletteEnd', (e) => this.fx.push({ e: 'rouletteEnd', k: e.kartId, i: e.item })),
+      events.on('item:use', (e) => this.fx.push({ e: 'use', k: e.kartId, i: e.item, p: pos(e.position) })),
+      events.on('item:hit', (e) => this.fx.push({ e: 'hit', k: e.kartId, i: e.item, s: e.sourceKartId, p: pos(e.position) })),
+      events.on('item:destroyed', (e) => this.fx.push({ e: 'destroyed', i: e.item, p: pos(e.position) })),
+      events.on('item:shellBounce', (e) => this.fx.push({ e: 'shellBounce', p: pos(e.position) })),
+      events.on('item:explosion', (e) => this.fx.push({ e: 'explosion', p: pos(e.position), r: e.radius })),
+      events.on('item:lightning', (e) => this.fx.push({ e: 'lightning', s: e.sourceKartId })),
+      events.on('item:boxRespawn', (e) => this.fx.push({ e: 'boxRespawn', p: pos(e.position) })),
     );
   }
 
@@ -76,6 +100,7 @@ export class HostSession {
     this.race = race;
     this.tick = 0;
     this.resultsSent = false;
+    this.fx.length = 0;
   }
 
   /** Call once per fixed physics tick, after the simulation stepped. */
@@ -87,14 +112,34 @@ export class HostSession {
     const karts: NetKartPose[] = r.karts.map((k) => poseOf(k));
     this.transport.send(
       MSG.SNAPSHOT,
-      encodeSnapshot({ tick: this.tick, phase: r.phase(), countdown: r.countdown(), raceTime: r.raceTime(), karts }),
+      encodeSnapshot({
+        tick: this.tick,
+        phase: r.phase(),
+        countdown: r.countdown(),
+        raceTime: r.raceTime(),
+        karts,
+        items: r.items ? r.items() : EMPTY_ITEMS,
+      }),
       true,
     );
+    if (this.fx.length > 0) {
+      const batch = this.fx;
+      this.fx = [];
+      this.transport.send(MSG.FX, batch);
+    }
   }
 
   /** Latest input for a remote human's kart (undefined = none received yet). */
   inputFor(kartId: number): InputState | undefined {
     return this.inputs.get(kartId);
+  }
+
+  /** Item-use presses received since the last call (one per useSeq change). */
+  takeUseRequests(): UseRequest[] {
+    if (this.useRequests.length === 0) return this.useRequests;
+    const out = this.useRequests;
+    this.useRequests = [];
+    return out;
   }
 
   /** A remote human dropped out of the room. */
@@ -136,6 +181,11 @@ export class HostSession {
         s.drift = inp.drift;
         s.useItemHeld = inp.useItemHeld;
         s.lookBack = inp.lookBack;
+        const prevUse = this.lastUseSeq.get(id);
+        if (prevUse !== undefined && prevUse !== inp.useSeq) {
+          this.useRequests.push({ kartId: id, aimBack: inp.brake > 0.5 || inp.lookBack });
+        }
+        this.lastUseSeq.set(id, inp.useSeq);
         return;
       }
       case MSG.LOADED:
@@ -177,6 +227,13 @@ export function poseOf(k: IKart): NetKartPose {
     place: s.place,
     checkpointIndex: s.checkpointIndex,
     finishTime: s.finishTime,
+    isInvincible: s.isInvincible,
+    isShrunk: s.isShrunk,
+    isSquished: s.isSquished,
+    isHopping: s.isHopping,
+    item: s.item,
+    itemCount: s.itemCount,
+    rouletteActive: s.itemRouletteActive,
   };
 }
 

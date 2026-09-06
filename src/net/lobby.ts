@@ -23,6 +23,7 @@ export interface LobbyView {
   trackId: string;
   difficulty: Difficulty;
   laps: number;
+  items: boolean;
   started: boolean;
   players: LobbyPlayerView[];
   /** ≥ 2 humans and everyone ready. */
@@ -92,7 +93,7 @@ export class Lobby {
   }
 
   /** Host only. */
-  async setSettings(patch: Partial<{ trackId: string; difficulty: Difficulty; laps: number }>): Promise<void> {
+  async setSettings(patch: Partial<{ trackId: string; difficulty: Difficulty; laps: number; items: boolean }>): Promise<void> {
     if (!this.derive().isHost) return;
     await this.transport.updateRoomState({ ...patch });
   }
@@ -130,7 +131,7 @@ export class Lobby {
       if (!current.trackId) patch.trackId = this.defaults.trackId;
       if (!current.difficulty) patch.difficulty = this.defaults.difficulty;
       if (!current.laps) patch.laps = this.defaults.laps;
-      patch.items = false;
+      patch.items = true;
       patch.started = false;
     }
     const mine: RoomPlayer = {
@@ -193,6 +194,7 @@ export class Lobby {
       trackId: (s.trackId as string) || this.defaults.trackId,
       difficulty: (s.difficulty as Difficulty) || this.defaults.difficulty,
       laps: (s.laps as number) || this.defaults.laps,
+      items: s.items !== false,
       started: !!s.started,
       players,
       canStart: humans >= 2 && allReady,

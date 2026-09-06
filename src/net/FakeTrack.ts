@@ -46,6 +46,12 @@ export class FakeTrack implements ITrack {
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(-s.tangent.x, -s.tangent.z), 0));
       this.startGrid.push({ position: pos, quaternion: q, t });
     }
+    // One row of five item boxes at t = 0.25 (mirrors computeItemBoxPositions' row layout).
+    const row = this.sample(0.25);
+    for (let i = 0; i < 5; i++) {
+      const lat = (i - 2) * (this.halfWidth * 0.8) / 2;
+      this.itemBoxPositions.push(row.position.clone().addScaledVector(row.binormal, lat));
+    }
     this.minimap = {
       points: [],
       leftEdge: [],

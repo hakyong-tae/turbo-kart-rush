@@ -729,14 +729,16 @@ export class Game {
     }
 
     if (r.online?.role === 'client') {
-      // Client: predict only our own kart; everything else comes from host snapshots.
+      // Client: predict only our own kart; everything else (karts, boxes, hazards) comes from
+      // host snapshots. items.update() in mirror mode only animates.
       player.update(dt, track, karts);
       if (r.raceManager.currentPhase === 'countdown') r.raceManager.update(dt);
       this.online?.clientSession?.tick60(player.input);
+      if (r.online.items) items.update(dt);
       return;
     }
 
-    if (r.online?.role === 'host') this.online?.applyRemoteInputs(karts);
+    if (r.online?.role === 'host') this.online?.applyRemoteInputs(karts, r.itemsEnabled ? items : undefined);
 
     for (let i = 0; i < r.aiDrivers.length; i++) {
       r.aiDrivers[i].update(dt, track, karts, items, player);
@@ -1029,12 +1031,20 @@ export class Game {
       resultsTimer: 0,
       online: settings.online ?? null,
       localKartId,
-      itemsEnabled: !settings.online,
+      // Items: offline always; online only the host simulates them (clients mirror).
+      itemsEnabled: !settings.online || (settings.online.role === 'host' && settings.online.items),
     };
     this.race = r;
     if (settings.online) {
-      items.object.visible = false;
-      this.online?.attachRace({ karts, raceManager, totalLaps: raceManager.totalLaps, roster: settings.online.roster });
+      items.object.visible = settings.online.items;
+      if (settings.online.role === 'client') items.setNetMode?.('mirror');
+      this.online?.attachRace({
+        karts,
+        raceManager,
+        totalLaps: raceManager.totalLaps,
+        roster: settings.online.roster,
+        items: settings.online.items ? items : undefined,
+      });
     }
     this.accumulator = 0;
     this.pendingUseItem = false;

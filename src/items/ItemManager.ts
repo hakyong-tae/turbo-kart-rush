@@ -15,6 +15,8 @@ import type {
   ItemType,
   SurfaceQuery,
   TrackSample,
+  NetItems,
+  NetHazard,
 } from '../core/types';
 import { events } from '../core/events';
 import { BALANCE } from '../core/balance';
@@ -207,6 +209,8 @@ export class ItemManager implements IItemManager {
   private readonly particles: IParticleSystem | null;
   private track: ITrack | null = null;
   private karts: readonly IKart[] = [];
+  /** 'mirror' = online client: render host state, no simulation. */
+  private netMode: 'authority' | 'mirror' = 'authority';
   private records: KartRecord[] = [];
   private time = 0;
   private lastLightningTime = -1000;
@@ -565,7 +569,7 @@ export class ItemManager implements IItemManager {
 
   requestUse(kart: IKart, aimBack: boolean): void {
     const s = kart.state;
-    if (!this.track) return;
+    if (!this.track || this.netMode === 'mirror') return;
     if (s.item === 'none' || s.itemCount <= 0 || s.itemRouletteActive || s.isSpinning || s.isFrozen) return;
     const rec = this.records.find((r) => r.kart === kart);
     if (rec && rec.rouletteActive) return;
@@ -1243,8 +1247,8 @@ export class ItemManager implements IItemManager {
         m.rotation.y = -a + Math.PI / 2;
         if (rec.orbitType === 'banana') m.rotation.z = Math.sin(this.time * 4 + i) * 0.2;
       }
-      // orbiting shells / bananas hit karts they touch
-      if (rec.orbitType === 'mushroom' || rec.orbitHitCooldown > 0) continue;
+      // orbiting shells / bananas hit karts they touch (host only)
+      if (this.netMode === 'mirror' || rec.orbitType === 'mushroom' || rec.orbitHitCooldown > 0) continue;
       outer: for (let i = 0; i < n; i++) {
         const m = rec.orbitMeshes[i];
         for (const other of this.karts) {
@@ -1289,10 +1293,111 @@ export class ItemManager implements IItemManager {
   update(dt: number): void {
     if (!this.track) return;
     this.time += dt;
+    if (this.netMode === 'mirror') {
+      this.updateBoxVisuals(dt);
+      this.updateOrbits(dt);
+      for (const h of this.hazards) this.animateHazard(h, dt);
+      return;
+    }
     this.updateBoxes(dt);
     for (const rec of this.records) this.updateRoulette(rec, dt);
     this.updateOrbits(dt);
     this.updateHazards(dt);
+  }
+
+  // -------------------------------------------------------------------------
+  // Online item sync (see docs/superpowers/specs/2026-09-06-item-sync-design.md)
+  // -------------------------------------------------------------------------
+
+  setNetMode(mode: 'authority' | 'mirror'): void {
+    this.netMode = mode;
+  }
+
+  /** Host: everything a client needs to draw boxes and hazards. */
+  getNetItems(): NetItems {
+    return {
+      boxes: this.boxes.map((b) => b.active),
+      hazards: this.hazards.map((h) => ({
+        id: h.id,
+        kind: h.kind,
+        ownerId: h.ownerId,
+        x: h.position.x,
+        y: h.position.y,
+        z: h.position.z,
+        hidden: h.hidden,
+        airborne: h.airborne,
+        resting: h.resting,
+      })),
+    };
+  }
+
+  /** Client: reconcile boxes + hazards with the host's state (meshes created / moved / removed by id). */
+  applyNetItems(items: NetItems): void {
+    for (let i = 0; i < this.boxes.length && i < items.boxes.length; i++) {
+      const b = this.boxes[i];
+      const active = items.boxes[i];
+      if (b.active === active) continue;
+      b.active = active;
+      b.scale = 0; // re-appear with the pop-in, or vanish instantly
+    }
+    const seen = new Set<number>();
+    for (const nh of items.hazards) {
+      seen.add(nh.id);
+      let h = this.hazards.find((x) => x.id === nh.id);
+      if (!h) h = this.newNetHazard(nh);
+      h.position.set(nh.x, nh.y, nh.z);
+      h.hidden = nh.hidden;
+      h.airborne = nh.airborne;
+      h.resting = nh.resting;
+      h.mesh.visible = !nh.hidden;
+    }
+    for (let i = this.hazards.length - 1; i >= 0; i--) {
+      if (!seen.has(this.hazards[i].id)) this.removeHazard(i);
+    }
+  }
+
+  private newNetHazard(nh: NetHazard): Hazard {
+    const mesh = buildItemMesh(nh.kind);
+    const h: Hazard = {
+      id: nh.id,
+      type: nh.kind,
+      reportType: nh.kind,
+      kind: nh.kind,
+      position: new THREE.Vector3(nh.x, nh.y, nh.z),
+      velocity: new THREE.Vector3(),
+      radius: 0.45,
+      ownerId: nh.ownerId,
+      mesh,
+      age: 0,
+      life: Infinity,
+      hintT: 0,
+      speed: 0,
+      bounces: 0,
+      maxBounces: 0,
+      homing: false,
+      targetId: -1,
+      airborne: nh.airborne,
+      resting: nh.resting,
+      fuse: B.items.bombFuse,
+      blinkPhase: 0,
+      wobblePhase: Math.random() * TAU,
+      bodyMat: null,
+      flightT: 0,
+      trailTimer: 0,
+      hidden: nh.hidden,
+    };
+    this.hazards.push(h);
+    this.object.add(mesh);
+    return h;
+  }
+
+  /** Mirror mode: bob + pop-in only; activity comes from the host. */
+  private updateBoxVisuals(dt: number): void {
+    for (const b of this.boxes) {
+      if (b.active && b.scale < 1) b.scale = Math.min(1, b.scale + dt / BOX_SCALE_IN);
+      b.world.set(b.base.x, b.groundY + BOX_HOVER + Math.sin(this.time * 2.1 + b.phase) * 0.12, b.base.z);
+    }
+    this.updateBoxMatrices();
   }
 
   getHazards(): readonly HazardInfo[] {

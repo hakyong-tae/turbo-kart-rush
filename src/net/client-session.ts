@@ -1,15 +1,18 @@
 /**
  * Client side of an online race. Sends the local input at SNAPSHOT_EVERY ticks, buffers host
- * snapshots, interpolates remote karts 100 ms behind, reconciles the locally predicted kart,
- * and mirrors phase / lap / place / finish of the local kart as the usual race events.
+ * snapshots, interpolates remote karts and hazards 100 ms behind, reconciles the locally
+ * predicted kart, mirrors item boxes / item slots / status flags, re-emits batched item FX
+ * events, and mirrors phase / lap / place / finish of the local kart as the usual race events.
  */
-import type { IKart, InputState } from '../core/types';
+import * as THREE from 'three';
+import type { IItemManager, IKart, InputState, NetHazard } from '../core/types';
 import { events } from '../core/events';
 import {
   MSG,
   PHASE,
   decodeSnapshot,
   encodeInput,
+  type NetFx,
   type NetKartPose,
   type RacePhase,
   type ResultsMsg,
@@ -35,6 +38,8 @@ interface Stamped {
 export interface ClientRaceView {
   karts: readonly IKart[];
   totalLaps: number;
+  /** Item manager in mirror mode (undefined when items are off). */
+  items?: Pick<IItemManager, 'applyNetItems'>;
 }
 
 export class ClientSession {
@@ -45,16 +50,17 @@ export class ClientSession {
   private race: ClientRaceView | null = null;
   private tick = 0;
   private seq = 0;
+  private useSeq = 0;
   private readonly buffer: Stamped[] = [];
   private lastPhase: RacePhase = PHASE.grid;
   private lastSnapshotAt = 0;
   private lastLocal: NetKartPose | null = null;
   private hostLost = false;
   private resultsReceived = false;
-  /** Local-kart values already mirrored (to emit events only on change). */
   private mirroredLap = -1;
   private mirroredPlace = -1;
   private mirroredFinished = false;
+  private readonly fxPos = new THREE.Vector3();
 
   constructor(
     private readonly transport: Transport,
@@ -93,11 +99,12 @@ export class ClientSession {
     this.transport.send(MSG.LEAVE, { account: this.transport.account });
   }
 
-  /** Call once per fixed physics tick, after the local kart stepped. */
+  /** Call once per fixed physics tick, after the local kart stepped. `input` = the local kart's input. */
   tick60(input: InputState): void {
     const r = this.race;
     if (!r) return;
     this.tick++;
+    if (input.useItem) this.useSeq = (this.useSeq + 1) & 0xff;
     if (this.tick % SNAPSHOT_EVERY === 0) {
       this.seq = (this.seq + 1) & 0xffff;
       this.transport.send(
@@ -110,6 +117,7 @@ export class ClientSession {
           drift: input.drift,
           useItemHeld: input.useItemHeld,
           lookBack: input.lookBack,
+          useSeq: this.useSeq,
         }),
         true,
       );
@@ -158,6 +166,11 @@ export class ClientSession {
         this.pushSnapshot(snap);
         return;
       }
+      case MSG.FX: {
+        if (!Array.isArray(payload)) return;
+        for (const fx of payload as NetFx[]) this.replayFx(fx);
+        return;
+      }
       case MSG.RESULTS: {
         const msg = payload as ResultsMsg;
         if (!msg || !Array.isArray(msg.standings)) return;
@@ -165,6 +178,42 @@ export class ClientSession {
         this.onResults?.(msg.standings);
         return;
       }
+    }
+  }
+
+  /** Host item events → local event bus (HUD / audio / particles / post-fx react as offline). */
+  private replayFx(fx: NetFx): void {
+    const kartId = fx.k ?? -1;
+    const isPlayer = kartId === this.localKartId;
+    const p = fx.p ? this.fxPos.set(fx.p[0], fx.p[1], fx.p[2]).clone() : new THREE.Vector3();
+    switch (fx.e) {
+      case 'pickup':
+        events.emit('item:pickup', { kartId, position: p, isPlayer });
+        return;
+      case 'rouletteEnd':
+        events.emit('item:rouletteEnd', { kartId, item: fx.i ?? 'none', isPlayer });
+        return;
+      case 'use':
+        events.emit('item:use', { kartId, item: fx.i ?? 'none', position: p, isPlayer });
+        return;
+      case 'hit':
+        events.emit('item:hit', { kartId, item: fx.i ?? 'none', position: p, sourceKartId: fx.s ?? -1, isPlayer });
+        return;
+      case 'destroyed':
+        events.emit('item:destroyed', { item: fx.i ?? 'none', position: p });
+        return;
+      case 'shellBounce':
+        events.emit('item:shellBounce', { position: p });
+        return;
+      case 'explosion':
+        events.emit('item:explosion', { position: p, radius: fx.r ?? 4 });
+        return;
+      case 'lightning':
+        events.emit('item:lightning', { sourceKartId: fx.s ?? -1 });
+        return;
+      case 'boxRespawn':
+        events.emit('item:boxRespawn', { position: p });
+        return;
     }
   }
 
@@ -208,6 +257,10 @@ export class ClientSession {
     const s = k.state;
     s.checkpointIndex = p.checkpointIndex;
     s.wrongWay = p.wrongWay;
+    // Item slot + status flags are host-owned even for the predicted local kart.
+    if ((k as IKart & { applyNetStatus?: (pose: NetKartPose) => void }).applyNetStatus) {
+      (k as IKart & { applyNetStatus: (pose: NetKartPose) => void }).applyNetStatus(p);
+    }
     if (p.lap !== this.mirroredLap) {
       const prev = this.mirroredLap;
       this.mirroredLap = p.lap;
@@ -268,6 +321,14 @@ export class ClientSession {
         heading: lerpAngle(pa.heading, pb.heading, alpha),
         speed: pa.speed + (pb.speed - pa.speed) * alpha,
       });
+    }
+    if (r.items?.applyNetItems) {
+      const hazards: NetHazard[] = b.snap.items.hazards.map((hb) => {
+        const ha = a.snap.items.hazards.find((h) => h.id === hb.id);
+        if (!ha) return hb;
+        return { ...hb, x: ha.x + (hb.x - ha.x) * alpha, y: ha.y + (hb.y - ha.y) * alpha, z: ha.z + (hb.z - ha.z) * alpha };
+      });
+      r.items.applyNetItems({ boxes: b.snap.items.boxes, hazards });
     }
   }
 

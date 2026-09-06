@@ -5,7 +5,7 @@
  * mode 'real'     → agent8 relay (inside the Verse8 host)
  * mode 'loopback' → in-page hub with one bot racer (local demo / tests)
  */
-import type { Difficulty, IKart, RaceSettings } from '../core/types';
+import type { Difficulty, IItemManager, IKart, RaceSettings } from '../core/types';
 import { createEmptyInput } from '../core/types';
 import { CHARACTERS } from '../kart/roster';
 import type { RaceManager } from '../game/RaceManager';
@@ -25,6 +25,8 @@ export interface OnlineRaceHooks {
   raceManager: RaceManager;
   totalLaps: number;
   roster: readonly RosterEntry[];
+  /** Item manager (host: authority source, client: mirror sink). Omit when items are off. */
+  items?: IItemManager;
 }
 
 const PHASE_MAP: Record<string, RacePhase> = {
@@ -96,7 +98,7 @@ export class OnlineController {
       v.players.map((p) => ({ account: p.account, nick: p.nick, characterId: p.characterId, joinedAt: p.joinedAt })),
       v.hostAccount,
     );
-    const msg: StartMsg = { trackId: v.trackId, difficulty: v.difficulty, laps: v.laps, roster, hostEpoch: this.hostEpoch };
+    const msg: StartMsg = { trackId: v.trackId, difficulty: v.difficulty, laps: v.laps, roster, hostEpoch: this.hostEpoch, items: v.items };
     await this.lobby.setStarted(true).catch(() => {});
     this.beginRace(msg, 'host');
     this.hostSession?.sendStart(msg);
@@ -111,6 +113,7 @@ export class OnlineController {
         phase: () => PHASE_MAP[rm.currentPhase] ?? PHASE.grid,
         countdown: () => 0,
         raceTime: () => rm.raceTime,
+        items: hooks.items?.getNetItems ? () => hooks.items!.getNetItems!() : undefined,
         standings: () =>
           rm.getStandings().map((s) => ({
             kartId: s.kartId,
@@ -123,19 +126,25 @@ export class OnlineController {
       });
     }
     if (this.clientSession) {
-      this.clientSession.attach({ karts: hooks.karts, totalLaps: hooks.totalLaps });
+      this.clientSession.attach({ karts: hooks.karts, totalLaps: hooks.totalLaps, items: hooks.items?.applyNetItems ? hooks.items : undefined });
       this.clientSession.sendLoaded();
     }
   }
 
-  /** Host: apply the latest remote inputs to the karts they drive. */
-  applyRemoteInputs(karts: readonly IKart[]): void {
+  /** Host: apply the latest remote inputs to the karts they drive, then fire their item uses. */
+  applyRemoteInputs(karts: readonly IKart[], items?: IItemManager): void {
     const hs = this.hostSession;
     if (!hs) return;
     for (const r of this.roster) {
       if (r.kartId === this.localKartId) continue;
       const inp = hs.inputFor(r.kartId);
       if (inp) karts[r.kartId]?.setInput(inp);
+    }
+    if (items) {
+      for (const req of hs.takeUseRequests()) {
+        const k = karts[req.kartId];
+        if (k) items.requestUse(k, req.aimBack);
+      }
     }
   }
 
@@ -203,7 +212,7 @@ export class OnlineController {
       trackId: msg.trackId,
       difficulty: msg.difficulty as Difficulty,
       laps: msg.laps,
-      online: { role, roster: msg.roster, localKartId },
+      online: { role, roster: msg.roster, localKartId, items: msg.items !== false },
     };
     this.onRaceStart?.(settings);
   }
@@ -225,6 +234,7 @@ export class OnlineController {
 class LoopbackBot {
   private timer: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
+  private useSeq = 0;
   private started = false;
 
   constructor(private readonly t: Transport) {
@@ -250,10 +260,11 @@ class LoopbackBot {
   private pump(): void {
     if (!this.started) return;
     this.seq = (this.seq + 1) & 0xffff;
+    if (this.seq % 60 === 0) this.useSeq = (this.useSeq + 1) & 0xff;
     const input = { ...createEmptyInput(), throttle: 1, steer: 0 };
     this.t.send(
       MSG.INPUT,
-      encodeInput({ seq: this.seq, steer: input.steer, throttle: input.throttle, brake: 0, drift: false, useItemHeld: false, lookBack: false }),
+      encodeInput({ seq: this.seq, steer: input.steer, throttle: input.throttle, brake: 0, drift: false, useItemHeld: false, lookBack: false, useSeq: this.useSeq }),
       true,
     );
   }
