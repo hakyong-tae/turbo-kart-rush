@@ -3,8 +3,9 @@
 //   node tools/promo-capture.mjs [http://localhost:5178]      # needs `npm run dev` running
 //
 // Outputs into marketing/:
-//   drift-dash-gp-15s-1x1.mp4   1080 × 1080, 30 fps, 15 s, with the game's own procedural race
-//                               music rendered offline (Web Audio OfflineAudioContext) and muxed in
+//   drift-dash-gp-15s-1x1.mp4       1080 × 1080, 30 fps, 15 s master (crf 18, ~35 MB) with the game's own
+//                                   procedural race music rendered offline (OfflineAudioContext) and muxed in
+//   drift-dash-gp-15s-1x1-web.mp4   same clip, two-pass 4.3 Mbps → ~8 MB (store upload limit is 10 MB)
 //   thumbnail-1x1.png           1024 × 1024 gameplay frame with the logo overlay
 //
 // Frames are STEPPED, not recorded: requestAnimationFrame is stubbed once the race is up so every
@@ -13,7 +14,7 @@
 
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
 
 const PUPPETEER_DIR = process.env.PUPPETEER_DIR || '/Users/hytae/Downloads/cryzen-downloader';
 const puppeteer = createRequire(`file://${PUPPETEER_DIR}/`)('puppeteer');
@@ -26,6 +27,7 @@ const SECONDS = 15;
 const STEP_MS = 1000 / FPS;
 const CHARACTER_INDEX = 0; // Zippy Nova (cyan / pink)
 const TRACK_INDEX = 1; // Coral Coast
+const WEB_VIDEO_KBPS = 4300; // 15 s → ~8 MB with 128 kbps AAC; the web mp4 must stay under 10 MB
 
 mkdirSync(OUT, { recursive: true });
 rmSync(FRAMES_DIR, { recursive: true, force: true });
@@ -146,6 +148,14 @@ async function captureTrailer(browser) {
   args.push(mp4);
   execFileSync('ffmpeg', args, { stdio: 'ignore' });
   console.log(`wrote ${mp4}`);
+
+  // Store-friendly variant: two-pass at a bitrate that lands under 10 MB for 15 s (≈4.3 Mbps video + 128 kbps audio).
+  const web = `${OUT}/drift-dash-gp-15s-1x1-web.mp4`;
+  const rate = ['-c:v', 'libx264', '-preset', 'slow', '-b:v', WEB_VIDEO_KBPS + 'k', '-maxrate', '5000k', '-bufsize', '8000k'];
+  execFileSync('ffmpeg', ['-y', '-i', mp4, ...rate, '-pass', '1', '-an', '-f', 'null', '/dev/null'], { stdio: 'ignore' });
+  execFileSync('ffmpeg', ['-y', '-i', mp4, ...rate, '-pass', '2', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', web], { stdio: 'ignore' });
+  for (const f of ['ffmpeg2pass-0.log', 'ffmpeg2pass-0.log.mbtree']) rmSync(f, { force: true });
+  console.log(`wrote ${web} (${(statSync(web).size / 1048576).toFixed(2)} MB — must stay under 10 MB)`);
 }
 
 async function captureThumbnail(browser) {
