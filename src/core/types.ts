@@ -456,6 +456,11 @@ export interface IAudioEngine {
   setMasterVolume(v: number): void;
   setMuted(muted: boolean): void;
   readonly muted: boolean;
+  /** Contract addition (settings mixer): independent 0..1 levels for music and for all SFX buses. */
+  setMusicVolume(v: number): void;
+  setSfxVolume(v: number): void;
+  readonly musicVolumeLevel: number;
+  readonly sfxVolumeLevel: number;
   dispose(): void;
 }
 

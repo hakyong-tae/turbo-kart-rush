@@ -1,5 +1,5 @@
 /**
- * Settings: nickname (for the track records), language, mute. Opened from the title gear.
+ * Settings: nickname (for the track records), language, music / SFX volume. Opened from the title gear.
  */
 import type { InputState } from '../core/types';
 import { getLang, setLang, t, type Lang } from '../core/i18n';
@@ -8,9 +8,12 @@ import { normalizeNickname } from '../verse8/nickname';
 import { button, el } from './dom';
 import { showToast } from './toast';
 
+export type VolumeKind = 'music' | 'sfx';
+
 export interface SettingsHooks {
-  isMuted: () => boolean;
-  onToggleMute: () => void;
+  getVolumes: () => { music: number; sfx: number };
+  /** Live while dragging: v is 0..1. */
+  onVolume: (kind: VolumeKind, v: number) => void;
 }
 
 export class SettingsPanel {
@@ -19,7 +22,7 @@ export class SettingsPanel {
   private readonly rootNode: HTMLElement;
   private readonly nickInput: HTMLInputElement;
   private readonly langButtons: HTMLButtonElement[] = [];
-  private readonly muteBox: HTMLInputElement;
+  private readonly sliders = new Map<VolumeKind, { input: HTMLInputElement; value: HTMLElement }>();
   private visible = false;
 
   constructor(
@@ -54,17 +57,41 @@ export class SettingsPanel {
       this.langButtons.push(b);
     }
 
-    const muteField = el('label', 'settings-field settings-row', undefined, panel);
-    el('span', 'settings-label', t('settings.mute'), muteField);
-    this.muteBox = el('input', 'settings-check', undefined, muteField);
-    this.muteBox.type = 'checkbox';
-    this.muteBox.addEventListener('change', () => {
-      if (this.muteBox.checked !== this.hooks.isMuted()) this.hooks.onToggleMute();
-    });
+    this.buildSlider(panel, 'music', t('settings.music'));
+    this.buildSlider(panel, 'sfx', t('settings.sfx'));
 
     const actions = el('div', 'actions', undefined, panel);
     actions.appendChild(button(t('settings.save'), 'primary', () => void this.save()));
     actions.appendChild(button(t('settings.close'), 'ghost', () => this.close()));
+  }
+
+  private buildSlider(panel: HTMLElement, kind: VolumeKind, label: string): void {
+    const field = el('label', 'settings-field settings-slider', undefined, panel);
+    const head = el('div', 'settings-slider-head', undefined, field);
+    el('span', 'settings-label', label, head);
+    const value = el('span', 'settings-slider-value', '100%', head);
+    const input = el('input', 'settings-range', undefined, field);
+    input.type = 'range';
+    input.min = '0';
+    input.max = '100';
+    input.step = '5';
+    // Arrow keys on the slider must not drive the menu behind it.
+    input.addEventListener('keydown', (e) => e.stopPropagation());
+    input.addEventListener('input', () => {
+      const v = Number(input.value) / 100;
+      value.textContent = `${Math.round(v * 100)}%`;
+      this.hooks.onVolume(kind, v);
+    });
+    this.sliders.set(kind, { input, value });
+  }
+
+  private syncSliders(): void {
+    const vols = this.hooks.getVolumes();
+    for (const [kind, s] of this.sliders) {
+      const pct = Math.round(vols[kind] * 100);
+      s.input.value = String(pct);
+      s.value.textContent = `${pct}%`;
+    }
   }
 
   get isVisible(): boolean {
@@ -74,7 +101,7 @@ export class SettingsPanel {
   show(): void {
     this.nickInput.value = getEntitlements().nickname;
     this.langButtons.forEach((b) => b.classList.toggle('selected', b.textContent?.toLowerCase() === getLang()));
-    this.muteBox.checked = this.hooks.isMuted();
+    this.syncSliders();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
     this.nickInput.focus();

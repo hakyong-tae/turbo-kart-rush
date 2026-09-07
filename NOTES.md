@@ -63,7 +63,7 @@ turbo-kart-rush/
     │   ├── LoadingScreen.ts (99) 트랙명+팁+프로그레스바
     │   ├── PauseMenu.ts (76), ResultsScreen.ts (134) 결과표+컨페티
     │   ├── TouchControls.ts / touchMath.ts ★(local-mods) 가상 스틱(좌)+DRIFT/ITEM/⏸(우), TouchInputSource 구현
-    │   ├── LockSheet.ts / LeaderboardPanel.ts / SettingsPanel.ts ★(v8) 프리미엄 잠금 시트 · 트랙 기록 · 닉네임/언어/음소거
+    │   ├── LockSheet.ts / LeaderboardPanel.ts / SettingsPanel.ts ★(v8) 프리미엄 잠금 시트 · 트랙 기록 · 닉네임/언어/배경음악·효과음 볼륨(M키 음소거는 별도)
     │   ├── OnlinePanel.ts ★(online) 로비(퀵/생성/코드/목록) + 방(슬롯·READY·설정·START)
     │   └── dom.ts (106) `el()` 헬퍼, toast.ts (27)
     │

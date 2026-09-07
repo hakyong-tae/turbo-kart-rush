@@ -116,6 +116,21 @@ interface RaceContext {
   itemsEnabled: boolean;
 }
 
+const VOLUME_KEY_MUSIC = 'tkr.vol.music';
+const VOLUME_KEY_SFX = 'tkr.vol.sfx';
+
+/** Stored mixer level (0..1) or the fallback when unset / unreadable. */
+function readVolume(key: string, fallback: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const v = Number(raw);
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export class Game {
   private readonly container: HTMLElement;
   private readonly renderer: THREE.WebGLRenderer;
@@ -196,6 +211,8 @@ export class Game {
     // ---------------------------------------------------------- systems
     this.input = new InputManager();
     this.audio = new AudioEngine();
+    this.audio.setMusicVolume(readVolume(VOLUME_KEY_MUSIC, 1));
+    this.audio.setSfxVolume(readVolume(VOLUME_KEY_SFX, 1));
     this.particles = new ParticleSystem();
     this.scene.add(this.particles.object);
     this.postfx = new PostFX();
@@ -479,8 +496,8 @@ export class Game {
 
   private buildSettings(): SettingsPanel {
     return new SettingsPanel(this.uiRoot, {
-      isMuted: () => this.audio.muted,
-      onToggleMute: () => this.toggleMute(),
+      getVolumes: () => ({ music: this.audio.musicVolumeLevel, sfx: this.audio.sfxVolumeLevel }),
+      onVolume: (kind, v) => this.setVolume(kind, v),
     });
   }
 
@@ -1279,6 +1296,16 @@ export class Game {
         window.addEventListener('keydown', this.onGesture);
       });
   };
+
+  private setVolume(kind: 'music' | 'sfx', v: number): void {
+    const level = Math.max(0, Math.min(1, v));
+    this.safe(() => (kind === 'music' ? this.audio.setMusicVolume(level) : this.audio.setSfxVolume(level)));
+    try {
+      localStorage.setItem(kind === 'music' ? VOLUME_KEY_MUSIC : VOLUME_KEY_SFX, String(level));
+    } catch {
+      /* private mode */
+    }
+  }
 
   private toggleMute(): void {
     const muted = !this.audio.muted;

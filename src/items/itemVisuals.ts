@@ -97,32 +97,39 @@ function drawBanana(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: nu
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(s, s);
-  ctx.rotate(-0.45);
+  ctx.rotate(-0.35);
+  // A shallow crescent (not a boomerang): long, fat body that tapers toward the blossom end.
   const path = (): void => {
     ctx.beginPath();
-    ctx.moveTo(-19, -5);
-    ctx.quadraticCurveTo(-3, 22, 19, 1);
+    ctx.moveTo(-21, -1);
+    ctx.quadraticCurveTo(-2, 14, 21, -3);
   };
+  ctx.lineCap = 'round';
   path();
-  ctx.lineWidth = 15;
+  ctx.lineWidth = 18;
   ctx.strokeStyle = '#4a3208';
   ctx.stroke();
   path();
-  ctx.lineWidth = 11;
+  ctx.lineWidth = 14;
   ctx.strokeStyle = '#ffd83a';
   ctx.stroke();
+  // Ridge highlight along the outer edge.
   ctx.beginPath();
-  ctx.moveTo(-13, -5);
-  ctx.quadraticCurveTo(-2, 12, 12, 0);
+  ctx.moveTo(-15, -3);
+  ctx.quadraticCurveTo(-2, 8, 15, -3);
   ctx.lineWidth = 3;
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
   ctx.stroke();
-  ctx.fillStyle = '#6b4a12';
+  // Stem (thick, brown) at one end, small dark blossom tip at the other.
+  ctx.strokeStyle = '#6b4a12';
+  ctx.lineWidth = 6;
   ctx.beginPath();
-  ctx.arc(-19.5, -5.5, 3.4, 0, TAU);
-  ctx.fill();
+  ctx.moveTo(-20, -1);
+  ctx.lineTo(-25, -6);
+  ctx.stroke();
+  ctx.fillStyle = '#3a2608';
   ctx.beginPath();
-  ctx.arc(19.5, 0.5, 3.1, 0, TAU);
+  ctx.arc(21.5, -3.5, 2.6, 0, TAU);
   ctx.fill();
   ctx.restore();
 }
@@ -561,8 +568,18 @@ function standard(key: string, params: THREE.MeshStandardMaterialParameters): TH
   return mat(key, () => new THREE.MeshStandardMaterial(params));
 }
 
-/** Tapers a TubeGeometry's radius along its length (thin at both ends). */
-function taperTube(geometry: THREE.TubeGeometry, path: THREE.Curve<THREE.Vector3>, tubular: number, radial: number): void {
+/**
+ * Tapers a TubeGeometry's radius along its length. Symmetric by default (thin at both
+ * ends); `skew` > 0 keeps the u=0 end fatter (a banana's stem end) than the u=1 end.
+ */
+function taperTube(
+  geometry: THREE.TubeGeometry,
+  path: THREE.Curve<THREE.Vector3>,
+  tubular: number,
+  radial: number,
+  strength = 0.72,
+  skew = 0,
+): void {
   const pos = geometry.attributes.position as THREE.BufferAttribute;
   const p = new THREE.Vector3();
   const v = new THREE.Vector3();
@@ -570,7 +587,7 @@ function taperTube(geometry: THREE.TubeGeometry, path: THREE.Curve<THREE.Vector3
     const u = i / tubular;
     path.getPointAt(u, p);
     const e = Math.abs(2 * u - 1);
-    const f = 1 - 0.72 * e * e * e * e;
+    const f = (1 - strength * e * e * e * e) * (1 - skew * u * u);
     for (let j = 0; j <= radial; j++) {
       const idx = i * (radial + 1) + j;
       v.fromBufferAttribute(pos, idx).sub(p).multiplyScalar(f).add(p);
@@ -581,44 +598,61 @@ function taperTube(geometry: THREE.TubeGeometry, path: THREE.Curve<THREE.Vector3
   geometry.computeVertexNormals();
 }
 
+/**
+ * Banana spine: a shallow crescent lying on its belly (tips only slightly raised), u=0 is
+ * the stem end. The old deep U with two identical cone tips read as a boomerang.
+ */
 function bananaCurve(): THREE.QuadraticBezierCurve3 {
   return new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(-0.46, 0.2, 0),
-    new THREE.Vector3(0, -0.3, 0),
-    new THREE.Vector3(0.46, 0.2, 0),
+    new THREE.Vector3(-0.5, 0.1, 0),
+    new THREE.Vector3(0, -0.2, 0),
+    new THREE.Vector3(0.5, 0.06, 0),
   );
 }
 
 function buildBanana(): THREE.Object3D {
   const g = new THREE.Group();
-  const tubular = 16;
-  const radial = 8;
+  const tubular = 18;
+  const radial = 5; // real bananas have a pentagonal cross-section — the ridges sell it
   const body = new THREE.Mesh(
     geo('banana', () => {
       const curve = bananaCurve();
-      const t = new THREE.TubeGeometry(curve, tubular, 0.115, radial, false);
-      taperTube(t, curve, tubular, radial);
+      const t = new THREE.TubeGeometry(curve, tubular, 0.15, radial, false);
+      taperTube(t, curve, tubular, radial, 0.5, 0.3);
       return t;
     }),
-    standard('banana', { color: 0xffd23a, roughness: 0.45, metalness: 0.0 }),
+    standard('banana', { color: 0xffd23a, roughness: 0.55, metalness: 0.0, flatShading: true }),
   );
   body.castShadow = true;
   g.add(body);
-  const tipGeo = geo('bananaTip', () => new THREE.ConeGeometry(0.05, 0.14, 6));
-  const tipMat = standard('bananaTip', { color: 0x5a3b10, roughness: 0.8 });
   const curve = bananaCurve();
   const p = new THREE.Vector3();
   const tangent = new THREE.Vector3();
-  for (let i = 0; i < 2; i++) {
-    const tip = new THREE.Mesh(tipGeo, tipMat);
-    curve.getPointAt(i, p);
-    curve.getTangentAt(i, tangent);
-    if (i === 0) tangent.negate();
-    tip.position.copy(p).addScaledVector(tangent, 0.04);
-    tip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent.normalize());
-    g.add(tip);
-  }
-  g.position.y = 0.32;
+  const up = new THREE.Vector3(0, 1, 0);
+  // Stem: a short thick brown cylinder continuing the spine past the fat end.
+  const stem = new THREE.Mesh(
+    geo('bananaStem', () => new THREE.CylinderGeometry(0.045, 0.06, 0.2, 6)),
+    standard('bananaStem', { color: 0x6b4a12, roughness: 0.85 }),
+  );
+  curve.getPointAt(0, p);
+  curve.getTangentAt(0, tangent).negate().normalize();
+  stem.position.copy(p).addScaledVector(tangent, 0.12);
+  stem.quaternion.setFromUnitVectors(up, tangent);
+  g.add(stem);
+  // Blossom end: a small dark nub on the thin end.
+  const tip = new THREE.Mesh(
+    geo('bananaTip', () => new THREE.ConeGeometry(0.04, 0.08, 5)),
+    standard('bananaTip', { color: 0x3a2608, roughness: 0.8 }),
+  );
+  curve.getPointAt(1, p);
+  curve.getTangentAt(1, tangent).normalize();
+  tip.position.copy(p).addScaledVector(tangent, 0.03);
+  tip.quaternion.setFromUnitVectors(up, tangent);
+  g.add(tip);
+  // Rest on the belly with a slight roll so the ridges catch the light.
+  g.rotation.z = 0.08;
+  g.rotation.x = -0.35;
+  g.position.y = 0.26;
   return g;
 }
 

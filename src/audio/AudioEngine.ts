@@ -57,6 +57,9 @@ export class AudioEngine implements IAudioEngine {
   private _ready = false;
   private _muted = false;
   private masterVolume = 1;
+  /** User-facing mixer: 0..1 multipliers on the music bus and on every SFX bus (sfx / engines / ui). */
+  private musicVolume = 1;
+  private sfxVolume = 1;
   private pendingTrack: MusicTrack = 'none';
   /** 1 while kart id has an active star (from events); cleared when the kart disappears or the star ends. */
   private readonly starFlags = new Uint8Array(MAX_VOICES);
@@ -165,16 +168,16 @@ export class AudioEngine implements IAudioEngine {
       return g;
     };
     const musicDuck = bus(1, master);
-    const musicBus = bus(dbToGain(MUSIC_BUS_DB), musicDuck);
-    const sfxBus = bus(1, master);
+    const musicBus = bus(dbToGain(MUSIC_BUS_DB) * this.musicVolume, musicDuck);
+    const sfxBus = bus(this.sfxVolume, master);
     // Eight engine loops sum on this bus; a tanh stage keeps the sum from ever
     // hard-clipping regardless of how many karts crowd the camera.
     const enginesClip = ctx.createWaveShaper();
     enginesClip.curve = softClipCurve(1.6, 2048);
     enginesClip.oversample = 'none';
     enginesClip.connect(master);
-    const enginesBus = bus(ENGINES_BUS_GAIN, enginesClip);
-    const uiBus = bus(UI_BUS_GAIN, master);
+    const enginesBus = bus(ENGINES_BUS_GAIN * this.sfxVolume, enginesClip);
+    const uiBus = bus(UI_BUS_GAIN * this.sfxVolume, master);
 
     this.master = master;
     this.compressor = compressor;
@@ -398,6 +401,32 @@ export class AudioEngine implements IAudioEngine {
     if (this.master && this.ctx && !this._muted) {
       this.master.gain.setTargetAtTime(this.masterVolume, this.ctx.currentTime, 0.05);
     }
+  }
+
+  get musicVolumeLevel(): number {
+    return this.musicVolume;
+  }
+
+  get sfxVolumeLevel(): number {
+    return this.sfxVolume;
+  }
+
+  /** Background music level, 0..1 (applied on top of the fixed bus trim). */
+  setMusicVolume(v: number): void {
+    this.musicVolume = clamp01(v);
+    if (this.musicBus && this.ctx) {
+      this.musicBus.gain.setTargetAtTime(dbToGain(MUSIC_BUS_DB) * this.musicVolume, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  /** Sound-effects level, 0..1 — item/collision SFX, engine loops, crowd and UI clicks together. */
+  setSfxVolume(v: number): void {
+    this.sfxVolume = clamp01(v);
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.sfxBus?.gain.setTargetAtTime(this.sfxVolume, now, 0.05);
+    this.enginesBus?.gain.setTargetAtTime(ENGINES_BUS_GAIN * this.sfxVolume, now, 0.05);
+    this.uiBus?.gain.setTargetAtTime(UI_BUS_GAIN * this.sfxVolume, now, 0.05);
   }
 
   setMuted(muted: boolean): void {

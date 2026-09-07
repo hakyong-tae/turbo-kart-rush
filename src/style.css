@@ -2506,3 +2506,24 @@ html[lang='ko'] .touch-btn {
 #ui.touch .pause-panel .panel-hint {
   display: none;
 }
+
+/* Settings: music / SFX sliders */
+.settings-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.settings-slider-value {
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.settings-range {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+  touch-action: pan-y;
+}

@@ -1,6 +1,17 @@
 /**
- * Character roster - 8 original racers. Stats are 0..1 and trade off by weight
- * class: light = agile/quick off the line, heavy = fast top end but ponderous.
+ * Character roster - 8 original racers. Stats are 0..1 and every free racer has one
+ * clear speciality paid for by a clear weakness (stat total ≈ 2.6). The three premium
+ * racers (rewarded ad / 100 VX) keep their class feel but drop the class penalty, so
+ * they are simply better cars (stat total ≈ 3.4).
+ *
+ *   zippy  launch specialist   — best acceleration, weak top speed / mini-turbo
+ *   pixel  cornering specialist — best handling, slowest top speed
+ *   max    all-rounder          — 0.55 everywhere
+ *   juno   drift specialist     — best mini-turbo, sluggish and heavy-handed
+ *   kai    speed medium         — fast for a medium, poor mini-turbo
+ *   fennec (premium) light with real top speed and a perfect mini-turbo
+ *   bram   (premium) heavy that actually accelerates and can shove anyone
+ *   rosa   (premium) fastest kart in the game with a strong mini-turbo
  */
 import type { CharacterDef } from '../core/types';
 
@@ -13,7 +24,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0xff3fb4,
     driverColor: 0xf7f9ff,
     weightClass: 'light',
-    stats: { speed: 0.18, acceleration: 0.95, handling: 0.9, weight: 0.12, miniTurbo: 0.9 },
+    stats: { speed: 0.3, acceleration: 1.0, handling: 0.7, weight: 0.15, miniTurbo: 0.45 },
     tagline: 'Blink and she is already two corners ahead.',
   },
   {
@@ -23,7 +34,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0x4dffc3,
     driverColor: 0xfff1a8,
     weightClass: 'light',
-    stats: { speed: 0.12, acceleration: 0.9, handling: 0.95, weight: 0.08, miniTurbo: 0.85 },
+    stats: { speed: 0.12, acceleration: 0.65, handling: 1.0, weight: 0.1, miniTurbo: 0.8 },
     tagline: 'Sugar-rush handling. Corners are her candy.',
   },
   {
@@ -34,7 +45,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0xff6a00,
     driverColor: 0x2b1b12,
     weightClass: 'light',
-    stats: { speed: 0.25, acceleration: 0.85, handling: 0.8, weight: 0.2, miniTurbo: 0.95 },
+    stats: { speed: 0.6, acceleration: 0.9, handling: 0.85, weight: 0.25, miniTurbo: 1.0 },
     tagline: 'Big ears, bigger mini-turbos.',
   },
   // --- medium --------------------------------------------------------------
@@ -55,7 +66,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0xffb020,
     driverColor: 0x161326,
     weightClass: 'medium',
-    stats: { speed: 0.6, acceleration: 0.45, handling: 0.5, weight: 0.55, miniTurbo: 0.65 },
+    stats: { speed: 0.45, acceleration: 0.4, handling: 0.35, weight: 0.6, miniTurbo: 1.0 },
     tagline: 'Charges every drift like a thunderstorm.',
   },
   {
@@ -65,7 +76,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0xff7a1a,
     driverColor: 0xdff6ff,
     weightClass: 'medium',
-    stats: { speed: 0.5, acceleration: 0.6, handling: 0.65, weight: 0.45, miniTurbo: 0.5 },
+    stats: { speed: 0.75, acceleration: 0.5, handling: 0.6, weight: 0.4, miniTurbo: 0.25 },
     tagline: 'Cool as the deep end, smooth as a swell.',
   },
   // --- heavy ---------------------------------------------------------------
@@ -77,7 +88,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0xd88a3c,
     driverColor: 0x5a3b21,
     weightClass: 'heavy',
-    stats: { speed: 0.92, acceleration: 0.2, handling: 0.25, weight: 0.95, miniTurbo: 0.3 },
+    stats: { speed: 0.9, acceleration: 0.5, handling: 0.5, weight: 1.0, miniTurbo: 0.55 },
     tagline: 'Slow to wake up. Impossible to shove.',
   },
   {
@@ -88,7 +99,7 @@ export const CHARACTERS: CharacterDef[] = [
     accent: 0x19d3c5,
     driverColor: 0x2a2a34,
     weightClass: 'heavy',
-    stats: { speed: 1.0, acceleration: 0.15, handling: 0.3, weight: 0.9, miniTurbo: 0.35 },
+    stats: { speed: 1.0, acceleration: 0.35, handling: 0.4, weight: 0.95, miniTurbo: 0.75 },
     tagline: 'Eighteen wheels of attitude in a four-wheel kart.',
   },
 ];
