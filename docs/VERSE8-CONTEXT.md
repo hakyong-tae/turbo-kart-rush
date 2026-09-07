@@ -50,3 +50,8 @@ bun run build
 - **호스트 승격(스펙 D)**: 스냅샷 헤더 `hostEpoch`. 8초 무스냅샷 → kartId 최소 생존자가 승격(`promote()` → 새 HostSession, `adoptFromKarts`, 아이템 authority 전환, roomState hostAccount 갱신). 클라는 낮은 epoch 무시. 후보 무응답 시 8초 후 다음 후보.
 - 다음 예정: 카트 위 닉네임, 관전.
 
+
+## 7. 모바일 / 원스토어 요건 (2026-09-07)
+- 폰 브레이크포인트 `@media (max-width: 700px), (max-height: 480px)` (style.css 말미): 키보드 안내 숨김, 선택 패널은 **스크롤 컬럼 + sticky 푸터**, 레이서 카드 세로 2열(`MainMenu.charColumns()`가 실제 열 수를 읽어 ↑↓ 이동), 가로 폰은 카드 축약. 일시정지 중 `.hud` 페이드.
+- 세로 화면 메뉴 카메라는 `MenuBackdrop.PORTRAIT_FRAMINGS` + 거리 `1/aspect` — 지우면 카트가 카드 뒤를 가득 채운다.
+- 검증: `node tools/mobile-audit.mjs` → `marketing/.audit/` 40장(390×844·844×390, ko/en, 10화면). 원스토어 폼 답변·증빙은 `docs/ONESTORE-FORM.md`, `marketing/onestore/`.

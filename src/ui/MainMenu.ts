@@ -27,6 +27,7 @@ const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: StringKey }
   { key: 'miniTurbo', label: 'stat.miniTurbo' },
 ];
 const TIER_KEYS: readonly StringKey[] = ['tier.rookie', 'tier.pro', 'tier.expert'];
+/** Default character-grid column count (the stylesheet drops to 2 columns on phones). */
 const CHAR_COLUMNS = 4;
 
 export class MainMenu {
@@ -241,8 +242,8 @@ export class MainMenu {
         const n = this.characters.length;
         if (input.menuLeft) this.setCharacter((this.charIndex - 1 + n) % n, true);
         else if (input.menuRight) this.setCharacter((this.charIndex + 1) % n, true);
-        else if (input.menuUp) this.setCharacter((this.charIndex - CHAR_COLUMNS + n) % n, true);
-        else if (input.menuDown) this.setCharacter((this.charIndex + CHAR_COLUMNS) % n, true);
+        else if (input.menuUp) this.setCharacter((this.charIndex - this.charColumns() + n) % n, true);
+        else if (input.menuDown) this.setCharacter((this.charIndex + this.charColumns()) % n, true);
         if (input.confirm) this.tryProceed();
         else if (input.back) this.goTo('title', true);
         break;
@@ -387,6 +388,14 @@ export class MainMenu {
       difficulty: DIFFICULTIES[this.difficultyIndex],
       laps: track.laps > 0 ? track.laps : DEFAULT_LAPS,
     });
+  }
+
+  /** Live column count of the character grid (responsive CSS changes it), for up/down navigation. */
+  private charColumns(): number {
+    const grid = this.charCards[0]?.parentElement;
+    if (!grid) return CHAR_COLUMNS;
+    const cols = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length;
+    return cols > 0 ? cols : CHAR_COLUMNS;
   }
 
   private buildCharacterCard(c: CharacterDef): HTMLElement {

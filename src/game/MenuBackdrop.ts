@@ -30,6 +30,18 @@ const FRAMINGS: Record<MenuFraming, FramingSpec> = {
   tracks: { distance: 5.9, height: 0.85, fov: 30, sx: 0, sy: 0.42 },
 };
 
+/**
+ * Portrait phones: the vertical FOV is fixed, so a tall viewport crops the sides and the kart
+ * would fill the whole width behind the cards. Pull the camera back by 1/aspect and park the
+ * kart low and centred, under the scrolling menus.
+ */
+const PORTRAIT_FRAMINGS: Record<MenuFraming, FramingSpec> = {
+  title: { distance: 5.7, height: 1.0, fov: 30, sx: 0, sy: -0.32 },
+  characters: { distance: 5.3, height: 0.95, fov: 30, sx: 0, sy: -0.62 },
+  tracks: { distance: 5.9, height: 0.85, fov: 30, sx: 0, sy: -0.62 },
+};
+const PORTRAIT_MIN_ASPECT = 0.45;
+
 const PODIUM_RADIUS = 1.55;
 const PODIUM_HEIGHT = 0.32;
 /** Height of the kart's visual centre above the podium top. */
@@ -355,7 +367,8 @@ export class MenuBackdrop {
     }
 
     // Ease framing parameters toward the active mode.
-    const want = FRAMINGS[this.framing];
+    const portrait = camera.aspect < 1;
+    const want = (portrait ? PORTRAIT_FRAMINGS : FRAMINGS)[this.framing];
     const c = this.cur;
     c.distance = damp(c.distance, want.distance, FRAMING_LAMBDA, dt);
     c.height = damp(c.height, want.height, FRAMING_LAMBDA, dt);
@@ -365,7 +378,8 @@ export class MenuBackdrop {
 
     const bob = Math.sin(this.time * 0.45) * 0.1;
     const f = this.focus;
-    this.camPos.set(Math.sin(this.angle) * c.distance, f.y + c.height + bob, Math.cos(this.angle) * c.distance);
+    const distance = portrait ? c.distance / Math.max(PORTRAIT_MIN_ASPECT, camera.aspect) : c.distance;
+    this.camPos.set(Math.sin(this.angle) * distance, f.y + c.height + bob, Math.cos(this.angle) * distance);
 
     // Place the kart focus point at NDC (sx, sy) by offsetting the look target in the
     // camera's own right/up directions.
