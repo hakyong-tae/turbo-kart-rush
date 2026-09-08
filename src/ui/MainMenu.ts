@@ -8,6 +8,7 @@ import { GAME_TITLE, DEFAULT_LAPS } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
 import { t, t as tt, tOr } from '../core/i18n';
 import { canRace, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
+import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import type { StringKey } from '../core/i18n';
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
@@ -412,6 +413,22 @@ export class MainMenu {
     )} 100%)`;
     el('div', 'char-wheel char-wheel-l', undefined, swatch);
     el('div', 'char-wheel char-wheel-r', undefined, swatch);
+    // Real kart render replaces the helmet placeholder as soon as the thumbnail exists.
+    const thumb = el('img', 'char-thumb', undefined, swatch);
+    thumb.alt = c.name;
+    thumb.draggable = false;
+    const ready = getKartThumbnail(c.id);
+    if (ready) {
+      thumb.src = ready;
+      card.classList.add('has-thumb');
+    } else {
+      void ensureKartThumbnails(this.characters).then((thumbs) => {
+        const src = thumbs.get(c.id);
+        if (!src || !card.isConnected) return;
+        thumb.src = src;
+        card.classList.add('has-thumb');
+      });
+    }
     el('div', 'card-name', c.name.toUpperCase(), card);
     if (c.premium) {
       card.dataset.premium = '1';

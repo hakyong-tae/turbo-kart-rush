@@ -2571,3 +2571,36 @@ html[lang='ko'] .touch-btn {
     gap: 8px;
   }
 }
+
+/* Character cards: real kart thumbnail over the colour swatch (helmet placeholder until ready). */
+.char-thumb {
+  position: absolute;
+  inset: -4% -2%;
+  width: 104%;
+  height: 108%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.25s var(--ease-out);
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}
+.char-card.has-thumb .char-thumb {
+  opacity: 1;
+}
+.char-card.has-thumb .char-helmet,
+.char-card.has-thumb .char-wheel {
+  display: none;
+}
+.char-card.has-thumb .char-swatch {
+  height: clamp(60px, 10vh, 104px);
+}
+@media (max-height: 720px) {
+  .char-card.has-thumb .char-swatch {
+    height: 72px;
+  }
+}
+@media (max-height: 480px) {
+  .char-card.has-thumb .char-swatch {
+    height: 48px;
+  }
+}
