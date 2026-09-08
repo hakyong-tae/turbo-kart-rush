@@ -184,6 +184,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | 7 | `PCFSoftShadowMap` deprecated 경고 | three 0.185에서 PCF로 폴백 | 무해. `Game.ts` 렌더러 설정에서 `PCFShadowMap`으로 바꾸면 경고 제거 |
 | 8 | 라이선스 | MIT (코드), 에셋 없음 → 저작권 이슈 0 | 캐릭터/트랙 이름도 자체 IP. Verse8 상업 배포 문제 없음 |
 | 9 | ~~폰 레이아웃 미검증~~ | ✅ **완료(onestore-mobile, 26-09-07)** 폰 브레이크포인트(≤700w / ≤480h): 선택 패널 스크롤+sticky 푸터, 레이서 2열, 세로 메뉴 카메라 프레이밍, 일시정지 HUD 페이드, 타이틀 키보드 안내 숨김. `tools/mobile-audit.mjs`로 40장 캡처 검증 | 실기기 30분 세션·기기명은 원스토어 폼 제출 전 직접 (`docs/ONESTORE-FORM.md`) |
+| 10 | ~~카트 8대가 색놀이~~ | ✅ **완료(kart-bodies, 26-09-07)** `kart/bodies.ts`에 캐릭터별 차체 스펙 8종(화살촉·버블카·사막버기·기준형·스텔스웨지·서프덱·몬스터·트럭). 바퀴/시트/드라이버/배기는 공통, 재질별 배치 병합 유지(카트당 ≤28 메시). 검증 `node tools/kart-lineup.mjs` | 물리·충돌 반경 변경 없음(비주얼만) |
 
 ---
 
