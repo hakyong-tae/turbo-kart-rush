@@ -8,7 +8,7 @@ describe('balance', () => {
     expect(BALANCE.items.greenSpeed).toBe(34);
     expect(BALANCE.itemTable[0].banana).toBe(35);
     expect(BALANCE.ai.profiles.hard.releaseStage).toBe(3);
-    expect(BALANCE.race.finishGraceSeconds).toBe(12);
+    expect(BALANCE.race.retireSeconds).toBe(10);
   });
 
   it('applies numeric overrides from b.<path> params', () => {

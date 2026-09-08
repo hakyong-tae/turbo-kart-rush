@@ -38,6 +38,14 @@ export interface KartModelPartsEx extends KartModelParts {
   exhaustGlowMaterial: THREE.MeshStandardMaterial;
   /** Wheel radii matching `wheels` order (for spin speed). */
   wheelRadii: number[];
+  /** Neon exhaust dressing: always-on tip ring, and afterburner cone + halo shown while boosting. */
+  neonRingMaterial: THREE.MeshBasicMaterial;
+  neonFlameMaterial: THREE.MeshBasicMaterial;
+  neonHaloMaterial: THREE.MeshBasicMaterial;
+  /** Cone meshes (one per exhaust; userData.lengthScale compensates the stack stretch). */
+  neonFlames: THREE.Object3D[];
+  /** Resting neon colour (accent tinted toward white). */
+  neonColor: THREE.Color;
   /** Disposes every geometry, material and texture owned by this model. */
   dispose(): void;
 }
@@ -248,6 +256,26 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
   pipeGeo.rotateX(Math.PI / 2);
   const glowGeo = track(new THREE.CircleGeometry(0.04, 12));
   glowGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.003);
+  // Neon: a thin ring hugging the pipe tip (always lit) and an additive afterburner cone + halo.
+  const neonColor = new THREE.Color(character.accent).lerp(new THREE.Color(0xffffff), 0.35);
+  const neonRingMaterial = mat(
+    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
+  );
+  const neonFlameMaterial = mat(
+    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+  );
+  const neonHaloMaterial = mat(
+    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+  );
+  const ringGeo = track(new THREE.TorusGeometry(0.06, 0.014, 6, 18));
+  ringGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.002);
+  const coneGeo = track(new THREE.ConeGeometry(0.075, 1, 12, 1, true));
+  coneGeo.rotateX(Math.PI / 2); // apex → +Z (away from the pipe)
+  coneGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.5);
+  const haloGeo = track(new THREE.ConeGeometry(0.15, 0.75, 12, 1, true));
+  haloGeo.rotateX(Math.PI / 2);
+  haloGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.3);
+  const neonFlames: THREE.Object3D[] = [];
   for (const e of spec.exhausts) {
     const g = new THREE.Group();
     g.name = 'exhaust';
@@ -261,6 +289,23 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
     const glow = makeMesh(glowGeo, exhaustGlowMaterial, 'exhaustGlow');
     glow.castShadow = false;
     g.add(glow);
+    const ring = makeMesh(ringGeo, neonRingMaterial, 'neonRing');
+    ring.castShadow = false;
+    g.add(ring);
+    // The group is stretched along Z for long stacks; undo that on the flame so it keeps its length.
+    const flame = new THREE.Group();
+    flame.name = 'neonFlame';
+    flame.userData.lengthScale = g.userData.lengthScale;
+    flame.scale.z = 1 / (g.userData.lengthScale as number);
+    const cone = makeMesh(coneGeo, neonFlameMaterial, 'neonCone');
+    cone.castShadow = false;
+    const halo = makeMesh(haloGeo, neonHaloMaterial, 'neonHalo');
+    halo.castShadow = false;
+    flame.add(cone, halo);
+    // Flames sit in group-local space: the ring/cone origin is the pipe tip at BASE_PIPE_LENGTH.
+    flame.position.z = BASE_PIPE_LENGTH * (1 - 1 / (g.userData.lengthScale as number));
+    g.add(flame);
+    neonFlames.push(flame);
     root.add(g);
     exhausts.push(g);
   }
@@ -428,6 +473,11 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
     accentMaterial,
     exhaustGlowMaterial,
     wheelRadii,
+    neonRingMaterial,
+    neonFlameMaterial,
+    neonHaloMaterial,
+    neonFlames,
+    neonColor,
     dispose,
   };
 }

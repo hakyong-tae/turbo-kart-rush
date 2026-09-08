@@ -35,6 +35,9 @@ import { AIDriver } from '../ai/AIDriver';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
 import { PostFX } from '../fx/PostFX';
+import { RearView } from '../fx/RearView';
+import { TEAM_COLORS, isTeamMode, teamOf } from '../core/teams';
+import type { Team } from '../core/types';
 
 import { RaceManager } from './RaceManager';
 import { FollowCamera } from './FollowCamera';
@@ -85,6 +88,7 @@ interface PartialRace {
   items: IItemManager | null;
   followCamera: FollowCamera | null;
   hud: HUD | null;
+  teamMarkers?: THREE.Sprite[];
 }
 
 interface RaceContext {
@@ -100,6 +104,8 @@ interface RaceContext {
   raceManager: RaceManager;
   followCamera: FollowCamera;
   hud: HUD;
+  /** Team chevrons above karts (empty in solo). */
+  teamMarkers: THREE.Sprite[];
   sun: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
   /** Soft camera-following fill so karts read on dark tracks (0 intensity on bright ones). */
@@ -114,6 +120,46 @@ interface RaceContext {
   localKartId: number;
   /** Items are disabled in online races (phase 2). */
   itemsEnabled: boolean;
+}
+
+const teamMarkerMaterials = new Map<Team, THREE.SpriteMaterial>();
+/** Downward chevron in the team colour, shared per team. */
+function teamMarkerMaterial(team: Team): THREE.SpriteMaterial {
+  let mat = teamMarkerMaterials.get(team);
+  if (mat) return mat;
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext('2d');
+  if (ctx) {
+    const hex = '#' + TEAM_COLORS[team].toString(16).padStart(6, '0');
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.moveTo(8, 8);
+    ctx.lineTo(56, 8);
+    ctx.lineTo(32, 56);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = hex;
+    ctx.beginPath();
+    ctx.moveTo(12, 10);
+    ctx.lineTo(52, 10);
+    ctx.lineTo(32, 50);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath();
+    ctx.moveTo(20, 14);
+    ctx.lineTo(44, 14);
+    ctx.lineTo(32, 26);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
+  teamMarkerMaterials.set(team, mat);
+  return mat;
 }
 
 const VOLUME_KEY_MUSIC = 'tkr.vol.music';
@@ -149,6 +195,7 @@ export class Game {
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
   private readonly particles: IParticleSystem;
+  private readonly rearView: RearView;
   private readonly postfx: IPostFX;
   private postfxOk = true;
 
@@ -222,6 +269,7 @@ export class Game {
     this.particles = new ParticleSystem();
     this.scene.add(this.particles.object);
     this.postfx = new PostFX();
+    this.rearView = new RearView();
     try {
       this.postfx.init(this.renderer, this.scene, this.camera);
     } catch (err) {
@@ -302,6 +350,7 @@ export class Game {
     this.safe(() => this.audio.dispose());
     this.safe(() => this.particles.dispose());
     this.safe(() => this.postfx.dispose());
+    this.safe(() => this.rearView.dispose());
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.uiRoot.remove();
@@ -486,7 +535,7 @@ export class Game {
       isPlayer: s.kartId === r.localKartId,
     }));
     r.hud.hide();
-    this.results.show(mapped);
+    this.results.show(mapped, r.settings.mode ?? 'solo');
     this.setState('results');
     this.playMusic('results');
   }
@@ -831,6 +880,12 @@ export class Game {
     }
     const player = r.karts[r.localKartId];
     for (let i = 0; i < r.karts.length; i++) r.karts[i].updateVisuals(dt);
+    for (let i = 0; i < r.teamMarkers.length; i++) {
+      const ks = r.karts[i].state;
+      const m = r.teamMarkers[i];
+      m.position.set(ks.position.x, ks.position.y + 1.55 + Math.sin(this.elapsed * 4 + i) * 0.05, ks.position.z);
+      m.visible = !ks.finished || ks.finishTime > 0;
+    }
     r.track.update(dt, this.elapsed);
     r.followCamera.update(dt, player, lookBack);
     this.updateSun(r, player);
@@ -845,6 +900,13 @@ export class Game {
       if (r.resultsTimer <= 0) this.enterResults();
     }
     this.render(dt);
+
+    // Rear-view mirror PiP: drawn on top of the presented frame while the HUD shows a threat.
+    const mirrorRect = r.hud.getMirrorRect();
+    if (mirrorRect) {
+      const h = this.container.clientHeight || window.innerHeight;
+      this.safe(() => this.rearView.render(this.renderer, this.scene, player, mirrorRect, h));
+    }
   }
 
   private render(dt: number): void {
@@ -1034,6 +1096,7 @@ export class Game {
     const hud = new HUD(this.uiRoot, buildItemIcon);
     partial.hud = hud;
     hud.setTrack(track);
+    hud.setMode(settings.mode ?? 'solo');
 
     // Lights from the track environment.
     const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity);
@@ -1067,6 +1130,18 @@ export class Game {
     this.scene.add(track.object);
     for (const k of karts) this.scene.add(k.object);
     this.scene.add(items.object);
+    // Team modes: a coloured chevron floats over every kart so friend / foe reads at a glance.
+    const teamMarkers: THREE.Sprite[] = [];
+    if (isTeamMode(settings.mode)) {
+      for (const k of karts) {
+        const sprite = new THREE.Sprite(teamMarkerMaterial(teamOf(k.state.id)));
+        sprite.scale.set(0.7, 0.7, 1);
+        sprite.renderOrder = 5;
+        this.scene.add(sprite);
+        teamMarkers.push(sprite);
+      }
+    }
+    partial.teamMarkers = teamMarkers;
     this.scene.add(sun, sun.target, hemi, fill, fill.target);
     this.scene.fog = fog;
     this.scene.background = background;
@@ -1083,6 +1158,7 @@ export class Game {
       raceManager,
       followCamera,
       hud,
+      teamMarkers: partial.teamMarkers ?? [],
       sun,
       hemi,
       fill,
@@ -1143,7 +1219,7 @@ export class Game {
       events.on('race:finish', (e) => {
         if (this.race !== r || !e.isPlayer) return;
         this.onPlayerFinished(r);
-        this.maybeSubmitTime(r, e.time);
+        if (!e.retired && e.time > 0) this.maybeSubmitTime(r, e.time);
       }),
       events.on('race:allFinished', () => {
         if (this.race !== r) return;
@@ -1212,7 +1288,7 @@ export class Game {
     const r = this.race;
     if (!r || this.state === 'results') return;
     r.hud.hide();
-    this.results.show(r.raceManager.getStandings());
+    this.results.show(r.raceManager.getStandings(), r.settings.mode ?? 'solo');
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
     }
@@ -1256,6 +1332,7 @@ export class Game {
     this.scene.remove(r.track.object);
     for (const k of r.karts) this.scene.remove(k.object);
     this.scene.remove(r.items.object);
+    for (const m of r.teamMarkers) this.scene.remove(m);
     this.scene.remove(r.sun, r.sun.target, r.hemi, r.fill, r.fill.target);
     r.sun.dispose();
     r.hemi.dispose();

@@ -74,6 +74,7 @@ export class Kart implements IKart {
   private readonly parts: KartModelPartsEx;
   private readonly exhaustAnchors: ExhaustAnchor[];
   private overchargeEmitted = false;
+  private neonTinted = false;
   /** Forward distance to the wake source on the last in-wake frame (slipstream exit rule). */
   private lastDraftAlong = 0;
   /** Model root; receives visual-only offsets. `object` always equals the physics pose. */
@@ -391,6 +392,30 @@ export class Kart implements IKart {
       const len = ((g.userData.length as number | undefined) ?? 0.28) * exz;
       a.direction.set(0, 0, 1).applyEuler(g.rotation).applyQuaternion(s.quaternion).normalize();
       a.position.set(0, 0, len).applyEuler(g.rotation).add(g.position).applyQuaternion(s.quaternion).add(s.position);
+    }
+
+    // Neon afterburner: cones fade in with the boost glow, the tip ring always glows.
+    const glow = this.visGlow;
+    p.neonFlameMaterial.opacity = Math.min(1, glow * (0.6 + 0.4 * flicker));
+    p.neonHaloMaterial.opacity = Math.min(1, glow * 0.32 * (0.7 + 0.3 * flicker));
+    p.neonRingMaterial.opacity = 0.5 + 0.5 * glow;
+    const flameLen = 0.55 + 0.75 * glow * (0.8 + 0.2 * flicker);
+    for (let i = 0; i < p.neonFlames.length; i++) {
+      const f = p.neonFlames[i];
+      const ls = (f.userData.lengthScale as number | undefined) ?? 1;
+      f.scale.set(0.8 + 0.4 * glow, 0.8 + 0.4 * glow, flameLen / ls);
+    }
+    if (s.isInvincible) {
+      const hue = (this.time * 1.6 + 0.33) % 1;
+      p.neonFlameMaterial.color.setHSL(hue, 1, 0.65);
+      p.neonHaloMaterial.color.copy(p.neonFlameMaterial.color);
+      p.neonRingMaterial.color.copy(p.neonFlameMaterial.color);
+      this.neonTinted = true;
+    } else if (this.neonTinted) {
+      p.neonFlameMaterial.color.copy(p.neonColor);
+      p.neonHaloMaterial.color.copy(p.neonColor);
+      p.neonRingMaterial.color.copy(p.neonColor);
+      this.neonTinted = false;
     }
   }
 

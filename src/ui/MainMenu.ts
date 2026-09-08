@@ -2,7 +2,7 @@
  * Main menu: Title → Character Select → Track Select. Pure DOM; the 3D backdrop
  * behind it is owned by Game (mirrored via onHighlight).
  */
-import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinition } from '../core/types';
+import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinition, RaceMode } from '../core/types';
 import { events } from '../core/events';
 import { GAME_TITLE, DEFAULT_LAPS } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
@@ -16,6 +16,8 @@ export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
 
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
 const DIFFICULTY_LABEL: Record<Difficulty, StringKey> = { easy: 'diff.easy', normal: 'diff.normal', hard: 'diff.hard' };
+const RACE_MODES: readonly RaceMode[] = ['solo', 'teamPoints', 'teamFirst'];
+const MODE_LABEL: Record<RaceMode, StringKey> = { solo: 'mode.solo', teamPoints: 'mode.teamPoints', teamFirst: 'mode.teamFirst' };
 const DIFFICULTY_BLURB: Record<Difficulty, StringKey> = {
   easy: 'diff.easy.blurb',
   normal: 'diff.normal.blurb',
@@ -60,6 +62,8 @@ export class MainMenu {
   private trackIndex = 0;
   private readonly diffButtons: HTMLElement[] = [];
   private difficultyIndex = 1;
+  private modeIndex = 0;
+  private readonly modeButtons: HTMLButtonElement[] = [];
   private readonly diffBlurb: TextField;
   private readonly startButton: HTMLElement;
   /** 0 = track cards row, 1 = difficulty row, 2 = start button. */
@@ -165,11 +169,12 @@ export class MainMenu {
       this.trackCards.push(card);
     });
     const trFoot = el('footer', 'select-footer glass', undefined, tr);
-    const diffWrap = el('div', 'difficulty', undefined, trFoot);
-    el('div', 'difficulty-label', t('menu.difficulty'), diffWrap);
-    const seg = el('div', 'segmented', undefined, diffWrap);
-    DIFFICULTIES.forEach((d, i) => {
-      const b = el('button', 'seg', t(DIFFICULTY_LABEL[d]), seg);
+    // Race mode: solo / team points / team first-place.
+    const modeWrap = el('div', 'difficulty race-mode', undefined, trFoot);
+    el('div', 'difficulty-label', t('menu.mode'), modeWrap);
+    const modeSeg = el('div', 'segmented', undefined, modeWrap);
+    RACE_MODES.forEach((m, i) => {
+      const b = el('button', 'seg', t(MODE_LABEL[m]), modeSeg);
       b.type = 'button';
       b.addEventListener('pointerenter', () => {
         this.trackRow = 1;
@@ -178,6 +183,23 @@ export class MainMenu {
       b.addEventListener('click', (ev) => {
         ev.stopPropagation();
         this.trackRow = 1;
+        this.setMode(i, true);
+      });
+      this.modeButtons.push(b);
+    });
+    const diffWrap = el('div', 'difficulty', undefined, trFoot);
+    el('div', 'difficulty-label', t('menu.difficulty'), diffWrap);
+    const seg = el('div', 'segmented', undefined, diffWrap);
+    DIFFICULTIES.forEach((d, i) => {
+      const b = el('button', 'seg', t(DIFFICULTY_LABEL[d]), seg);
+      b.type = 'button';
+      b.addEventListener('pointerenter', () => {
+        this.trackRow = 2;
+        this.refreshTrackFocus();
+      });
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.trackRow = 2;
         this.setDifficulty(i, true);
       });
       this.diffButtons.push(b);
@@ -187,7 +209,7 @@ export class MainMenu {
     trActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('characterSelect', true)));
     this.startButton = button(t('menu.startRace'), 'primary start', () => this.start());
     this.startButton.addEventListener('pointerenter', () => {
-      this.trackRow = 2;
+      this.trackRow = 3;
       this.refreshTrackFocus();
     });
     trActions.appendChild(this.startButton);
@@ -198,6 +220,7 @@ export class MainMenu {
     this.setCharacter(0);
     this.setTrack(0);
     this.setDifficulty(1);
+    this.setMode(0);
     this.applyPanel();
   }
 
@@ -252,11 +275,11 @@ export class MainMenu {
       }
       case 'trackSelect': {
         if (input.menuUp) {
-          this.trackRow = (this.trackRow + 2) % 3;
+          this.trackRow = (this.trackRow + 3) % 4;
           this.refreshTrackFocus();
           events.emit('ui:move', {});
         } else if (input.menuDown) {
-          this.trackRow = (this.trackRow + 1) % 3;
+          this.trackRow = (this.trackRow + 1) % 4;
           this.refreshTrackFocus();
           events.emit('ui:move', {});
         } else if (input.menuLeft || input.menuRight) {
@@ -265,6 +288,8 @@ export class MainMenu {
             const n = this.tracks.length;
             this.setTrack((this.trackIndex + dir + n) % n, true);
           } else if (this.trackRow === 1) {
+            this.setMode((this.modeIndex + dir + RACE_MODES.length) % RACE_MODES.length, true);
+          } else if (this.trackRow === 2) {
             this.setDifficulty((this.difficultyIndex + dir + 3) % 3, true);
           } else {
             events.emit('ui:move', {});
@@ -371,12 +396,21 @@ export class MainMenu {
     if (changed && sound) events.emit('ui:move', {});
   }
 
+  private setMode(i: number, sound = false): void {
+    const changed = i !== this.modeIndex;
+    this.modeIndex = i;
+    this.modeButtons.forEach((b, k) => b.classList.toggle('selected', k === i));
+    this.refreshTrackFocus();
+    if (changed && sound) events.emit('ui:move', {});
+  }
+
   private refreshTrackFocus(): void {
     this.trackCards.forEach((c, k) => c.classList.toggle('focused', this.trackRow === 0 && k === this.trackIndex));
+    this.modeButtons.forEach((b, k) => b.classList.toggle('focused', this.trackRow === 1 && k === this.modeIndex));
     this.diffButtons.forEach((b, k) =>
-      b.classList.toggle('focused', this.trackRow === 1 && k === this.difficultyIndex),
+      b.classList.toggle('focused', this.trackRow === 2 && k === this.difficultyIndex),
     );
-    this.startButton.classList.toggle('focused', this.trackRow === 2);
+    this.startButton.classList.toggle('focused', this.trackRow === 3);
   }
 
   private start(): void {
@@ -388,6 +422,7 @@ export class MainMenu {
       characterId: character.id,
       trackId: track.id,
       difficulty: DIFFICULTIES[this.difficultyIndex],
+      mode: RACE_MODES[this.modeIndex],
       laps: track.laps > 0 ? track.laps : DEFAULT_LAPS,
     });
   }

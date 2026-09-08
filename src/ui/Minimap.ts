@@ -3,6 +3,7 @@
  * kart dots redrawn at ~30 Hz.
  */
 import type { IKart, ITrack } from '../core/types';
+import { TEAM_COLORS, teamOf } from '../core/teams';
 import { MINIMAP_SIZE } from '../core/constants';
 import { cssHex, el } from './dom';
 
@@ -12,6 +13,7 @@ const REDRAW_INTERVAL = 1 / 30;
 export class Minimap {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D | null;
+  private teamColors = false;
   private readonly layer: HTMLCanvasElement;
   private track: ITrack | null = null;
   private timer = 0;
@@ -34,6 +36,11 @@ export class Minimap {
     this.track = track;
     this.renderStaticLayer();
     this.timer = REDRAW_INTERVAL; // force an immediate redraw
+  }
+
+  /** Team modes colour the dots by team instead of by racer. */
+  setTeamColors(on: boolean): void {
+    this.teamColors = on;
   }
 
   update(dt: number, karts: readonly IKart[], playerId: number): void {
@@ -62,7 +69,7 @@ export class Minimap {
         const r = (isPlayer ? 6.5 : 4.5) * this.dpr;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = cssHex(k.state.character.color);
+        ctx.fillStyle = cssHex(this.teamColors ? TEAM_COLORS[teamOf(k.state.id)] : k.state.character.color);
         ctx.fill();
         ctx.lineWidth = (isPlayer ? 2.5 : 1.2) * this.dpr;
         ctx.strokeStyle = isPlayer ? '#ffffff' : 'rgba(0,0,0,0.6)';

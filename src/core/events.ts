@@ -13,7 +13,7 @@ export interface GameEvents {
   'race:countdown': { count: number }; // 3, 2, 1
   'race:start': { trackId: string };
   'race:lap': { kartId: number; lap: number; totalLaps: number; isPlayer: boolean; isFinalLap: boolean };
-  'race:finish': { kartId: number; place: number; time: number; isPlayer: boolean };
+  'race:finish': { kartId: number; place: number; time: number; isPlayer: boolean; retired?: boolean };
   'race:allFinished': {};
   'race:positionChange': { kartId: number; from: number; to: number; isPlayer: boolean };
   'race:wrongWay': { kartId: number; wrongWay: boolean };

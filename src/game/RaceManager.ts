@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { Difficulty, IKart, ITrack, RaceSettings, RaceStanding, TrackSample } from '../core/types';
 import { BALANCE } from '../core/balance';
 import { events } from '../core/events';
+import { teamOf } from '../core/teams';
 import { CHECKPOINT_COUNT, COUNTDOWN_STEP_SECONDS, VOID_Y } from '../core/constants';
 import { seededRandom, trackDelta, wrap01 } from '../core/math';
 
@@ -63,6 +64,8 @@ export class RaceManager {
   private countdownEmitted = 0;
   private finishedCount = 0;
   private playerFinishedAt = -1;
+  /** Race time when the winner crossed the line (-1 until then). */
+  private firstFinishedAt = -1;
   private allFinishedEmitted = false;
 
   private readonly trackers: Tracker[] = [];
@@ -159,6 +162,7 @@ export class RaceManager {
     this.time = Math.max(0, raceTime);
     this.finishedCount = 0;
     this.playerFinishedAt = -1;
+    this.firstFinishedAt = -1;
     this.allFinishedEmitted = false;
     const n = this.checkpointT.length;
     for (const tr of this.trackers) {
@@ -213,6 +217,7 @@ export class RaceManager {
         place: s.place,
         finishTime: s.finished ? s.finishTime : -1,
         isPlayer: s.isPlayer,
+        team: teamOf(s.id),
       });
     }
     out.sort((a, b) => a.place - b.place);
@@ -318,10 +323,11 @@ export class RaceManager {
     this.sortOrder();
     this.updatePlaces(dt);
 
-    if (this.phase === 'racing' && this.playerFinishedAt >= 0 && !this.allFinishedEmitted) {
+    if (this.phase === 'racing' && this.firstFinishedAt >= 0 && !this.allFinishedEmitted) {
       const allDone = this.finishedCount >= this.trackers.length;
-      if (allDone || this.time - this.playerFinishedAt >= B.race.finishGraceSeconds) {
-        this.forceFinishRemaining();
+      // Whoever has not crossed the line retireSeconds after the winner is retired (DNF).
+      if (allDone || this.time - this.firstFinishedAt >= B.race.retireSeconds) {
+        this.retireRemaining();
         this.phase = 'complete';
         this.allFinishedEmitted = true;
         events.emit('race:allFinished', {});
@@ -450,13 +456,25 @@ export class RaceManager {
     tr.candidatePlace = s.place;
     s.wrongWay = false;
     if (s.isPlayer && this.playerFinishedAt < 0) this.playerFinishedAt = this.time;
+    if (this.firstFinishedAt < 0) this.firstFinishedAt = this.time;
     events.emit('race:finish', { kartId: s.id, place: s.place, time: s.finishTime, isPlayer: s.isPlayer });
   }
 
-  private forceFinishRemaining(): void {
+  /** Marks every kart still on track as retired (DNF): placed after the finishers by progress. */
+  private retireRemaining(): void {
     // Current order is already sorted: finished first, then by progress.
     for (const tr of this.order) {
-      if (!tr.kart.state.finished) this.finish(tr);
+      const s = tr.kart.state;
+      if (s.finished) continue;
+      s.finished = true;
+      s.finishTime = -1;
+      this.finishedCount++;
+      s.place = this.finishedCount;
+      tr.emittedPlace = s.place;
+      tr.candidatePlace = s.place;
+      s.wrongWay = false;
+      if (s.isPlayer && this.playerFinishedAt < 0) this.playerFinishedAt = this.time;
+      events.emit('race:finish', { kartId: s.id, place: s.place, time: -1, isPlayer: s.isPlayer, retired: true });
     }
   }
 

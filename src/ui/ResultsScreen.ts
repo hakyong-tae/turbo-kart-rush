@@ -2,7 +2,8 @@
  * Post-race standings table with staggered row animation, confetti for a podium
  * finish and Race Again / Change Track / Main Menu actions.
  */
-import type { InputState, RaceStanding } from '../core/types';
+import type { InputState, RaceStanding, RaceMode, Team } from '../core/types';
+import { TEAM_COLORS, computeTeamResult, isTeamMode, pointsFor, teamOf } from '../core/teams';
 import { events } from '../core/events';
 import { formatRaceTime } from '../core/math';
 import { localOrdinal, t } from '../core/i18n';
@@ -49,24 +50,46 @@ export class ResultsScreen {
     this.focus.add(records);
   }
 
-  show(standings: readonly RaceStanding[]): void {
+  show(standings: readonly RaceStanding[], mode: RaceMode = 'solo'): void {
     this.table.replaceChildren();
     this.confetti.replaceChildren();
     const player = standings.find((s) => s.isPlayer);
     const place = player ? player.place : standings.length;
     const winnerTime = standings.length > 0 ? standings[0].finishTime : 0;
+    const teamMode = isTeamMode(mode);
+    const teamResult = teamMode ? computeTeamResult(standings, mode) : null;
+    const myTeam = player ? (player.team ?? teamOf(player.kartId)) : 'red';
+    const teamWon = teamResult ? teamResult.winner === myTeam : false;
+    this.table.classList.toggle('team', teamMode);
+    this.table.classList.toggle('points', mode === 'teamPoints');
 
-    this.heading.set(place === 1 ? t('results.victory') : t('results.place', { ord: localOrdinal(place).toUpperCase() }));
-    this.subheading.set(
-      place === 1
-        ? t('results.sub.win')
-        : place <= 3
-          ? t('results.sub.podium')
-          : place <= 5
-            ? t('results.sub.mid')
-            : t('results.sub.rough'),
-    );
-    this.panel.classList.toggle('gold', place === 1);
+    if (teamResult) {
+      const teamName = (tm: Team) => t(tm === 'red' ? 'team.red' : 'team.blue');
+      this.heading.set(
+        teamResult.winner === 'draw' ? t('results.teamDraw') : t(teamWon ? 'results.teamWin' : 'results.teamLose', { team: teamName(teamResult.winner) }),
+      );
+      this.subheading.set(
+        mode === 'teamPoints'
+          ? `${teamName('red')} ${teamResult.red}  :  ${teamResult.blue} ${teamName('blue')}`
+          : t('results.firstRule', { team: teamResult.firstTeam ? teamName(teamResult.firstTeam) : '—' }),
+      );
+      this.panel.classList.toggle('gold', teamWon);
+      this.panel.classList.toggle('team-red', teamResult.winner === 'red');
+      this.panel.classList.toggle('team-blue', teamResult.winner === 'blue');
+    } else {
+      this.heading.set(place === 1 ? t('results.victory') : t('results.place', { ord: localOrdinal(place).toUpperCase() }));
+      this.subheading.set(
+        place === 1
+          ? t('results.sub.win')
+          : place <= 3
+            ? t('results.sub.podium')
+            : place <= 5
+              ? t('results.sub.mid')
+              : t('results.sub.rough'),
+      );
+      this.panel.classList.toggle('gold', place === 1);
+      this.panel.classList.remove('team-red', 'team-blue');
+    }
     this.rankBanner.set('');
     this.rankBanner.node.classList.add('hidden');
 
@@ -75,9 +98,11 @@ export class ResultsScreen {
       row.style.animationDelay = `${0.12 + i * 0.09}s`;
       if (s.isPlayer) row.classList.add('you');
       if (s.place <= 3) row.classList.add(`podium-${s.place}`);
+      const team = s.team ?? teamOf(s.kartId);
+      if (teamMode) row.classList.add(`team-${team}`);
       el('span', 'standing-place', localOrdinal(s.place), row);
       const chip = el('span', 'standing-chip', undefined, row);
-      chip.style.background = cssHex(s.color);
+      chip.style.background = cssHex(teamMode ? TEAM_COLORS[team] : s.color);
       el('span', 'standing-name', s.name + (s.isPlayer ? `  ${t('results.you')}` : ''), row);
       const time = s.finishTime;
       const label =
@@ -87,9 +112,13 @@ export class ResultsScreen {
             ? formatRaceTime(time)
             : `+${(time - winnerTime).toFixed(3)}`;
       el('span', 'standing-time', label, row);
+      if (mode === 'teamPoints') {
+        const pts = pointsFor(s.place, s.finishTime);
+        el('span', `standing-points${pts === 0 ? ' zero' : ''}`, t('results.points', { n: pts }), row);
+      }
     });
 
-    if (place <= 3) this.spawnConfetti();
+    if (teamResult ? teamWon : place <= 3) this.spawnConfetti();
 
     this.focus.set(0);
     this.rootNode.classList.remove('hidden');

@@ -58,3 +58,4 @@ bun run build
 8. **시작 시 서버 연결 필수**: `Game` 생성자에서 `initShop()` + `refreshEntitlements()`를 호출한다(26-09-07 리뷰 수정). 빠지면 호스트에서 레이스 완주 전까지 게임서버에 붙지 않아 기록 패널이 오프라인으로 보이고 VXShop이 열리지 않는다. 기록 패널은 `inVerse8Host()`로만 게이트하고 소켓 상태로 게이트하지 않는다.
 9. `embed.ts`의 GAME_SIZE는 **innerWidth/innerHeight만** 보고한다 — scrollHeight를 섞으면 호스트가 iframe을 화면보다 키워 아이폰에서 하단이 잘린다. 클립보드는 iframe 권한 정책으로 막히므로 `execCommand('copy')` 폴백 유지.
 10. **한글 폰트**: `index.html`이 Google Fonts(Black Han Sans = 디스플레이/버튼, Noto Sans KR = 본문)를 로드하고 `html[lang='ko']`에서 `--display/--body`를 바꾼다. 라틴 디스플레이 글리프는 Impact가 있으면 Impact, 없으면 Black Han Sans. 폰트 CDN이 막히면 시스템 폰트로 자연 폴백(레이아웃 깨지지 않음). 작은 라벨(pill·stat·kicker)은 Noto 700.
+11. **팀전/리타이어**: `src/core/teams.ts`가 규칙의 단일 출처(짝수 kartId=레드, 홀수=블루, 점수표 10/8/6/5/4/3/2/1, 1등 우선제). 리타이어는 1등 완주 후 `BALANCE.race.retireSeconds`(10s) — `finishTime -1`, 점수 0, 기록 제출 안 함. 온라인 방은 아직 `mode`를 전송하지 않아 항상 개인전.

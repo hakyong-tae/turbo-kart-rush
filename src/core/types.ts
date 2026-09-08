@@ -549,11 +549,17 @@ export type GameState =
   | 'finished'
   | 'results';
 
+/** Contract addition (gameplay-4): solo race, or a 4 v 4 team race scored by points / by 1st place. */
+export type RaceMode = 'solo' | 'teamPoints' | 'teamFirst';
+export type Team = 'red' | 'blue';
+
 export interface RaceSettings {
   characterId: string;
   trackId: string;
   difficulty: Difficulty;
   laps: number;
+  /** Contract addition (gameplay-4). Absent = 'solo'. */
+  mode?: RaceMode;
   /** Contract addition (online multiplayer). Absent = offline race against AI. */
   online?: OnlineRaceConfig;
 }
@@ -621,6 +627,9 @@ export interface RaceStanding {
   name: string;
   color: number;
   place: number;
+  /** Seconds; -1 = did not finish (retired 10 s after the winner). */
   finishTime: number;
   isPlayer: boolean;
+  /** Contract addition (gameplay-4): team colour in team modes (derived from kart id when absent). */
+  team?: Team;
 }

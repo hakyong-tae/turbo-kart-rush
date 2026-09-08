@@ -36,7 +36,7 @@ describe('kart bodies', () => {
       p.root.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) meshes++;
       });
-      expect(meshes, `${c.id} draw calls`).toBeLessThanOrEqual(28);
+      expect(meshes, `${c.id} draw calls`).toBeLessThanOrEqual(44); // neon ring + afterburner cone + halo per exhaust (Juno has 4 pipes)
       p.dispose();
     }
   });

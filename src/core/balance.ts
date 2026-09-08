@@ -140,8 +140,8 @@ export interface Balance {
     startSpinoutHold: number;
     wrongWaySeconds: number;
     stuckSeconds: number;
-    /** After the player finishes, keep simulating AI for at most this long. */
-    finishGraceSeconds: number;
+    /** Once the winner crosses the line, everyone else has this long to finish or is retired (DNF). */
+    retireSeconds: number;
   };
 }
 
@@ -280,7 +280,7 @@ export function createDefaultBalance(): Balance {
       startSpinoutHold: 2.6,
       wrongWaySeconds: 1.2,
       stuckSeconds: 6,
-      finishGraceSeconds: 12,
+      retireSeconds: 10,
     },
   };
 }

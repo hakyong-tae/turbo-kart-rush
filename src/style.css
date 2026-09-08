@@ -2843,3 +2843,115 @@ html[lang='ko'] .online-hint {
   0%, 100% { transform: translateX(-50%); }
   50% { transform: translateX(calc(-50% + 3px)); }
 }
+
+/* Rear-view mirror as a picture-in-picture (bottom-left, above the place numeral).
+   The view box is transparent: the game draws the rear camera into that rectangle. */
+.hud-mirror {
+  position: absolute;
+  left: var(--hud-pad);
+  bottom: calc(var(--hud-pad) + 132px);
+  top: auto;
+  right: auto;
+  width: clamp(190px, 21vw, 300px);
+  min-width: 0;
+  padding: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  border-width: 3px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(8, 10, 22, 0.35);
+}
+.hud-mirror-view {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: transparent;
+}
+.hud-mirror-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 5px 8px;
+  background: rgba(8, 10, 22, 0.78);
+  font-size: 13px;
+}
+.hud-mirror.rumble {
+  animation: mirror-rumble 0.35s linear, mirror-pulse 0.32s ease-in-out infinite;
+}
+#ui.touch .hud-mirror {
+  left: var(--hud-pad);
+  top: calc(var(--hud-pad) + 66px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  width: 150px;
+}
+@media (max-height: 480px) {
+  .hud-mirror {
+    width: 150px;
+    bottom: calc(var(--hud-pad) + 90px);
+  }
+}
+
+/* Team modes: live tally (top-centre) and result styling */
+.hud-team {
+  position: absolute;
+  top: var(--hud-pad);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: var(--display);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+}
+.hud-team.visible {
+  display: flex;
+}
+.hud-team-red { color: #ff6b74; }
+.hud-team-blue { color: #6fa3ff; }
+.hud-team-mid { color: var(--ink-dim); font-size: 14px; }
+.hud-team.lead-red .hud-team-red,
+.hud-team.lead-blue .hud-team-blue {
+  text-shadow: 0 0 12px currentColor;
+}
+#ui.touch .hud-team {
+  top: calc(var(--hud-pad) + 96px);
+  font-size: 15px;
+}
+.race-mode .segmented .seg {
+  font-size: 12px;
+}
+.standing-row.team-red .standing-place { color: #ff6b74; }
+.standing-row.team-blue .standing-place { color: #6fa3ff; }
+.standing-points {
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  color: var(--gold);
+  min-width: 4.2em;
+  text-align: right;
+}
+.standing-points.zero {
+  color: var(--ink-faint);
+}
+.results-panel.team-red .results-title { color: #ff6b74; }
+.results-panel.team-blue .results-title { color: #6fa3ff; }
+.hud-finish.retired {
+  color: #ff6b74;
+}
+.standings.points .standing-row {
+  grid-template-columns: 58px 16px 1fr auto auto;
+}
+@media (max-width: 700px) {
+  .standings.points .standing-row {
+    grid-template-columns: 44px 14px 1fr auto auto;
+    gap: 8px;
+  }
+  .standing-points {
+    min-width: 3.2em;
+    font-size: 14px;
+  }
+}
