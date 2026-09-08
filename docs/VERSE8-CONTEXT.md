@@ -55,3 +55,5 @@ bun run build
 - 폰 브레이크포인트 `@media (max-width: 700px), (max-height: 480px)` (style.css 말미): 키보드 안내 숨김, 선택 패널은 **스크롤 컬럼 + sticky 푸터**, 레이서 카드 세로 2열(`MainMenu.charColumns()`가 실제 열 수를 읽어 ↑↓ 이동), 가로 폰은 카드 축약. 일시정지 중 `.hud` 페이드.
 - 세로 화면 메뉴 카메라는 `MenuBackdrop.PORTRAIT_FRAMINGS` + 거리 `1/aspect` — 지우면 카트가 카드 뒤를 가득 채운다.
 - 검증: `node tools/mobile-audit.mjs` → `marketing/.audit/` 40장(390×844·844×390, ko/en, 10화면). 원스토어 폼 답변·증빙은 `docs/ONESTORE-FORM.md`, `marketing/onestore/`.
+8. **시작 시 서버 연결 필수**: `Game` 생성자에서 `initShop()` + `refreshEntitlements()`를 호출한다(26-09-07 리뷰 수정). 빠지면 호스트에서 레이스 완주 전까지 게임서버에 붙지 않아 기록 패널이 오프라인으로 보이고 VXShop이 열리지 않는다. 기록 패널은 `inVerse8Host()`로만 게이트하고 소켓 상태로 게이트하지 않는다.
+9. `embed.ts`의 GAME_SIZE는 **innerWidth/innerHeight만** 보고한다 — scrollHeight를 섞으면 호스트가 iframe을 화면보다 키워 아이폰에서 하단이 잘린다. 클립보드는 iframe 권한 정책으로 막히므로 `execCommand('copy')` 폴백 유지.

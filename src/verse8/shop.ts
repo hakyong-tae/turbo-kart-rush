@@ -32,26 +32,33 @@ export function initShop(): void {
   }
 }
 
+export type BuyResult = 'opened' | 'unregistered' | 'blocked';
+
 /**
- * Open the purchase dialog. Returns true when a dialog was shown (host or local mock),
- * false when the product is not purchasable (unregistered / limit reached).
+ * Open the purchase dialog. 'opened' when a dialog was shown (host or local mock),
+ * 'unregistered' when the host has no product with this id (creator console step missing),
+ * 'blocked' when the platform refuses it (limit reached / not purchasable / SDK error).
  */
-export function buyRemoveAds(): boolean {
+export function buyRemoveAds(): BuyResult {
   if (!inVerse8Host()) {
     mockPurchase();
-    return true;
+    return 'opened';
   }
   try {
     const item = VXShop.getItem(PRODUCT_REMOVE_ADS);
-    if (item && !item.purchasable) {
+    if (!item) {
+      console.warn(`[v8] VXShop has no product "${PRODUCT_REMOVE_ADS}" — register it in the creator console (100 VX, non-consumable).`);
+      return 'unregistered';
+    }
+    if (!item.purchasable) {
       console.warn('[v8] remove-ads not purchasable:', item.purchaseBlockReason ?? 'limit reached');
-      return false;
+      return 'blocked';
     }
     VXShop.buyItem(PRODUCT_REMOVE_ADS);
-    return true;
+    return 'opened';
   } catch (err) {
     console.warn('[v8] VXShop.buyItem failed:', err);
-    return false;
+    return 'blocked';
   }
 }
 

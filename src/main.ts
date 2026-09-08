@@ -31,8 +31,27 @@ function showFatal(root: HTMLElement, title: string, body: string): void {
   retry.addEventListener('click', () => window.location.reload());
 }
 
+/** iOS Safari ignores user-scalable=no: block double-tap and pinch zoom explicitly. */
+function blockTouchZoom(): void {
+  document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+  let lastTouchEnd = 0;
+  document.addEventListener(
+    'touchend',
+    (e) => {
+      const now = Date.now();
+      // A second tap within 300 ms is what Safari turns into a zoom.
+      if (now - lastTouchEnd < 300 && e.cancelable) e.preventDefault();
+      lastTouchEnd = now;
+    },
+    { passive: false },
+  );
+}
+
 function boot(): void {
   initEmbedHandshake();
+  blockTouchZoom();
   const app = document.getElementById('app') ?? el('div', '', undefined, document.body);
   app.id = 'app';
 

@@ -236,10 +236,35 @@ export class OnlinePanel {
     this.render();
   }
 
-  private copyCode(): void {
+  private async copyCode(): Promise<void> {
     const key = this.controller?.lobby.key;
     if (!key) return;
-    void navigator.clipboard?.writeText(key).then(() => showToast(t('online.copied'), 'info'));
+    // The async Clipboard API is blocked by permissions policy inside the Verse8 iframe
+    // ("Failed to execute 'writeText'"), so fall back to a hidden textarea + execCommand.
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(key);
+        showToast(t('online.copied'), 'info');
+        return;
+      }
+    } catch {
+      /* fall through to the legacy path */
+    }
+    let ok = false;
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = key;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, key.length);
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch {
+      ok = false;
+    }
+    showToast(ok ? t('online.copied') : t('online.copyFailed', { code: key }), ok ? 'info' : 'error');
   }
 
   private close(): void {

@@ -56,7 +56,7 @@ import { LeaderboardPanel, localBestKey, readLocalBest } from '../ui/Leaderboard
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
 import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
-import { buyRemoveAds } from '../verse8/shop';
+import { buyRemoveAds, initShop } from '../verse8/shop';
 import { inVerse8Host } from '../verse8/embed';
 import { submitTime, type SubmitResult } from '../verse8/server';
 import { OnlineController, type OnlineMode } from '../net/online';
@@ -64,7 +64,7 @@ import { OnlinePanel } from '../ui/OnlinePanel';
 import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
-import { getEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
+import { getEntitlements, refreshEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
@@ -207,6 +207,12 @@ export class Game {
 
     this.uiRoot = el('div', '', undefined, container);
     this.uiRoot.id = 'ui';
+
+    // Inside the Verse8 host: connect to the gameserver right away (entitlements, records,
+    // nickname) and initialise VXShop. Without this the first server call only happened
+    // after a finished race, so the records panel looked offline and VX never opened.
+    initShop();
+    void refreshEntitlements();
 
     // ---------------------------------------------------------- systems
     this.input = new InputManager();
@@ -519,7 +525,9 @@ export class Game {
         this.mainMenu.proceedFromCharacter();
       },
       onBuy: () => {
-        if (!buyRemoveAds()) showToast(t('v8.lock.buyFailed'), 'error');
+        const result = buyRemoveAds();
+        if (result === 'unregistered') showToast(t('v8.lock.unregistered'), 'error');
+        else if (result === 'blocked') showToast(t('v8.lock.buyFailed'), 'error');
         // A completed purchase lands via refreshEntitlements → badges update; the sheet stays
         // open so the player can continue once the kart shows as unlocked.
         else this.lockSheet.hide();

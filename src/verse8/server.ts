@@ -82,8 +82,8 @@ export function isConnected(): boolean {
 }
 
 /** Call a server function, or return `fallback` when the platform is absent. */
-export async function callServer<T>(fn: string, args: unknown[] = [], fallback: T): Promise<T> {
-  if (!(await ensureConnected())) return fallback;
+export async function callServer<T>(fn: string, args: unknown[] = [], fallback: T, budgetMs = CONNECT_BUDGET_MS): Promise<T> {
+  if (!(await ensureConnected(budgetMs))) return fallback;
   try {
     return (await getGameServer().remoteFunction(fn, args)) as T;
   } catch (err) {
@@ -126,10 +126,11 @@ export function submitTime(
   return callServer<SubmitResult | null>('submitTime', [trackId, Math.floor(timeMs), characterId, difficulty], null);
 }
 export function fetchTopTimes(trackId: string, limit = 20): Promise<TopTimes | null> {
-  return callServer<TopTimes | null>('getTopTimes', [trackId, limit], null);
+  // Records are often the first server call on a slow mobile network — give the connect more room.
+  return callServer<TopTimes | null>('getTopTimes', [trackId, limit], null, 12000);
 }
 export function fetchEntitlements(): Promise<Entitlements | null> {
-  return callServer<Entitlements | null>('getMyEntitlements', [], null);
+  return callServer<Entitlements | null>('getMyEntitlements', [], null, 12000);
 }
 export function serverGrantPremiumRaces(): Promise<{ granted: boolean; premiumRaces: number } | null> {
   return callServer<{ granted: boolean; premiumRaces: number } | null>('grantPremiumRaces', [], null);

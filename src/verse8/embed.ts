@@ -13,8 +13,10 @@ export function inVerse8Host(): boolean {
 
 function postSize(): void {
   try {
-    const width = Math.max(window.innerWidth, document.documentElement.scrollWidth);
-    const height = Math.max(window.innerHeight, document.documentElement.scrollHeight);
+    // Report the VISIBLE viewport only. Using scrollHeight here once made the host grow the
+    // iframe past the screen on iPhone, cutting off the bottom of the select-screen footer.
+    const width = window.innerWidth;
+    const height = window.innerHeight;
     window.parent.postMessage({ type: 'GAME_SIZE', width, height }, '*');
     window.parent.postMessage({ type: 'GAME_SIZE_RESPONSE', width, height }, '*');
   } catch {

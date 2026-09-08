@@ -6,7 +6,8 @@ import type { CharacterDef, InputState, TrackDefinition } from '../core/types';
 import { t } from '../core/i18n';
 import type { StringKey } from '../core/i18n';
 import { formatRaceTime } from '../core/math';
-import { getEntitlements, serverReachable } from '../verse8/entitlements';
+import { getEntitlements } from '../verse8/entitlements';
+import { inVerse8Host } from '../verse8/embed';
 import { fetchTopTimes, type SubmitResult } from '../verse8/server';
 import { button, el, TextField } from './dom';
 
@@ -110,7 +111,9 @@ export class LeaderboardPanel {
     const seq = ++this.requestSeq;
 
     const localBest = readLocalBest(trackId);
-    if (!serverReachable()) {
+    // Outside the host there is no server at all. Inside it we always try: the socket may
+    // still be connecting, and fetchTopTimes() waits for it.
+    if (!inVerse8Host()) {
       this.status.set(t('lb.offline'));
       this.mine.set(localBest !== null ? t('lb.localBest', { time: formatRaceTime(localBest / 1000) }) : t('lb.noEntry'));
       return;
@@ -120,7 +123,8 @@ export class LeaderboardPanel {
     const top = await fetchTopTimes(trackId, ROWS);
     if (seq !== this.requestSeq || !this.visible) return; // a newer tab request superseded this one
     if (!top) {
-      this.status.set(t('lb.offline'));
+      this.status.set(t('lb.error'));
+      this.mine.set(localBest !== null ? t('lb.localBest', { time: formatRaceTime(localBest / 1000) }) : '');
       return;
     }
     this.status.set(top.rows.length === 0 ? t('lb.empty') : '');
