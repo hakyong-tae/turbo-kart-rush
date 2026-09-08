@@ -98,6 +98,26 @@ export interface Balance {
     goldenMinSpacing: number;
     /** Seconds a freshly thrown hazard ignores its owner. */
     ownerGrace: number;
+    /** Magnet: latch duration (s), max pick-up range (m), follow distance behind the target (m), exit boost. */
+    magnetDuration: number;
+    magnetRange: number;
+    magnetAnchor: number;
+    magnetBoostStrength: number;
+    magnetBoostDuration: number;
+  };
+  /** Slipstream: tuck behind another kart to charge, then enjoy a top-speed bonus; pulling out gives a burst. */
+  slipstream: {
+    /** Own speed must exceed this fraction of base top speed. */
+    minSpeedFrac: number;
+    /** Wake window along the forward axis (m) and its half width (m). */
+    minDistance: number;
+    maxDistance: number;
+    lateralTolerance: number;
+    /** Seconds in the wake before the bonus kicks in. */
+    chargeTime: number;
+    speedBonus: number;
+    exitBoostStrength: number;
+    exitBoostDuration: number;
   };
   /** Place-weighted roulette table, index = place - 1. */
   itemTable: ItemWeightRow[];
@@ -174,6 +194,21 @@ export function createDefaultBalance(): Balance {
       lightningCooldown: 20,
       goldenMinSpacing: 0.25,
       ownerGrace: 0.35,
+      magnetDuration: 3.0,
+      magnetRange: 45,
+      magnetAnchor: 2.3,
+      magnetBoostStrength: 0.35,
+      magnetBoostDuration: 1.0,
+    },
+    slipstream: {
+      minSpeedFrac: 0.6,
+      minDistance: 1.4,
+      maxDistance: 9,
+      lateralTolerance: 1.3,
+      chargeTime: 1.0,
+      speedBonus: 0.1,
+      exitBoostStrength: 0.22,
+      exitBoostDuration: 0.8,
     },
     itemTable: [
       // 1st
@@ -181,13 +216,13 @@ export function createDefaultBalance(): Balance {
       // 2nd
       { banana: 22, green_shell: 26, red_shell: 22, triple_green_shell: 12, mushroom: 10, bob_omb: 8 },
       // 3rd
-      { banana: 16, green_shell: 22, red_shell: 26, triple_green_shell: 14, mushroom: 14, bob_omb: 8 },
+      { banana: 16, green_shell: 22, red_shell: 22, triple_green_shell: 12, mushroom: 12, bob_omb: 8, magnet: 8 },
       // 4th
-      { red_shell: 26, triple_red_shell: 14, mushroom: 26, triple_mushroom: 14, bob_omb: 12, star: 8 },
+      { red_shell: 24, triple_red_shell: 12, mushroom: 24, triple_mushroom: 12, bob_omb: 10, star: 8, magnet: 10 },
       // 5th
-      { red_shell: 22, triple_red_shell: 16, mushroom: 22, triple_mushroom: 18, bob_omb: 12, star: 10 },
+      { red_shell: 20, triple_red_shell: 14, mushroom: 20, triple_mushroom: 16, bob_omb: 10, star: 10, magnet: 10 },
       // 6th
-      { triple_mushroom: 28, star: 20, red_shell: 15, lightning: 10, golden_mushroom: 22, triple_red_shell: 5 },
+      { triple_mushroom: 26, star: 18, red_shell: 13, lightning: 10, golden_mushroom: 20, triple_red_shell: 5, magnet: 8 },
       // 7th
       { star: 22, lightning: 13, golden_mushroom: 24, blue_shell: 12, triple_mushroom: 19, triple_red_shell: 10 },
       // 8th

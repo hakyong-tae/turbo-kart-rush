@@ -28,6 +28,7 @@ const ITEM_FALLBACK_COLOR: Record<ItemType, string> = {
   star: '#ffe14a',
   lightning: '#ffef70',
   bob_omb: '#333344',
+  magnet: '#ff3b4a',
 };
 
 /** Speedometer gauge arc length in SVG units (240° of a r=44 circle). */

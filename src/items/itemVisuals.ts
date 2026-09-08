@@ -78,7 +78,49 @@ function drawIcon(ctx: CanvasRenderingContext2D, item: ItemType): void {
     case 'bob_omb':
       drawBobOmb(ctx, c, c, 1);
       return;
+    case 'magnet':
+      drawMagnet(ctx, c, c, 1);
+      return;
   }
+}
+
+/** Horseshoe magnet: red arc with grey pole tips. */
+function drawMagnet(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, s);
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = 15;
+  ctx.strokeStyle = '#4a0c14';
+  ctx.beginPath();
+  ctx.arc(0, -4, 16, Math.PI, 0);
+  ctx.moveTo(-16, -4);
+  ctx.lineTo(-16, 16);
+  ctx.moveTo(16, -4);
+  ctx.lineTo(16, 16);
+  ctx.stroke();
+  ctx.lineWidth = 11;
+  ctx.strokeStyle = '#ff3b4a';
+  ctx.beginPath();
+  ctx.arc(0, -4, 16, Math.PI, 0);
+  ctx.moveTo(-16, -4);
+  ctx.lineTo(-16, 8);
+  ctx.moveTo(16, -4);
+  ctx.lineTo(16, 8);
+  ctx.stroke();
+  ctx.strokeStyle = '#d9dee6';
+  ctx.beginPath();
+  ctx.moveTo(-16, 8);
+  ctx.lineTo(-16, 16);
+  ctx.moveTo(16, 8);
+  ctx.lineTo(16, 16);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, -4, 19, Math.PI * 1.15, Math.PI * 1.75);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawTriple(ctx: CanvasRenderingContext2D, fn: (x: number, y: number, s: number) => void): void {
@@ -877,6 +919,28 @@ function buildLightning(): THREE.Object3D {
   return g;
 }
 
+function buildMagnet(): THREE.Object3D {
+  const g = new THREE.Group();
+  const arc = new THREE.Mesh(
+    geo('magnetArc', () => new THREE.TorusGeometry(0.26, 0.075, 8, 18, Math.PI)),
+    standard('magnet', { color: 0xff3b4a, roughness: 0.4, metalness: 0.2 }),
+  );
+  g.add(arc);
+  const legGeo = geo('magnetLeg', () => new THREE.CylinderGeometry(0.075, 0.075, 0.2, 10));
+  const tipGeo = geo('magnetTip', () => new THREE.CylinderGeometry(0.08, 0.08, 0.12, 10));
+  const tipMat = standard('magnetTip', { color: 0xd9dee6, roughness: 0.3, metalness: 0.8 });
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(legGeo, arc.material);
+    leg.position.set(sx * 0.26, -0.1, 0);
+    g.add(leg);
+    const tip = new THREE.Mesh(tipGeo, tipMat);
+    tip.position.set(sx * 0.26, -0.26, 0);
+    g.add(tip);
+  }
+  g.position.y = 0.55;
+  return g;
+}
+
 /**
  * Builds a fresh Object3D for the given item (≤ 600 triangles). Geometries and
  * materials are shared from the module caches; the returned group itself can be
@@ -907,6 +971,8 @@ export function buildItemMesh(item: ItemType): THREE.Object3D {
       return buildLightning();
     case 'bob_omb':
       return buildBobOmb();
+    case 'magnet':
+      return buildMagnet();
     case 'none':
     default:
       return new THREE.Group();

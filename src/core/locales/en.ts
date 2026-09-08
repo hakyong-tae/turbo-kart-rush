@@ -68,6 +68,7 @@ export const en = {
   'item.star': 'STAR',
   'item.lightning': 'LIGHTNING',
   'item.bob_omb': 'BOB-OMB',
+  'item.magnet': 'MAGNET',
   // loading
   'loading.now': 'NOW LOADING',
   'loading.tip': 'TIP',

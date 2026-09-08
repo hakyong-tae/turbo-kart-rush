@@ -150,7 +150,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | **캐릭터 8명** | `src/kart/roster.ts` | `id/name/weightClass/stats{speed,acceleration,handling,weight,miniTurbo ∈0..1}/color/tagline` |
 | **글로벌 물리** | `src/core/constants.ts` | BASE_TOP_SPEED 22, GRAVITY 26, KART_RADIUS 0.85, FIXED_DT, CHECKPOINT_COUNT 12, ITEM_BOX_RESPAWN 3s, ROULETTE 1.6s |
 | **카트 핸들링** | `src/kart/Kart.ts:30-69` | ACCEL_BASE 9, BRAKE_DECEL 16, STEER_RATE 1.9, HOP_VELOCITY 4.5, DRIFT_SLIP_MAX 0.49, DRIFT_BOOST_STRENGTH 0.4(미니터보 1/2/3단 = 0.7/1.2/1.8s), OFFROAD 0.55, SHRUNK 0.65, STAR 1.2, LATERAL_GRIP_ROAD 8 |
-| **아이템 확률표** | `src/items/ItemManager.ts:109` `ITEM_TABLE[place-1]` | 1위: banana 35/green 35/red 15/triple_banana 10/bomb 5 … 8위: star 22/golden 22/lightning 17/blue 16. 총 ItemType 13종(단일 10 + triple 3) |
+| **아이템 확률표** | `src/items/ItemManager.ts:109` `ITEM_TABLE[place-1]` | 1위: banana 35/green 35/red 15/triple_banana 10/bomb 5 … 8위: star 22/golden 22/lightning 17/blue 16. 총 ItemType 14종(단일 11 + triple 3, 자석은 gameplay-2 추가) |
 | **아이템 파라미터** | `ItemManager.ts:28-49` | GREEN 34m/s(벽 6회 바운스) · RED 30 · BLUE 45 · BANANA_LIFE 40s · BOMB_FUSE 2.5s · EXPLOSION_RADIUS 4 · LIGHTNING_COOLDOWN 20s |
 | **AI 난이도** | `src/ai/AIDriver.ts:53` `PROFILES` | easy/normal/hard 별 noise(0.09/0.045/0.015), reaction, driftThreshold, releaseStage(1/2/3), usesMushrooms, 스타트 타이밍. 러버밴딩 ±8% (`:397`) |
 | **레이스 규칙** | `src/game/RaceManager.ts:14-28` | START_BOOST_WINDOW 0.6s(약 1.2s) / 부스트 너무 일찍 = 스핀아웃 2.6s / WRONG_WAY 1.2s / STUCK 6s / FINISH_GRACE 12s |

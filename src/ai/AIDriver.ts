@@ -429,7 +429,7 @@ export class AIDriver implements IAIDriver {
           const quick = threatBehind && mode === 2;
           const base = prof.reactionMin + this.rng() * (prof.reactionMax - prof.reactionMin);
           this.reactTimer = quick ? base * 0.35 : base * this.hesitancy;
-          if (s.item === 'star' || s.item === 'golden_mushroom' || s.item === 'triple_mushroom' || s.item === 'mushroom') {
+          if (s.item === 'star' || s.item === 'golden_mushroom' || s.item === 'triple_mushroom' || s.item === 'mushroom' || s.item === 'magnet') {
             this.reactTimer *= 0.5;
           }
         } else {
@@ -549,6 +549,11 @@ export class AIDriver implements IAIDriver {
         return 0;
       case 'lightning':
         return s.place >= 5 && this.holdTime > 0.8 + this.hesitancy ? 1 : 0;
+      case 'magnet':
+        if (s.magnetTargetId >= 0 || s.isBoosting) return 0;
+        if (aheadDist < 40 && speed > 0.4 * top) return 1;
+        if (this.holdTime > 6) return 1;
+        return 0;
       case 'bob_omb':
         if (threatBehind) return 2;
         if (aheadDist > 10 && aheadDist < 30 && aheadAligned) return 1;

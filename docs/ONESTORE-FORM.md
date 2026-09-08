@@ -81,8 +81,8 @@ EN: "Unlock all karts · 100 VX" in the lock sheet opens VXShop checkout; on suc
 
 ## 6. 확률형 아이템 / Probability items
 
-KO: **없음.** 레이스 중 아이템 박스에서 나오는 아이템(바나나·등껍질·번개 등 13종)은 순위에 따라 결정되는 플레이 요소로, 유료 재화·광고와 무관하며 소지·거래·구매가 불가능합니다. 유료 상품은 확률 요소가 없는 단일 해금 상품(remove-ads) 1종만 존재합니다.
-EN: **None.** Items from race item boxes (13 kinds, e.g. banana, shells, lightning) are gameplay elements weighted by race position; they cannot be bought, owned or traded and are unrelated to VX or ads. The only paid product is a single non-random unlock (remove-ads).
+KO: **없음.** 레이스 중 아이템 박스에서 나오는 아이템(바나나·등껍질·번개·자석 등 14종)은 순위에 따라 결정되는 플레이 요소로, 유료 재화·광고와 무관하며 소지·거래·구매가 불가능합니다. 유료 상품은 확률 요소가 없는 단일 해금 상품(remove-ads) 1종만 존재합니다.
+EN: **None.** Items from race item boxes (14 kinds, e.g. banana, shells, lightning) are gameplay elements weighted by race position; they cannot be bought, owned or traded and are unrelated to VX or ads. The only paid product is a single non-random unlock (remove-ads).
 
 ## 7. 자진신고 / Self-declaration
 
@@ -92,8 +92,8 @@ EN: **None.** Items from race item boxes (13 kinds, e.g. banana, shells, lightni
 
 ## 8. 마무리 메모 / Wrap-up notes (폼 마지막 자유 기술)
 
-KO: 100% 프로시저럴 3D 카트 레이서로 다운로드 에셋이 없어 로딩이 빠르고(번들 ~1.1 MB gzip 314 KB), 6서킷·8레이서·13아이템·최대 8인 온라인 대전·트랙별 리더보드를 제공합니다. 모바일은 세로·가로 모두 지원하며 플로팅 스틱 + 2버튼 터치 조작으로 키보드 없이 전 기능 이용 가능합니다. 수익화는 선택형 리워드 광고 1종과 100 VX 해금 상품 1종으로 최소화했고 확률형 요소는 없습니다.
-EN: A fully procedural 3D kart racer with zero downloaded assets (bundle ~1.1 MB, 314 KB gzip): 6 circuits, 8 racers, 13 items, online races for up to 8 and per-track leaderboards. Both orientations are supported with a floating stick + two-button touch scheme, so the whole game is playable without a keyboard. Monetization is limited to one opt-in rewarded placement and one 100 VX unlock; there are no probability-based items.
+KO: 100% 프로시저럴 3D 카트 레이서로 다운로드 에셋이 없어 로딩이 빠르고(번들 ~1.1 MB gzip 314 KB), 6서킷·8레이서·14아이템·최대 8인 온라인 대전·트랙별 리더보드를 제공합니다. 모바일은 세로·가로 모두 지원하며 플로팅 스틱 + 2버튼 터치 조작으로 키보드 없이 전 기능 이용 가능합니다. 수익화는 선택형 리워드 광고 1종과 100 VX 해금 상품 1종으로 최소화했고 확률형 요소는 없습니다.
+EN: A fully procedural 3D kart racer with zero downloaded assets (bundle ~1.1 MB, 314 KB gzip): 6 circuits, 8 racers, 14 items, online races for up to 8 and per-track leaderboards. Both orientations are supported with a floating stick + two-button touch scheme, so the whole game is playable without a keyboard. Monetization is limited to one opt-in rewarded placement and one 100 VX unlock; there are no probability-based items.
 
 ---
 

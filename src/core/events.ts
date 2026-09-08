@@ -31,6 +31,9 @@ export interface GameEvents {
   'kart:squish': { kartId: number };
   'kart:starStart': { kartId: number };
   'kart:starEnd': { kartId: number };
+  'kart:draftStart': { kartId: number };
+  'kart:magnetStart': { kartId: number; targetId: number };
+  'kart:magnetEnd': { kartId: number };
   'kart:shrink': { kartId: number };
   'kart:unshrink': { kartId: number };
   'kart:surfaceChange': { kartId: number; from: SurfaceType; to: SurfaceType };

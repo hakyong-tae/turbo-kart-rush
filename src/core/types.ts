@@ -90,7 +90,9 @@ export type ItemType =
   | 'golden_mushroom'
   | 'star'
   | 'lightning'
-  | 'bob_omb';
+  | 'bob_omb'
+  /** Contract addition (gameplay-2): Kart Rider style magnet — latches onto the kart ahead. */
+  | 'magnet';
 
 export const ALL_ITEM_TYPES: readonly ItemType[] = [
   'banana',
@@ -106,6 +108,7 @@ export const ALL_ITEM_TYPES: readonly ItemType[] = [
   'star',
   'lightning',
   'bob_omb',
+  'magnet',
 ];
 
 /** Hazard on the track that AI drivers should try to avoid. */
@@ -300,7 +303,7 @@ export interface CharacterDef {
   tagline: string;
 }
 
-export type BoostSource = 'drift' | 'mushroom' | 'golden' | 'pad' | 'start' | 'trick' | 'star';
+export type BoostSource = 'drift' | 'mushroom' | 'golden' | 'pad' | 'start' | 'trick' | 'star' | 'slipstream' | 'magnet';
 
 export interface KartState {
   id: number;
@@ -343,6 +346,13 @@ export interface KartState {
   shrinkTimer: number;
   /** True while frozen on the grid before GO. */
   isFrozen: boolean;
+  /** Contract addition (gameplay-2): slipstream — charge 0..1 built up while tucked behind another kart. */
+  draftCharge: number;
+  /** True once the slipstream charge is full (top speed bonus applies). */
+  isDrafting: boolean;
+  /** Magnet item: kart id being followed, -1 when detached. */
+  magnetTargetId: number;
+  magnetTimer: number;
 
   lap: number;
   /** Next checkpoint index the kart must cross. */
@@ -387,6 +397,8 @@ export interface IKart {
   applyHit(cause: ItemType | 'collision' | 'explosion', sourceKartId: number): boolean;
   applySquish(duration: number): void;
   applyStar(duration: number): void;
+  /** Contract addition (gameplay-2): latch onto `targetId` for `duration` seconds (magnet item). */
+  applyMagnet(targetId: number, duration: number): void;
   applyShrink(duration: number): void;
   applyImpulse(impulse: THREE.Vector3): void;
   setFrozen(frozen: boolean): void;

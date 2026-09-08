@@ -615,6 +615,13 @@ export class ItemManager implements IItemManager {
       case 'lightning':
         this.useLightning(kart);
         break;
+      case 'magnet': {
+        const target = this.magnetTarget(kart);
+        if (target) kart.applyMagnet(target.state.id, B.items.magnetDuration);
+        else kart.applyBoost(B.items.magnetBoostStrength, B.items.magnetBoostDuration, 'magnet'); // nobody ahead: consolation burst
+        this.particles?.emit('boostRing', s.position, { color: 0xff4d6d });
+        break;
+      }
       case 'bob_omb':
         if (aimBack) this.spawnDropped('bob_omb', kart, 'bob_omb');
         else this.spawnLobbed('bob_omb', kart, 'bob_omb', 8.5, Math.max(speed, 0) + 13);
@@ -628,6 +635,26 @@ export class ItemManager implements IItemManager {
     if (s.itemCount === 0) s.item = 'none';
     this.debugCounts.use++;
     events.emit('item:use', { kartId: s.id, item, position: s.position.clone(), isPlayer: s.isPlayer });
+  }
+
+  /** Nearest kart ahead in race order within magnet range, or null. */
+  private magnetTarget(user: IKart): IKart | null {
+    const s = user.state;
+    let best: IKart | null = null;
+    let bestDist = B.items.magnetRange;
+    for (const k of this.karts) {
+      if (k === user) continue;
+      const o = k.state;
+      if (o.finished || o.isFrozen || o.raceProgress <= s.raceProgress) continue;
+      const dx = o.position.x - s.position.x;
+      const dz = o.position.z - s.position.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d < bestDist) {
+        bestDist = d;
+        best = k;
+      }
+    }
+    return best;
   }
 
   private useLightning(user: IKart): void {

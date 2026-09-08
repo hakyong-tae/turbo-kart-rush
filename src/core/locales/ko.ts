@@ -66,6 +66,7 @@ export const ko: Record<StringKey, string> = {
   'item.golden_mushroom': '황금 버섯',
   'item.star': '스타',
   'item.lightning': '번개',
+  'item.magnet': '자석',
   'item.bob_omb': '폭탄',
   'loading.now': '로딩 중',
   'loading.tip': '팁',
