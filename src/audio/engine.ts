@@ -7,11 +7,20 @@ import type { KartState, WeightClass } from '../core/types';
 import { clamp, clamp01, damp } from '../core/math';
 import { glide, noiseBuffer, softClipCurve } from './synth';
 
-const BASE_FREQ: Record<WeightClass, number> = { light: 96, medium: 78, heavy: 62 };
-const IDLE_RPM = 0.15;
-/** Virtual gearbox: speed ratio at which each gear tops out. RPM climbs inside a gear and drops on the shift. */
-const GEAR_TOPS = [0.16, 0.32, 0.5, 0.7, 0.92, 1.4];
-const SHIFT_TIME = 0.11;
+/**
+ * F1-style voice: a high-revving firing fundamental (idle ≈ 130 Hz → ~900 Hz at the limiter)
+ * with two detuned saws + an octave saw for the metallic scream, an open lowpass that tracks
+ * revs, a resonant formant around 2–4 kHz for the shriek, and a hard-ish soft clip for rasp.
+ */
+const BASE_FREQ: Record<WeightClass, number> = { light: 150, medium: 130, heavy: 112 };
+const IDLE_RPM = 0.12;
+/** Pitch sweep across the rev range: freq = base * (PITCH_LO + PITCH_SPAN * rpm). */
+const PITCH_LO = 0.55;
+const PITCH_SPAN = 5.2;
+/** Virtual 7-speed box: speed ratio at which each gear tops out. RPM climbs inside a gear and drops on the shift. */
+const GEAR_TOPS = [0.13, 0.24, 0.36, 0.5, 0.65, 0.82, 1.4];
+const SHIFT_TIME = 0.09;
+const LIMITER_RPM = 0.985;
 
 let sharedClipCurve: Float32Array<ArrayBuffer> | null = null;
 
@@ -28,6 +37,11 @@ export class EngineVoice {
   private readonly engineGain: GainNode;
   private readonly saw: OscillatorNode;
   private readonly sawGain: GainNode;
+  private readonly saw2: OscillatorNode;
+  private readonly saw2Gain: GainNode;
+  private readonly formant: BiquadFilterNode;
+  private readonly formantGain: GainNode;
+  private limiterPhase = 0;
   private square: OscillatorNode | null = null;
   private squareGain: GainNode | null = null;
   private sub: OscillatorNode | null = null;
@@ -81,11 +95,19 @@ export class EngineVoice {
     // --- core engine ------------------------------------------------------
     this.filter = ctx.createBiquadFilter();
     this.filter.type = 'lowpass';
-    this.filter.Q.value = 1.1;
-    this.filter.frequency.value = 400;
+    this.filter.Q.value = 1.7;
+    this.filter.frequency.value = 900;
+
+    // Formant: a resonant band that rides the revs — the "shriek" component of an F1 engine.
+    this.formant = ctx.createBiquadFilter();
+    this.formant.type = 'bandpass';
+    this.formant.Q.value = 5;
+    this.formant.frequency.value = 1800;
+    this.formantGain = ctx.createGain();
+    this.formantGain.gain.value = 0.35;
 
     this.shaper = ctx.createWaveShaper();
-    if (!sharedClipCurve) sharedClipCurve = softClipCurve(2.2);
+    if (!sharedClipCurve) sharedClipCurve = softClipCurve(3.2);
     this.shaper.curve = sharedClipCurve;
     this.shaper.oversample = 'none';
 
@@ -93,6 +115,8 @@ export class EngineVoice {
     this.engineGain.gain.value = 0;
 
     this.filter.connect(this.shaper);
+    this.formant.connect(this.formantGain);
+    this.formantGain.connect(this.shaper);
     this.shaper.connect(this.engineGain);
     this.engineGain.connect(this.out);
 
@@ -100,10 +124,22 @@ export class EngineVoice {
     this.saw.type = 'sawtooth';
     this.saw.frequency.value = this.baseFreq;
     this.sawGain = ctx.createGain();
-    this.sawGain.gain.value = 0.5;
+    this.sawGain.gain.value = 0.42;
     this.saw.connect(this.sawGain);
     this.sawGain.connect(this.filter);
+    this.sawGain.connect(this.formant);
     this.saw.start();
+    // Octave saw, slightly flat: the metallic edge on top of the fundamental.
+    this.saw2 = ctx.createOscillator();
+    this.saw2.type = 'sawtooth';
+    this.saw2.detune.value = -7;
+    this.saw2.frequency.value = this.baseFreq * 2;
+    this.saw2Gain = ctx.createGain();
+    this.saw2Gain.gain.value = isPlayer ? 0.2 : 0.12;
+    this.saw2.connect(this.saw2Gain);
+    this.saw2Gain.connect(this.filter);
+    this.saw2Gain.connect(this.formant);
+    this.saw2.start();
 
     // --- turbo whistle layer ------------------------------------------------
     this.turboFilter = ctx.createBiquadFilter();
@@ -160,11 +196,11 @@ export class EngineVoice {
       const now = ctx.currentTime;
       this.square = ctx.createOscillator();
       this.square.type = 'square';
-      this.square.detune.value = 9;
+      this.square.detune.value = 11;
       this.square.frequency.value = this.saw.frequency.value;
       this.squareGain = ctx.createGain();
       this.squareGain.gain.setValueAtTime(0, now);
-      this.squareGain.gain.linearRampToValueAtTime(0.22, now + 0.2);
+      this.squareGain.gain.linearRampToValueAtTime(0.18, now + 0.2);
       this.square.connect(this.squareGain);
       this.squareGain.connect(this.filter);
       this.square.start();
@@ -174,7 +210,7 @@ export class EngineVoice {
       this.sub.frequency.value = this.saw.frequency.value * 0.5;
       this.subGain = ctx.createGain();
       this.subGain.gain.setValueAtTime(0, now);
-      this.subGain.gain.linearRampToValueAtTime(0.45, now + 0.2);
+      this.subGain.gain.linearRampToValueAtTime(0.16, now + 0.2);
       this.sub.connect(this.subGain);
       this.subGain.connect(this.filter);
       this.sub.start();
@@ -228,32 +264,47 @@ export class EngineVoice {
     const lo = gear === 0 ? 0 : GEAR_TOPS[gear - 1];
     const hi = GEAR_TOPS[gear];
     const inGear = clamp01((ratio - lo) / Math.max(0.01, hi - lo));
-    // Each gear sweeps ~0.42 → 0.98 of the rev range; higher gears sit slightly higher.
-    let target = ratio < 0.03 ? IDLE_RPM : 0.42 + 0.56 * inGear + gear * 0.015;
-    target += 0.12 * clamp01(throttle) * (1 - inGear);
+    // Each gear sweeps ~0.38 → 0.98 of the rev range; higher gears sit slightly higher.
+    let target = ratio < 0.03 ? IDLE_RPM : 0.38 + 0.6 * inGear + gear * 0.01;
+    target += 0.1 * clamp01(throttle) * (1 - inGear);
     if (this.shiftTimer > 0) {
       this.shiftTimer -= dt;
-      target *= 0.8; // clutch dip
+      target *= 0.74; // clutch dip → the blip between gears
     }
-    if (state.isFrozen) target = IDLE_RPM + 0.55 * clamp01(throttle) + 0.25 * clamp01(state.startCharge / 2.6);
+    // Bouncing off the limiter in top gear / on the grid at full throttle.
+    if (target > LIMITER_RPM && throttle > 0.9) {
+      this.limiterPhase += dt * 26;
+      target = LIMITER_RPM + 0.02 * Math.sin(this.limiterPhase * Math.PI * 2);
+    }
+    if (state.isFrozen) {
+      const rev = clamp01(throttle) * (0.45 + 0.5 * clamp01(state.startCharge / 2.6));
+      target = IDLE_RPM + rev;
+      if (state.startCharge > 2.2) {
+        this.limiterPhase += dt * 26;
+        target = Math.min(target, LIMITER_RPM) + 0.02 * Math.sin(this.limiterPhase * Math.PI * 2);
+      }
+    }
     if (state.isAirborne) target = Math.max(target, Math.min(1.35, target + state.airTime * 0.7));
     if (state.isSpinning || state.isSquished) target *= 0.7;
     if (state.isBoosting) target = Math.max(target, 1.05);
 
-    const lambda = this.shiftTimer > 0 ? 18 : target > this.rpm ? 4.5 : 6;
+    const lambda = this.shiftTimer > 0 ? 20 : target > this.rpm ? 7 : 9;
     this.rpm = damp(this.rpm, target, lambda, dt);
     const rpm = this.rpm;
 
     const pitchMul = state.isShrunk ? 1.5 : 1;
-    const freq = this.baseFreq * (0.55 + 1.9 * rpm) * pitchMul;
-    glide(this.saw.frequency, freq, now, 0.03);
-    if (this.square) glide(this.square.frequency, freq, now, 0.03);
-    if (this.sub) glide(this.sub.frequency, freq * 0.5, now, 0.03);
-    glide(this.filter.frequency, 240 + rpm * 1900, now, 0.05);
+    const freq = this.baseFreq * (PITCH_LO + PITCH_SPAN * rpm) * pitchMul;
+    glide(this.saw.frequency, freq, now, 0.025);
+    glide(this.saw2.frequency, freq * 2, now, 0.025);
+    if (this.square) glide(this.square.frequency, freq, now, 0.025);
+    if (this.sub) glide(this.sub.frequency, freq * 0.5, now, 0.025);
+    glide(this.filter.frequency, 700 + rpm * 7000, now, 0.05);
+    glide(this.formant.frequency, 1500 + rpm * 2600, now, 0.05);
+    glide(this.formantGain.gain, 0.2 + 0.3 * rpm, now, 0.08);
 
-    const load = 0.55 + 0.45 * clamp01(throttle);
-    const base = this.isPlayer ? 0.3 : 0.27;
-    const vol = base * load * (0.7 + 0.3 * Math.min(1, rpm));
+    const load = 0.5 + 0.5 * clamp01(throttle);
+    const base = this.isPlayer ? 0.26 : 0.22;
+    const vol = base * load * (0.6 + 0.4 * Math.min(1, rpm));
     glide(this.engineGain.gain, vol, now, 0.06);
 
     // Turbo whistle while boosting.
@@ -288,6 +339,7 @@ export class EngineVoice {
     const stopAt = now + 0.15;
     try {
       this.saw.stop(stopAt);
+      this.saw2.stop(stopAt);
       this.turboOsc.stop(stopAt);
       this.turboNoise.stop(stopAt);
       this.skidSrc.stop(stopAt);

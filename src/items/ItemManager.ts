@@ -79,6 +79,8 @@ interface KartRecord {
   tickTimer: number;
   ticks: number;
   lastUseTime: number;
+  /** Overdrive window remaining (s); 0 = inactive. */
+  overdriveTimer: number;
   orbitType: ItemType;
   orbitMeshes: THREE.Object3D[];
   orbitAngle: number;
@@ -252,6 +254,7 @@ export class ItemManager implements IItemManager {
       tickTimer: 0,
       ticks: 0,
       lastUseTime: -10,
+      overdriveTimer: 0,
       orbitType: 'none',
       orbitMeshes: [],
       orbitAngle: Math.random() * TAU,
@@ -305,6 +308,8 @@ export class ItemManager implements IItemManager {
     for (const rec of this.records) {
       this.clearOrbit(rec);
       rec.rouletteActive = false;
+      rec.overdriveTimer = 0;
+      rec.kart.state.overdriveTimer = 0;
     }
   }
 
@@ -521,6 +526,21 @@ export class ItemManager implements IItemManager {
     rec.kart.state.itemCount = 0;
   }
 
+  /** Counts the overdrive window down; when it closes the item is spent. */
+  private updateOverdrive(rec: KartRecord, dt: number): void {
+    if (rec.overdriveTimer <= 0) return;
+    const s = rec.kart.state;
+    rec.overdriveTimer -= dt;
+    if (rec.overdriveTimer <= 0) {
+      rec.overdriveTimer = 0;
+      if (s.item === 'overdrive') {
+        s.item = 'none';
+        s.itemCount = 0;
+      }
+    }
+    s.overdriveTimer = rec.overdriveTimer;
+  }
+
   private updateRoulette(rec: KartRecord, dt: number): void {
     if (!rec.rouletteActive) return;
     const s = rec.kart.state;
@@ -535,7 +555,7 @@ export class ItemManager implements IItemManager {
       rec.rouletteActive = false;
       const item = this.rollItem(s.place);
       s.item = item;
-      s.itemCount = item.startsWith('triple_') || item === 'golden_mushroom' ? 3 : 1;
+      s.itemCount = item.startsWith('triple_') ? 3 : 1;
       s.itemRouletteActive = false;
       events.emit('item:rouletteEnd', { kartId: s.id, item, isPlayer: s.isPlayer });
     }
@@ -576,7 +596,7 @@ export class ItemManager implements IItemManager {
     const item = s.item;
     const base = baseItemType(item);
 
-    if (item === 'golden_mushroom' && rec && this.time - rec.lastUseTime < B.items.goldenMinSpacing) return;
+    if (item === 'overdrive' && rec && this.time - rec.lastUseTime < B.items.overdriveMinSpacing) return;
 
     const speed = s.speed;
     const top = kart.topSpeed();
@@ -601,12 +621,17 @@ export class ItemManager implements IItemManager {
       case 'blue_shell':
         this.spawnBlueShell(kart);
         break;
-      case 'mushroom':
-        kart.applyBoost(0.55, 1.5, 'mushroom');
+      case 'nitro':
+        kart.applyBoost(0.55, 1.5, 'nitro');
         this.particles?.emit('boostRing', s.position);
         break;
-      case 'golden_mushroom':
-        kart.applyBoost(0.55, 1.5, 'golden');
+      case 'overdrive':
+        // First press opens a timed window; every press inside it is a full nitro burst.
+        if (rec && rec.overdriveTimer <= 0) {
+          rec.overdriveTimer = B.items.overdriveDuration;
+          s.overdriveTimer = rec.overdriveTimer;
+        }
+        kart.applyBoost(0.55, 1.5, 'overdrive');
         this.particles?.emit('boostRing', s.position, { color: 0xffc531 });
         break;
       case 'star':
@@ -631,8 +656,10 @@ export class ItemManager implements IItemManager {
     }
 
     if (rec) rec.lastUseTime = this.time;
-    s.itemCount = Math.max(0, s.itemCount - 1);
-    if (s.itemCount === 0) s.item = 'none';
+    if (item !== 'overdrive') {
+      s.itemCount = Math.max(0, s.itemCount - 1);
+      if (s.itemCount === 0) s.item = 'none';
+    }
     this.debugCounts.use++;
     events.emit('item:use', { kartId: s.id, item, position: s.position.clone(), isPlayer: s.isPlayer });
   }
@@ -1275,7 +1302,7 @@ export class ItemManager implements IItemManager {
         if (rec.orbitType === 'banana') m.rotation.z = Math.sin(this.time * 4 + i) * 0.2;
       }
       // orbiting shells / bananas hit karts they touch (host only)
-      if (this.netMode === 'mirror' || rec.orbitType === 'mushroom' || rec.orbitHitCooldown > 0) continue;
+      if (this.netMode === 'mirror' || rec.orbitType === 'nitro' || rec.orbitHitCooldown > 0) continue;
       outer: for (let i = 0; i < n; i++) {
         const m = rec.orbitMeshes[i];
         for (const other of this.karts) {
@@ -1327,7 +1354,10 @@ export class ItemManager implements IItemManager {
       return;
     }
     this.updateBoxes(dt);
-    for (const rec of this.records) this.updateRoulette(rec, dt);
+    for (const rec of this.records) {
+      this.updateRoulette(rec, dt);
+      this.updateOverdrive(rec, dt);
+    }
     this.updateOrbits(dt);
     this.updateHazards(dt);
   }

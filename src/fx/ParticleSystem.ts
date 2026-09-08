@@ -483,8 +483,8 @@ const BOOST_SOURCE_PAD = 3;
 
 function boostSourceCode(source: BoostSource): number {
   switch (source) {
-    case 'mushroom':
-    case 'golden':
+    case 'nitro':
+    case 'overdrive':
       return BOOST_SOURCE_MUSHROOM;
     case 'pad':
     case 'start':
@@ -611,7 +611,7 @@ export class ParticleSystem implements IParticleSystem {
       this.boostSource[idx] = boostSourceCode(e.source);
       const k = this.kartById(e.kartId);
       if (!k) return;
-      const color = e.source === 'mushroom' || e.source === 'golden' ? 0xff9a2e : e.source === 'pad' ? 0x3ef2ff : 0x9fd8ff;
+      const color = e.source === 'nitro' || e.source === 'overdrive' ? 0xff9a2e : e.source === 'pad' ? 0x3ef2ff : 0x9fd8ff;
       this.tmp.copy(k.state.position);
       this.tmp.y += 0.4;
       this.emit('boostRing', this.tmp, { color, scale: 0.6 + clamp01(e.strength) * 0.8 });

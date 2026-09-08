@@ -4,14 +4,15 @@
  */
 import type { IKart, ITrack, ItemType, HazardInfo, KartState, RaceMode } from '../core/types';
 import { BALANCE as B } from '../core/balance';
-import { isTeamMode, pointsFor, teamOf } from '../core/teams';
+import { TEAM_COLORS, isTeamMode, pointsFor, teamOf } from '../core/teams';
+import { baseItemType } from '../items/itemVisuals';
 import { ALL_ITEM_TYPES } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED } from '../core/constants';
 import { clamp01, damp, formatRaceTime } from '../core/math';
 import { localOrdinal, localOrdinalSuffix, t } from '../core/i18n';
 import type { StringKey } from '../core/i18n';
-import { el, restartAnimation, TextField } from './dom';
+import { el, restartAnimation, TextField, cssHex } from './dom';
 import { Minimap } from './Minimap';
 
 
@@ -24,9 +25,9 @@ const ITEM_FALLBACK_COLOR: Record<ItemType, string> = {
   red_shell: '#ff4040',
   triple_red_shell: '#ff4040',
   blue_shell: '#3f7fff',
-  mushroom: '#ff5a3a',
-  triple_mushroom: '#ff5a3a',
-  golden_mushroom: '#ffc800',
+  nitro: '#ff5a3a',
+  triple_nitro: '#ff5a3a',
+  overdrive: '#ffc800',
   star: '#ffe14a',
   lightning: '#ffef70',
   bob_omb: '#333344',
@@ -54,7 +55,10 @@ export class HUD {
   private readonly itemFrame: HTMLElement;
   private readonly itemIconHost: HTMLElement;
   private readonly itemCount: TextField;
-  private readonly itemLabel: TextField;
+  private shownStack = 0;
+  private readonly standingsNode: HTMLElement;
+  private readonly standingRows: { row: HTMLElement; place: TextField; chip: HTMLElement; name: TextField }[] = [];
+  private standingsSig = '';
   private readonly iconCache = new Map<ItemType, HTMLCanvasElement>();
   private shownIcon: ItemType = 'none';
   private shownCount = 0;
@@ -112,7 +116,9 @@ export class HUD {
     this.itemFrame = el('div', 'item-frame', undefined, itemWrap);
     this.itemIconHost = el('div', 'item-icon', undefined, this.itemFrame);
     this.itemCount = new TextField(el('div', 'item-count', '', this.itemFrame));
-    this.itemLabel = new TextField(el('div', 'item-label', '', itemWrap));
+
+    // Top-left: standings board
+    this.standingsNode = el('div', 'hud-standings glass', undefined, this.rootNode);
 
     // Top-right: lap + timer
     const topRight = el('div', 'hud-topright', undefined, this.rootNode);
@@ -401,7 +407,8 @@ export class HUD {
     }
 
     // Item slot
-    this.updateItemSlot(dt, s.item, s.itemCount, s.itemRouletteActive);
+    this.updateItemSlot(dt, s.item, s.itemCount, s.itemRouletteActive, s.overdriveTimer);
+    this.updateStandings(karts, s.id);
 
     // Wrong way
     if (s.wrongWay !== this.wrongWayShown) {
@@ -509,7 +516,7 @@ export class HUD {
     return ALL_ITEM_TYPES[Math.floor(Math.random() * ALL_ITEM_TYPES.length)];
   }
 
-  private updateItemSlot(dt: number, item: ItemType, count: number, rouletteActive: boolean): void {
+  private updateItemSlot(dt: number, item: ItemType, count: number, rouletteActive: boolean, overdriveTimer: number): void {
     if (rouletteActive) {
       // If the item system doesn't emit ticks we still animate the roulette locally.
       this.rouletteTimer += dt;
@@ -536,8 +543,61 @@ export class HUD {
     const shownCount = item === 'none' || count <= 1 ? 0 : count;
     if (shownCount !== this.shownCount) {
       this.shownCount = shownCount;
-      this.itemCount.set(shownCount > 0 ? `×${shownCount}` : '');
+      this.itemCount.set('');
     }
+    // Triples read as a fan of overlapping icons (3 → 2 → 1) instead of a number.
+    const stack = item === 'none' ? 0 : Math.min(3, Math.max(1, count));
+    if (stack !== this.shownStack || item !== this.shownIcon) this.setStack(item, stack);
+    // Overdrive window: the frame's ring drains while unlimited nitro is available.
+    if (item === 'overdrive' && overdriveTimer > 0) {
+      this.itemFrame.classList.add('overdrive');
+      this.itemFrame.style.setProperty('--od', `${((overdriveTimer / B.items.overdriveDuration) * 100).toFixed(1)}%`);
+    } else if (this.itemFrame.classList.contains('overdrive')) {
+      this.itemFrame.classList.remove('overdrive');
+    }
+  }
+
+  private setStack(item: ItemType, stack: number): void {
+    this.shownStack = stack;
+    this.itemIconHost.replaceChildren();
+    this.itemIconHost.classList.toggle('stacked', stack > 1);
+    if (item === 'none') return;
+    const base = baseItemType(item);
+    for (let i = 0; i < stack; i++) {
+      const c = this.getIcon(stack > 1 ? base : item).cloneNode(true) as HTMLCanvasElement;
+      c.getContext('2d')?.drawImage(this.getIcon(stack > 1 ? base : item), 0, 0);
+      c.classList.add('item-icon-canvas', `stack-${i}`);
+      this.itemIconHost.appendChild(c);
+    }
+  }
+
+  /** Left-hand standings board: every racer by place, the player highlighted. */
+  private updateStandings(karts: readonly IKart[], playerId: number): void {
+    const sorted = karts.slice().sort((a, b) => a.state.place - b.state.place);
+    let sig = '';
+    for (const k of sorted) sig += k.state.id + (k.state.finished ? (k.state.finishTime > 0 ? 'f' : 'x') : '') + ',';
+    if (sig === this.standingsSig) return;
+    this.standingsSig = sig;
+    while (this.standingRows.length < sorted.length) {
+      const row = el('div', 'hud-standing', undefined, this.standingsNode);
+      const place = new TextField(el('span', 'hud-standing-place', '', row));
+      const chip = el('span', 'hud-standing-chip', undefined, row);
+      const name = new TextField(el('span', 'hud-standing-name', '', row));
+      this.standingRows.push({ row, place, chip, name });
+    }
+    const team = isTeamMode(this.mode);
+    sorted.forEach((k, i) => {
+      const s = k.state;
+      const r = this.standingRows[i];
+      r.row.hidden = false;
+      r.row.classList.toggle('you', s.id === playerId);
+      r.row.classList.toggle('dnf', s.finished && s.finishTime <= 0);
+      r.row.classList.toggle('done', s.finished && s.finishTime > 0);
+      r.place.set(String(i + 1));
+      r.chip.style.background = cssHex(team ? TEAM_COLORS[teamOf(s.id)] : s.character.color);
+      r.name.set(s.character.name.toUpperCase());
+    });
+    for (let i = sorted.length; i < this.standingRows.length; i++) this.standingRows[i].row.hidden = true;
   }
 
   private setIcon(item: ItemType, pop: boolean): void {
@@ -548,7 +608,6 @@ export class HUD {
       this.itemIconHost.appendChild(this.getIcon(item));
     }
     this.itemFrame.classList.toggle('has-item', item !== 'none');
-    this.itemLabel.set(this.rouletteVisual || item === 'none' ? '' : t(`item.${item}` as StringKey));
     if (pop) restartAnimation(this.itemFrame, 'pop');
   }
 

@@ -60,14 +60,14 @@ function drawIcon(ctx: CanvasRenderingContext2D, item: ItemType): void {
     case 'triple_red_shell':
       drawTriple(ctx, (x, y, s) => drawShell(ctx, x, y, s, '#ff3b30', '#8a1410', false));
       return;
-    case 'mushroom':
-      drawMushroom(ctx, c, c, 1, '#ff3b30', false);
+    case 'nitro':
+      drawNitro(ctx, c, c, 1);
       return;
-    case 'triple_mushroom':
-      drawTriple(ctx, (x, y, s) => drawMushroom(ctx, x, y, s, '#ff3b30', false));
+    case 'triple_nitro':
+      drawTriple(ctx, (x, y, s) => drawNitro(ctx, x, y, s));
       return;
-    case 'golden_mushroom':
-      drawMushroom(ctx, c, c, 1, '#ffc531', true);
+    case 'overdrive':
+      drawOverdrive(ctx, c, c, 1);
       return;
     case 'star':
       drawStar(ctx, c, c, 1);
@@ -266,75 +266,110 @@ function drawShell(
   ctx.restore();
 }
 
-function drawMushroom(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  s: number,
-  capColor: string,
-  gold: boolean,
-): void {
+/** Nitro can: a squat teal gas canister with a dark valve cap, gauge stripe and a flame badge. */
+function drawNitro(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number): void {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(s, s);
   ctx.lineWidth = 2.5;
-  // stem
-  ctx.fillStyle = gold ? '#fff1c4' : '#fff4dc';
-  ctx.strokeStyle = '#3a2a10';
+  ctx.strokeStyle = '#10343a';
+  // body
+  const body = ctx.createLinearGradient(-14, 0, 14, 0);
+  body.addColorStop(0, '#1fb2c9');
+  body.addColorStop(0.45, '#7ff0ff');
+  body.addColorStop(1, '#138aa0');
+  ctx.fillStyle = body;
   ctx.beginPath();
-  ctx.roundRect(-11, 2, 22, 20, 7);
+  ctx.roundRect(-14, -14, 28, 38, 7);
   ctx.fill();
   ctx.stroke();
-  // eyes
-  ctx.fillStyle = '#1c1c22';
-  ellipse(ctx, -5, 13, 2.2, 3.6);
+  // neck + valve
+  ctx.fillStyle = '#26343c';
+  ctx.beginPath();
+  ctx.roundRect(-7, -22, 14, 9, 3);
   ctx.fill();
-  ellipse(ctx, 5, 13, 2.2, 3.6);
+  ctx.stroke();
+  ctx.fillStyle = '#ff9a2e';
+  ctx.beginPath();
+  ctx.roundRect(-4, -27, 8, 6, 2);
   ctx.fill();
-  // cap
-  const capPath = (): void => {
+  // label band
+  ctx.fillStyle = '#0c2a30';
+  ctx.fillRect(-14, -3, 28, 12);
+  ctx.fillStyle = '#ffe14a';
+  ctx.font = 'bold 9px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('N₂O', 0, 3.5);
+  // flame badge
+  ctx.fillStyle = '#ff6a1a';
+  ctx.beginPath();
+  ctx.moveTo(0, 12);
+  ctx.quadraticCurveTo(7, 15, 3, 21);
+  ctx.quadraticCurveTo(1, 23, 0, 22);
+  ctx.quadraticCurveTo(-1, 23, -3, 21);
+  ctx.quadraticCurveTo(-7, 15, 0, 12);
+  ctx.fill();
+  // highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-9, -10);
+  ctx.lineTo(-9, 18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Overdrive core: a gold hex reactor with an inner spinning ring — unlimited nitro for a while. */
+function drawOverdrive(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, s);
+  const hex = (r: number): void => {
     ctx.beginPath();
-    ctx.ellipse(0, 5, 25, 21, 0, Math.PI, TAU);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU - Math.PI / 6;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
     ctx.closePath();
   };
-  capPath();
-  ctx.fillStyle = capColor;
+  const glow = ctx.createRadialGradient(0, 0, 6, 0, 0, 30);
+  glow.addColorStop(0, 'rgba(255,220,90,0.9)');
+  glow.addColorStop(1, 'rgba(255,160,30,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(-30, -30, 60, 60);
+  const shell = ctx.createLinearGradient(-20, -20, 20, 20);
+  shell.addColorStop(0, '#ffe680');
+  shell.addColorStop(0.5, '#f2a91c');
+  shell.addColorStop(1, '#b86a00');
+  ctx.fillStyle = shell;
+  ctx.strokeStyle = '#5a3400';
+  ctx.lineWidth = 2.5;
+  hex(22);
   ctx.fill();
-  ctx.save();
-  capPath();
-  ctx.clip();
-  ctx.fillStyle = gold ? '#fff6cf' : '#ffffff';
-  const spots: [number, number, number][] = [
-    [-12, -6, 5],
-    [0, -14, 6],
-    [12, -6, 5],
-    [-21, 2, 4],
-    [21, 2, 4],
-  ];
-  for (const [x, y, r] of spots) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, TAU);
-    ctx.fill();
-  }
-  if (gold) {
-    const g = ctx.createLinearGradient(-20, -16, 20, 6);
-    g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(0.45, 'rgba(255,255,255,0.55)');
-    g.addColorStop(0.55, 'rgba(255,255,255,0.55)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(-26, -18, 52, 26);
-  }
-  ctx.restore();
-  capPath();
-  ctx.strokeStyle = gold ? '#7a4d00' : '#3a2a10';
   ctx.stroke();
-  if (gold) {
-    // sparkle
-    ctx.fillStyle = '#ffffff';
-    drawSparkle(ctx, 16, -12, 5);
-    drawSparkle(ctx, -18, -2, 3.5);
-  }
+  ctx.fillStyle = '#2a1600';
+  hex(14);
+  ctx.fill();
+  // inner ring + core
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, 9.5, -0.4, 2.2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 9.5, 2.7, 5.4);
+  ctx.stroke();
+  const core = ctx.createRadialGradient(0, 0, 0, 0, 0, 6);
+  core.addColorStop(0, '#ffffff');
+  core.addColorStop(1, '#ff9a2e');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(0, 0, 5.5, 0, TAU);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -572,23 +607,6 @@ function shellTexture(): THREE.Texture {
 }
 
 /** Mushroom cap texture: base colour with a pole spot (full-width band at v=0) and a ring of spots. */
-function mushroomCapTexture(key: string, base: string, spot: string): THREE.Texture {
-  return tex(key, () =>
-    canvasTexture(256, (ctx) => {
-      ctx.fillStyle = base;
-      ctx.fillRect(0, 0, 256, 256);
-      ctx.fillStyle = spot;
-      // pole spot -> maps to a round spot on the top of the hemisphere
-      ctx.fillRect(0, 0, 256, 26);
-      for (let i = 0; i < 5; i++) {
-        const x = 26 + i * 51.2;
-        ctx.beginPath();
-        ctx.ellipse(x, 96, 22, 26, 0, 0, TAU);
-        ctx.fill();
-      }
-    }),
-  );
-}
 
 function questionTexture(): THREE.Texture {
   return tex('question', () =>
@@ -755,41 +773,56 @@ function buildShell(color: number, key: string, spiky: boolean): THREE.Object3D 
   return g;
 }
 
-function buildMushroom(gold: boolean): THREE.Object3D {
+function buildNitro(): THREE.Object3D {
   const g = new THREE.Group();
-  const capTex = gold
-    ? mushroomCapTexture('capGold', '#f2b31a', '#fff2b8')
-    : mushroomCapTexture('capRed', '#e5261c', '#ffffff');
-  const cap = new THREE.Mesh(
-    geo('mushCap', () => new THREE.SphereGeometry(0.4, 14, 8, 0, TAU, 0, Math.PI * 0.56)),
-    gold
-      ? standard('mushCapGold', { map: capTex, roughness: 0.28, metalness: 0.75, emissive: 0x3a2400, emissiveIntensity: 0.6 })
-      : standard('mushCapRed', { map: capTex, roughness: 0.4, metalness: 0.0 }),
+  const body = new THREE.Mesh(
+    geo('nitroBody', () => new THREE.CapsuleGeometry(0.2, 0.42, 4, 14)),
+    standard('nitroBody', { color: 0x36d5ea, roughness: 0.3, metalness: 0.35, emissive: 0x0b3a44, emissiveIntensity: 0.6 }),
   );
-  cap.castShadow = true;
-  g.add(cap);
-  const under = new THREE.Mesh(
-    geo('mushUnder', () => new THREE.CircleGeometry(0.4 * Math.sin(Math.PI * 0.56), 14)),
-    standard('mushUnder', { color: 0xf7e3bd, roughness: 0.8, side: THREE.DoubleSide }),
+  body.castShadow = true;
+  g.add(body);
+  const band = new THREE.Mesh(
+    geo('nitroBand', () => new THREE.CylinderGeometry(0.215, 0.215, 0.14, 14, 1, true)),
+    standard('nitroBand', { color: 0x0c2a30, roughness: 0.6, side: THREE.DoubleSide }),
   );
-  under.rotation.x = Math.PI / 2;
-  under.position.y = 0.4 * Math.cos(Math.PI * 0.56);
-  g.add(under);
-  const stem = new THREE.Mesh(
-    geo('mushStem', () => new THREE.CylinderGeometry(0.2, 0.24, 0.36, 10, 1)),
-    standard('mushStem', { color: gold ? 0xfff0c0 : 0xfff6e0, roughness: 0.7 }),
+  band.position.y = -0.02;
+  g.add(band);
+  const neck = new THREE.Mesh(
+    geo('nitroNeck', () => new THREE.CylinderGeometry(0.09, 0.11, 0.14, 10)),
+    standard('nitroNeck', { color: 0x26343c, roughness: 0.5, metalness: 0.6 }),
   );
-  stem.position.y = -0.2;
-  g.add(stem);
-  const eyeGeo = geo('mushEye', () => new THREE.SphereGeometry(0.035, 6, 4));
-  const eyeMat = standard('mushEye', { color: 0x151518, roughness: 0.5 });
-  for (let i = -1; i <= 1; i += 2) {
-    const eye = new THREE.Mesh(eyeGeo, eyeMat);
-    eye.position.set(i * 0.08, -0.16, -0.21);
-    eye.scale.set(1, 1.6, 1);
-    g.add(eye);
-  }
+  neck.position.y = 0.44;
+  g.add(neck);
+  const valve = new THREE.Mesh(
+    geo('nitroValve', () => new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8)),
+    standard('nitroValve', { color: 0xff9a2e, roughness: 0.4, emissive: 0xff5a00, emissiveIntensity: 0.5 }),
+  );
+  valve.position.y = 0.55;
+  g.add(valve);
   g.position.y = 0.42;
+  return g;
+}
+
+function buildOverdrive(): THREE.Object3D {
+  const g = new THREE.Group();
+  const shell = new THREE.Mesh(
+    geo('odShell', () => new THREE.IcosahedronGeometry(0.36, 0)),
+    standard('odShell', { color: 0xf2a91c, roughness: 0.25, metalness: 0.8, emissive: 0x6a3a00, emissiveIntensity: 0.7, flatShading: true }),
+  );
+  shell.castShadow = true;
+  g.add(shell);
+  const core = new THREE.Mesh(
+    geo('odCore', () => new THREE.SphereGeometry(0.2, 12, 8)),
+    mat('odCore', () => new THREE.MeshBasicMaterial({ color: 0xffe680, toneMapped: false })),
+  );
+  g.add(core);
+  const ring = new THREE.Mesh(
+    geo('odRing', () => new THREE.TorusGeometry(0.46, 0.03, 6, 24)),
+    mat('odRing', () => new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })),
+  );
+  ring.rotation.x = Math.PI / 2.6;
+  g.add(ring);
+  g.position.y = 0.5;
   return g;
 }
 
@@ -960,11 +993,11 @@ export function buildItemMesh(item: ItemType): THREE.Object3D {
       return buildShell(0xff3b30, 'red', false);
     case 'blue_shell':
       return buildShell(0x2f7bff, 'blue', true);
-    case 'mushroom':
-    case 'triple_mushroom':
-      return buildMushroom(false);
-    case 'golden_mushroom':
-      return buildMushroom(true);
+    case 'nitro':
+    case 'triple_nitro':
+      return buildNitro();
+    case 'overdrive':
+      return buildOverdrive();
     case 'star':
       return buildStar();
     case 'lightning':
@@ -988,8 +1021,8 @@ export function baseItemType(item: ItemType): ItemType {
       return 'green_shell';
     case 'triple_red_shell':
       return 'red_shell';
-    case 'triple_mushroom':
-      return 'mushroom';
+    case 'triple_nitro':
+      return 'nitro';
     default:
       return item;
   }

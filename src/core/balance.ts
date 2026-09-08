@@ -94,8 +94,9 @@ export interface Balance {
     explosionRadius: number;
     /** Seconds before another lightning can be rolled. */
     lightningCooldown: number;
-    /** Min seconds between golden mushroom bursts. */
-    goldenMinSpacing: number;
+    /** Overdrive: min seconds between bursts, and how long the unlimited-use window lasts after the first press. */
+    overdriveMinSpacing: number;
+    overdriveDuration: number;
     /** Seconds a freshly thrown hazard ignores its owner. */
     ownerGrace: number;
     /** Magnet: latch duration (s), max pick-up range (m), follow distance behind the target (m), exit boost. */
@@ -192,7 +193,8 @@ export function createDefaultBalance(): Balance {
       bombFuse: 2.5,
       explosionRadius: 4,
       lightningCooldown: 20,
-      goldenMinSpacing: 0.25,
+      overdriveMinSpacing: 0.25,
+      overdriveDuration: 7.5,
       ownerGrace: 0.35,
       magnetDuration: 3.0,
       magnetRange: 45,
@@ -214,19 +216,19 @@ export function createDefaultBalance(): Balance {
       // 1st
       { banana: 35, green_shell: 35, triple_banana: 10, bob_omb: 5, red_shell: 15 },
       // 2nd
-      { banana: 22, green_shell: 26, red_shell: 22, triple_green_shell: 12, mushroom: 10, bob_omb: 8 },
+      { banana: 22, green_shell: 26, red_shell: 22, triple_green_shell: 12, nitro: 10, bob_omb: 8 },
       // 3rd
-      { banana: 16, green_shell: 22, red_shell: 22, triple_green_shell: 12, mushroom: 12, bob_omb: 8, magnet: 8 },
+      { banana: 16, green_shell: 22, red_shell: 22, triple_green_shell: 12, nitro: 12, bob_omb: 8, magnet: 8 },
       // 4th
-      { red_shell: 24, triple_red_shell: 12, mushroom: 24, triple_mushroom: 12, bob_omb: 10, star: 8, magnet: 10 },
+      { red_shell: 24, triple_red_shell: 12, nitro: 24, triple_nitro: 12, bob_omb: 10, star: 8, magnet: 10 },
       // 5th
-      { red_shell: 20, triple_red_shell: 14, mushroom: 20, triple_mushroom: 16, bob_omb: 10, star: 10, magnet: 10 },
+      { red_shell: 20, triple_red_shell: 14, nitro: 20, triple_nitro: 16, bob_omb: 10, star: 10, magnet: 10 },
       // 6th
-      { triple_mushroom: 26, star: 18, red_shell: 13, lightning: 10, golden_mushroom: 20, triple_red_shell: 5, magnet: 8 },
+      { triple_nitro: 26, star: 18, red_shell: 13, lightning: 10, overdrive: 20, triple_red_shell: 5, magnet: 8 },
       // 7th
-      { star: 22, lightning: 13, golden_mushroom: 24, blue_shell: 12, triple_mushroom: 19, triple_red_shell: 10 },
+      { star: 22, lightning: 13, overdrive: 24, blue_shell: 12, triple_nitro: 19, triple_red_shell: 10 },
       // 8th
-      { star: 22, lightning: 17, golden_mushroom: 22, blue_shell: 16, triple_mushroom: 15, triple_red_shell: 8 },
+      { star: 22, lightning: 17, overdrive: 22, blue_shell: 16, triple_nitro: 15, triple_red_shell: 8 },
     ],
     ai: {
       profiles: {

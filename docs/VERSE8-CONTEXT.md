@@ -59,3 +59,4 @@ bun run build
 9. `embed.ts`의 GAME_SIZE는 **innerWidth/innerHeight만** 보고한다 — scrollHeight를 섞으면 호스트가 iframe을 화면보다 키워 아이폰에서 하단이 잘린다. 클립보드는 iframe 권한 정책으로 막히므로 `execCommand('copy')` 폴백 유지.
 10. **한글 폰트**: `index.html`이 Google Fonts(Black Han Sans = 디스플레이/버튼, Noto Sans KR = 본문)를 로드하고 `html[lang='ko']`에서 `--display/--body`를 바꾼다. 라틴 디스플레이 글리프는 Impact가 있으면 Impact, 없으면 Black Han Sans. 폰트 CDN이 막히면 시스템 폰트로 자연 폴백(레이아웃 깨지지 않음). 작은 라벨(pill·stat·kicker)은 Noto 700.
 11. **팀전/리타이어**: `src/core/teams.ts`가 규칙의 단일 출처(짝수 kartId=레드, 홀수=블루, 점수표 10/8/6/5/4/3/2/1, 1등 우선제). 리타이어는 1등 완주 후 `BALANCE.race.retireSeconds`(10s) — `finishTime -1`, 점수 0, 기록 제출 안 함. 온라인 방은 아직 `mode`를 전송하지 않아 항상 개인전.
+12. **모바일 = 가로 전용**: `Game.onOrientationCheck`가 터치 기기 세로에서 `.rotate-gate`를 띄우고 레이스를 일시정지. 타이틀은 로비(싱글/온라인/설정/기록 버튼, `.single-toggle` 등 클래스는 툴 스크립트가 참조). HUD: 좌상단 순위표(`.hud-standings`), 우상단 아이템(라벨 없음, 3개는 겹친 아이콘, 오버드라이브는 링 게이지), 그 아래 랩/타임. 아이템 id: `nitro`/`triple_nitro`/`overdrive`(구 버섯류 — 넷 코드 인덱스는 동일).

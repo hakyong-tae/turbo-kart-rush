@@ -20,7 +20,7 @@ The whole game was produced by five Claude Fable 5.1 sub-agents working in paral
 
 Open **https://bridge-mind.github.io/turbo-kart-rush/** in a desktop browser with WebGL2 (Chrome, Edge, Firefox or Safari). Click or press Enter on the title screen, choose one of eight racers, pick a circuit and difficulty, then Start Race. A keyboard or a gamepad works.
 
-Three laps against seven AI drivers. Drift through corners and release for a mini-turbo. Grab item boxes and fire shells, drop bananas, pop mushrooms, or call down lightning on the field.
+Three laps against seven AI drivers. Drift through corners and release for a mini-turbo. Grab item boxes and fire shells, drop bananas, fire nitro cans, or call down lightning on the field.
 
 ## The prompt that built this
 
@@ -47,7 +47,7 @@ The contract every agent built against is in [CONTRACT.md](CONTRACT.md). It fixe
 - **Eight racers** in three weight classes, each with their own kart, colours and handling: Zippy Nova, Pixel Pop, Fennec Flash, Max Vortex, Juno Bolt, Kai Tidewater, Boulder Bram and Big Rig Rosa.
 - **Four circuits**, each 900 to 1400 metres with hills, a jump crest, hairpins, S-bends and a long straight: Sunny Circuit (grassland), Dune Drift (desert), Frostbite Falls (snow, with a void section over ice) and Neon Nexus (night city).
 - **Arcade handling** with hop, drift, three-stage mini-turbo, boost pads, off-road slowdown, wall bumps and kart-to-kart collisions resolved by weight.
-- **Ten items**: banana, green shell, red shell, blue shell, mushroom, triple mushroom, golden mushroom, star, lightning and bob-omb. Item odds are weighted by race position.
+- **Fourteen items**: banana, green shell, red shell, blue shell, nitro, triple nitro, overdrive (timed unlimited nitro), star, lightning, bob-omb and magnet. Item odds are weighted by race position.
 - **AI drivers** that follow a racing line, drift on corners, dodge hazards, hunt item boxes, use items sensibly and rubber-band toward the player.
 - **Fully synthesised audio**: per-kart engine synthesis with positional panning, dozens of sound effects, and a procedural chiptune sequencer with separate menu, race, final-lap and results music.
 - **Effects**: a 6000-particle GPU pool for drift sparks, boost flames, tyre smoke, dust and speed streaks, plus bloom, speed lines, radial blur, chromatic aberration and vignette in a post-processing stack.

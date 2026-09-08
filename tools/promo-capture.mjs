@@ -49,7 +49,7 @@ async function openRace(page, size, { lang = 'en' } = {}) {
   // Menu: title → character → track → start (through the game's own DOM).
   await page.evaluate(
     (ci, ti) => {
-      document.querySelector('.panel-title-screen').click();
+      document.querySelector('.single-toggle').click();
       const cards = [...document.querySelectorAll('.char-card')];
       cards[ci].click();
       [...document.querySelectorAll('.panel-chars .actions button')][1].click();

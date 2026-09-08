@@ -25,7 +25,7 @@ interface FramingSpec {
 }
 
 const FRAMINGS: Record<MenuFraming, FramingSpec> = {
-  title: { distance: 5.7, height: 1.0, fov: 30, sx: 0, sy: -0.3 },
+  title: { distance: 5.7, height: 1.0, fov: 30, sx: -0.42, sy: -0.3 },
   characters: { distance: 5.3, height: 0.95, fov: 30, sx: 0.58, sy: -0.08 },
   tracks: { distance: 5.9, height: 0.85, fov: 30, sx: 0, sy: 0.42 },
 };

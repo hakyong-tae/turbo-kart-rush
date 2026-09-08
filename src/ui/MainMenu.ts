@@ -63,6 +63,8 @@ export class MainMenu {
   private readonly diffButtons: HTMLElement[] = [];
   private difficultyIndex = 1;
   private modeIndex = 0;
+  private lobbyIndex = 0;
+  private readonly lobbyButtons: HTMLButtonElement[] = [];
   private readonly modeButtons: HTMLButtonElement[] = [];
   private readonly diffBlurb: TextField;
   private readonly startButton: HTMLElement;
@@ -78,13 +80,6 @@ export class MainMenu {
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
-    const settingsBtn = button('⚙', 'ghost title-corner settings-toggle', () => this.onSettings?.());
-    settingsBtn.title = t('settings.title');
-    title.appendChild(settingsBtn);
-    const recordsBtn = button(t('lb.button'), 'ghost title-corner records-toggle', () => this.onRecords?.());
-    title.appendChild(recordsBtn);
-    const onlineBtn = button(t('online.button'), 'primary title-corner online-toggle', () => this.onOnline?.());
-    title.appendChild(onlineBtn);
     const logoWrap = el('div', 'logo', undefined, title);
     const words = GAME_TITLE.split(' ');
     words.forEach((w, i) => {
@@ -93,13 +88,23 @@ export class MainMenu {
       line.textContent = w;
     });
     el('div', 'logo-sub', t('title.sub'), title);
-    const prompt = el('div', 'press-start', undefined, title);
-    el(
-      'span',
-      'press-start-text',
-      window.matchMedia?.('(pointer: coarse)').matches ? t('title.tapStart') : t('title.pressStart'),
-      prompt,
-    );
+    // Lobby: single race / online / settings (+ records). Keyboard: ↑↓ + confirm.
+    const lobby = el('nav', 'lobby', undefined, title);
+    const lobbyEntry = (label: string, cls: string, action: () => void): HTMLButtonElement => {
+      const b = button(label, cls, () => {
+        events.emit('ui:select', {});
+        action();
+      });
+      b.addEventListener('pointerenter', () => this.setLobby(this.lobbyButtons.length ? this.lobbyButtons.indexOf(b) : 0));
+      lobby.appendChild(b);
+      this.lobbyButtons.push(b);
+      return b;
+    };
+    lobbyEntry(t('lobby.single'), 'primary lobby-btn single-toggle', () => this.goTo('characterSelect', true));
+    lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
+    lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
+    lobbyEntry(t('lb.button'), 'ghost lobby-btn small records-toggle', () => this.onRecords?.());
+    this.setLobby(0);
     const legend = el('div', 'controls-legend glass', undefined, title);
     const keys: [string, string][] = [
       ['W / ↑', t('legend.throttle')],
@@ -117,9 +122,6 @@ export class MainMenu {
       el('span', '', v, row);
     }
     el('div', 'version', t('title.version'), title);
-    title.addEventListener('click', () => {
-      if (this.panel === 'title') this.goTo('characterSelect', true);
-    });
 
     // ------------------------------------------------------- character select
     const chars = el('section', 'panel-select panel-chars', undefined, this.rootNode);
@@ -260,9 +262,19 @@ export class MainMenu {
   handleInput(input: InputState): void {
     if (!this.visible) return;
     switch (this.panel) {
-      case 'title':
-        if (input.confirm) this.goTo('characterSelect', true);
+      case 'title': {
+        const n = this.lobbyButtons.length;
+        if (input.menuUp) {
+          this.setLobby((this.lobbyIndex + n - 1) % n);
+          events.emit('ui:move', {});
+        } else if (input.menuDown) {
+          this.setLobby((this.lobbyIndex + 1) % n);
+          events.emit('ui:move', {});
+        } else if (input.confirm) {
+          this.lobbyButtons[this.lobbyIndex]?.click();
+        }
         break;
+      }
       case 'characterSelect': {
         const n = this.characters.length;
         if (input.menuLeft) this.setCharacter((this.charIndex - 1 + n) % n, true);
@@ -394,6 +406,11 @@ export class MainMenu {
     this.diffBlurb.set(t(DIFFICULTY_BLURB[DIFFICULTIES[i]]));
     this.refreshTrackFocus();
     if (changed && sound) events.emit('ui:move', {});
+  }
+
+  private setLobby(i: number): void {
+    this.lobbyIndex = i;
+    this.lobbyButtons.forEach((b, k) => b.classList.toggle('focused', k === i));
   }
 
   private setMode(i: number, sound = false): void {

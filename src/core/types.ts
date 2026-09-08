@@ -85,9 +85,9 @@ export type ItemType =
   | 'red_shell'
   | 'triple_red_shell'
   | 'blue_shell'
-  | 'mushroom'
-  | 'triple_mushroom'
-  | 'golden_mushroom'
+  | 'nitro'
+  | 'triple_nitro'
+  | 'overdrive'
   | 'star'
   | 'lightning'
   | 'bob_omb'
@@ -102,9 +102,9 @@ export const ALL_ITEM_TYPES: readonly ItemType[] = [
   'red_shell',
   'triple_red_shell',
   'blue_shell',
-  'mushroom',
-  'triple_mushroom',
-  'golden_mushroom',
+  'nitro',
+  'triple_nitro',
+  'overdrive',
   'star',
   'lightning',
   'bob_omb',
@@ -303,7 +303,7 @@ export interface CharacterDef {
   tagline: string;
 }
 
-export type BoostSource = 'drift' | 'mushroom' | 'golden' | 'pad' | 'start' | 'trick' | 'star' | 'slipstream' | 'magnet';
+export type BoostSource = 'drift' | 'nitro' | 'overdrive' | 'pad' | 'start' | 'trick' | 'star' | 'slipstream' | 'magnet';
 
 export interface KartState {
   id: number;
@@ -355,6 +355,8 @@ export interface KartState {
   magnetTimer: number;
   /** Seconds the throttle has been held while frozen on the grid (rocket-start charge; HUD gauge). */
   startCharge: number;
+  /** Overdrive item: seconds of unlimited nitro left (0 when not active). Written by the ItemManager. */
+  overdriveTimer: number;
 
   lap: number;
   /** Next checkpoint index the kart must cross. */

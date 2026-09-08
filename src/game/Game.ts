@@ -196,6 +196,7 @@ export class Game {
   private readonly audio: IAudioEngine;
   private readonly particles: IParticleSystem;
   private readonly rearView: RearView;
+  private readonly rotateGate: HTMLElement;
   private readonly postfx: IPostFX;
   private postfxOk = true;
 
@@ -261,6 +262,7 @@ export class Game {
     initShop();
     void refreshEntitlements();
 
+
     // ---------------------------------------------------------- systems
     this.input = new InputManager();
     this.audio = new AudioEngine();
@@ -290,6 +292,15 @@ export class Game {
     this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
+    // Phones must play in landscape: a full-screen gate covers the game (and pauses a race)
+    // while a touch device is held in portrait.
+    this.rotateGate = el('div', 'rotate-gate hidden', undefined, this.uiRoot);
+    el('div', 'rotate-gate-icon', '📱', this.rotateGate);
+    el('div', 'rotate-gate-title', t('rotate.title'), this.rotateGate);
+    el('div', 'rotate-gate-body', t('rotate.body'), this.rotateGate);
+    window.addEventListener('resize', this.onOrientationCheck);
+    window.addEventListener('orientationchange', this.onOrientationCheck);
+    this.onOrientationCheck();
 
     // ---------------------------------------------------------- listeners
     window.addEventListener('resize', this.onResize);
@@ -322,6 +333,8 @@ export class Game {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('resize', this.onOrientationCheck);
+    window.removeEventListener('orientationchange', this.onOrientationCheck);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('pointerdown', this.onGesture);
     window.removeEventListener('keydown', this.onGesture);
@@ -1391,6 +1404,21 @@ export class Game {
       /* private mode */
     }
   }
+
+  /** Touch device in portrait → show the rotate gate (and pause a running race). */
+  private readonly onOrientationCheck = (): void => {
+    const touch = this.touch.isEnabled || window.matchMedia?.('(pointer: coarse)').matches;
+    const portrait = window.innerHeight > window.innerWidth;
+    const gate = Boolean(touch && portrait);
+    this.rotateGate.classList.toggle('hidden', !gate);
+    this.uiRoot.classList.toggle('gated', gate);
+    if (gate && this.state === 'racing') this.pause();
+    if (!gate) {
+      // Best effort: some browsers honour a landscape lock once we are full-screen.
+      const so = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+      so?.lock?.('landscape').catch(() => undefined);
+    }
+  };
 
   private toggleMute(): void {
     const muted = !this.audio.muted;

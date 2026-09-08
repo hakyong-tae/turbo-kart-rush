@@ -152,6 +152,7 @@ export class Kart implements IKart {
       magnetTargetId: -1,
       magnetTimer: 0,
       startCharge: 0,
+      overdriveTimer: 0,
       lap: 0,
       checkpointIndex: 0,
       trackT: 0,

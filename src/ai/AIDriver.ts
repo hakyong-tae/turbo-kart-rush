@@ -429,7 +429,7 @@ export class AIDriver implements IAIDriver {
           const quick = threatBehind && mode === 2;
           const base = prof.reactionMin + this.rng() * (prof.reactionMax - prof.reactionMin);
           this.reactTimer = quick ? base * 0.35 : base * this.hesitancy;
-          if (s.item === 'star' || s.item === 'golden_mushroom' || s.item === 'triple_mushroom' || s.item === 'mushroom' || s.item === 'magnet') {
+          if (s.item === 'star' || s.item === 'overdrive' || s.item === 'triple_nitro' || s.item === 'nitro' || s.item === 'magnet') {
             this.reactTimer *= 0.5;
           }
         } else {
@@ -534,9 +534,13 @@ export class AIDriver implements IAIDriver {
         return 0;
       case 'blue_shell':
         return s.place !== 1 && this.holdTime > 2 ? 1 : 0;
-      case 'mushroom':
-      case 'triple_mushroom':
-      case 'golden_mushroom':
+      case 'overdrive':
+        if (s.overdriveTimer > 0) return 1; // window is open: keep firing
+        if (straight && speed > 0.5 * top) return 1;
+        if (this.holdTime > 6) return 1;
+        return 0;
+      case 'nitro':
+      case 'triple_nitro':
         if (s.isBoosting) return 0;
         if (s.surface === 'offroad') return 1;
         if (!this.profile.usesMushrooms) return this.holdTime > 12 ? 1 : 0;

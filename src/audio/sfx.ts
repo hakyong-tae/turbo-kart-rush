@@ -325,7 +325,7 @@ export class SfxBank {
     const ctx = this.ctx;
     const now = this.now;
     const s = 0.7 + clamp01(strength) * 0.6;
-    if (source === 'mushroom' || source === 'golden') {
+    if (source === 'nitro' || source === 'overdrive') {
       // Cartoon "doing" boing.
       playTone(ctx, dest, {
         freq: 180, endFreq: 720, sweepTime: 0.09, type: 'sine', duration: 0.1, gain: 0.22 * s, when: now,
@@ -532,9 +532,9 @@ export class SfxBank {
     const ctx = this.ctx;
     const now = this.now;
     switch (item) {
-      case 'mushroom':
-      case 'triple_mushroom':
-      case 'golden_mushroom':
+      case 'nitro':
+      case 'triple_nitro':
+      case 'overdrive':
         playTone(ctx, dest, {
           freq: 320, endFreq: 160, sweepTime: 0.08, type: 'sine', duration: 0.12, gain: 0.18, when: now,
           env: { attack: 0.005, decay: 0.06, sustain: 0.5, release: 0.04 },

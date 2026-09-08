@@ -15,7 +15,7 @@ Answers for the ONE Store application form in question order, with the in-game e
 | 게임 제목 / Title | **Drift Dash GP** |
 | Verse8 게임 링크 | Verse8 프로젝트 게시 후 URL 기입. 공개 여부: **Public** (라이선스 MIT, 에셋 0개 자체 생성 → 공개 가능) |
 | GitLab 경로 | `hy.tae90/my-basic-game-project` (브랜치 `develop`). **토큰(glpat-…)은 절대 기입하지 않는다.** |
-| 화면 방향 / Orientation | **가로·세로 모두 지원 (Both)** — 레이아웃이 `max-width: 700px` / `max-height: 480px` 브레이크포인트로 반응하며, 메뉴 카메라는 세로 화면에서 별도 프레이밍(`PORTRAIT_FRAMINGS`)을 사용 |
+| 화면 방향 / Orientation | **가로 (Landscape) 전용** — 터치 기기를 세로로 들면 전체 화면 회전 안내(`.rotate-gate`)가 덮고 레이스는 자동 일시정지. 가로로 돌리면 바로 이어서 플레이. 가로 폰 레이아웃은 `max-height: 480px` 브레이크포인트로 최적화 |
 
 ## 2. 모바일 검증 / Mobile verification
 
