@@ -9,6 +9,7 @@ import { button, cssHex, cssRgba, el, TextField } from './dom';
 import { t, t as tt, tOr } from '../core/i18n';
 import { canRace, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
+import { buildTrackThumbnail } from './trackThumbnails';
 import type { StringKey } from '../core/i18n';
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
@@ -459,9 +460,11 @@ export class MainMenu {
     art.style.background = `linear-gradient(180deg, ${cssHex(env.skyTop)} 0%, ${cssHex(env.skyHorizon)} 55%, ${cssHex(
       t.palette.ground,
     )} 56%, ${cssHex(t.palette.ground)} 100%)`;
-    const road = el('div', 'track-art-road', undefined, art);
-    road.style.background = cssHex(t.palette.road);
-    road.style.borderColor = cssHex(t.palette.curb);
+    // Painted course preview: themed horizon + the real track outline on the ground.
+    const thumb = buildTrackThumbnail(t).cloneNode(false) as HTMLCanvasElement;
+    thumb.className = 'track-thumb';
+    thumb.getContext('2d')?.drawImage(buildTrackThumbnail(t), 0, 0);
+    art.appendChild(thumb);
     el('div', 'track-theme-pill pill', tt(`theme.${t.theme}` as StringKey), art);
     const body = el('div', 'track-body', undefined, card);
     const nameRow = el('div', 'track-name-row', undefined, body);
