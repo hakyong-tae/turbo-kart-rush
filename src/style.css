@@ -2667,3 +2667,179 @@ html[lang='ko'] .online-hint {
     height: 62px;
   }
 }
+
+/* Rear-view mirror warning (top-right, under the timer) */
+.hud-mirror {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  font-family: var(--display);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  min-width: 150px;
+}
+.hud-mirror.visible {
+  display: flex;
+}
+.hud-mirror-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+.hud-mirror-icon canvas {
+  width: 26px;
+  height: 26px;
+}
+.hud-mirror.warn {
+  border-color: rgba(255, 210, 63, 0.7);
+  box-shadow: 0 0 14px rgba(255, 210, 63, 0.35);
+}
+.hud-mirror.warn-near {
+  border-color: #ffd23f;
+  box-shadow: 0 0 20px rgba(255, 210, 63, 0.6);
+  animation: mirror-pulse 0.5s ease-in-out infinite;
+}
+.hud-mirror.danger {
+  border-color: #ff4040;
+  box-shadow: 0 0 24px rgba(255, 64, 64, 0.65);
+  animation: mirror-pulse 0.32s ease-in-out infinite;
+}
+.hud-mirror.blue {
+  border-color: #3f7fff;
+  box-shadow: 0 0 24px rgba(63, 127, 255, 0.7);
+  animation: mirror-pulse 0.4s ease-in-out infinite;
+}
+.hud-mirror.rumble {
+  animation: mirror-rumble 0.35s linear, mirror-pulse 0.32s ease-in-out infinite;
+}
+@keyframes mirror-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.45); }
+}
+@keyframes mirror-rumble {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-3px, 1px); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, -2px); }
+  80% { transform: translate(2px, 2px); }
+}
+
+/* Slipstream meter under the speedometer */
+.hud-draft {
+  position: absolute;
+  left: 50%;
+  top: -34px;
+  transform: translateX(-50%);
+  width: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.hud-draft.visible {
+  opacity: 1;
+}
+.hud-draft-label {
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: rgba(180, 225, 255, 0.7);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+  transition: color 0.15s, text-shadow 0.15s;
+}
+.hud-draft.active .hud-draft-label {
+  color: #bfe8ff;
+  text-shadow: 0 0 10px rgba(120, 200, 255, 0.9);
+  animation: draft-flicker 0.5s ease-in-out infinite;
+}
+.hud-draft-bar {
+  width: 100%;
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.hud-draft-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #6fc3ff, #dff4ff);
+  transition: width 0.08s linear;
+}
+.hud-draft.active .hud-draft-fill {
+  box-shadow: 0 0 10px rgba(150, 220, 255, 0.9);
+}
+@keyframes draft-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Rocket-start charge gauge */
+.hud-charge {
+  position: absolute;
+  left: 50%;
+  top: 77%;
+  transform: translateX(-50%);
+  width: min(440px, 70vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.hud-charge.visible {
+  opacity: 1;
+}
+.hud-charge-label {
+  font-family: var(--display);
+  font-size: 18px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.75);
+}
+.hud-charge-bar {
+  position: relative;
+  width: 100%;
+  height: 16px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+.hud-charge-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #9fb4c8, #cfe6ff);
+  transition: width 0.05s linear;
+}
+.hud-charge.good .hud-charge-fill { background: linear-gradient(90deg, #3ec6ff, #7fe3ff); box-shadow: 0 0 12px rgba(62, 198, 255, 0.8); }
+.hud-charge.perfect .hud-charge-fill { background: linear-gradient(90deg, #ffb020, #ffe14a); box-shadow: 0 0 16px rgba(255, 210, 63, 0.9); }
+.hud-charge.danger .hud-charge-fill { background: linear-gradient(90deg, #ff6a3a, #ff2d2d); box-shadow: 0 0 18px rgba(255, 64, 64, 0.9); }
+.hud-charge.danger { animation: charge-shake 0.12s linear infinite; }
+.hud-charge.stall .hud-charge-fill { background: #555; }
+.hud-charge.perfect .hud-charge-label { color: #ffe14a; }
+.hud-charge.danger .hud-charge-label { color: #ff5a5a; }
+.hud-charge-tick {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.hud-charge-tick.perfect {
+  background: rgba(255, 225, 74, 0.9);
+}
+@keyframes charge-shake {
+  0%, 100% { transform: translateX(-50%); }
+  50% { transform: translateX(calc(-50% + 3px)); }
+}

@@ -9,6 +9,9 @@ import { glide, noiseBuffer, softClipCurve } from './synth';
 
 const BASE_FREQ: Record<WeightClass, number> = { light: 96, medium: 78, heavy: 62 };
 const IDLE_RPM = 0.15;
+/** Virtual gearbox: speed ratio at which each gear tops out. RPM climbs inside a gear and drops on the shift. */
+const GEAR_TOPS = [0.16, 0.32, 0.5, 0.7, 0.92, 1.4];
+const SHIFT_TIME = 0.11;
 
 let sharedClipCurve: Float32Array<ArrayBuffer> | null = null;
 
@@ -40,6 +43,8 @@ export class EngineVoice {
   private readonly skidGain: GainNode;
 
   private rpm = IDLE_RPM;
+  private gear = 0;
+  private shiftTimer = 0;
   private rich = false;
   private disposed = false;
   // Last scheduled targets for the optional layers, so silent layers don't
@@ -212,14 +217,30 @@ export class EngineVoice {
     const speed = Math.abs(state.speed);
     const ratio = clamp(speed / Math.max(1, topSpeed), 0, 1.4);
 
-    let target = IDLE_RPM + 0.85 * ratio;
-    target += 0.2 * clamp01(throttle) * (1 - clamp01(ratio));
-    if (state.isFrozen) target = IDLE_RPM + 0.45 * clamp01(throttle);
+    // Gear selection with hysteresis so the note steps up through the box instead of sliding.
+    let gear = this.gear;
+    while (gear < GEAR_TOPS.length - 1 && ratio > GEAR_TOPS[gear] + 0.015) gear++;
+    while (gear > 0 && ratio < GEAR_TOPS[gear - 1] - 0.03) gear--;
+    if (gear !== this.gear) {
+      this.gear = gear;
+      this.shiftTimer = SHIFT_TIME;
+    }
+    const lo = gear === 0 ? 0 : GEAR_TOPS[gear - 1];
+    const hi = GEAR_TOPS[gear];
+    const inGear = clamp01((ratio - lo) / Math.max(0.01, hi - lo));
+    // Each gear sweeps ~0.42 → 0.98 of the rev range; higher gears sit slightly higher.
+    let target = ratio < 0.03 ? IDLE_RPM : 0.42 + 0.56 * inGear + gear * 0.015;
+    target += 0.12 * clamp01(throttle) * (1 - inGear);
+    if (this.shiftTimer > 0) {
+      this.shiftTimer -= dt;
+      target *= 0.8; // clutch dip
+    }
+    if (state.isFrozen) target = IDLE_RPM + 0.55 * clamp01(throttle) + 0.25 * clamp01(state.startCharge / 2.6);
     if (state.isAirborne) target = Math.max(target, Math.min(1.35, target + state.airTime * 0.7));
     if (state.isSpinning || state.isSquished) target *= 0.7;
     if (state.isBoosting) target = Math.max(target, 1.05);
 
-    const lambda = target > this.rpm ? 3.2 : 5;
+    const lambda = this.shiftTimer > 0 ? 18 : target > this.rpm ? 4.5 : 6;
     this.rpm = damp(this.rpm, target, lambda, dt);
     const rpm = this.rpm;
 

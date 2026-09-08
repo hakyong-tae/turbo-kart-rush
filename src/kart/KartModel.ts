@@ -255,6 +255,8 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
     g.rotation.x = e.rx;
     // Longer pipes (vertical stacks) stretch along the pipe axis only; the glow disc is flat in XY.
     g.scale.z = e.length / BASE_PIPE_LENGTH;
+    g.userData.lengthScale = e.length / BASE_PIPE_LENGTH;
+    g.userData.length = e.length;
     g.add(makeMesh(pipeGeo, chrome, 'pipe'));
     const glow = makeMesh(glowGeo, exhaustGlowMaterial, 'exhaustGlow');
     glow.castShadow = false;

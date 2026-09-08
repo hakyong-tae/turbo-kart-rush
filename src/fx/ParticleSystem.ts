@@ -5,6 +5,7 @@
  * from birth time / velocity / gravity, so per-frame cost is one uniform.
  */
 import * as THREE from 'three';
+import { BALANCE as B } from '../core/balance';
 import type { IKart, IParticleSystem, ItemType, KartState, ParticlePreset, BoostSource } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_COUNT } from '../core/constants';
@@ -509,6 +510,10 @@ export class ParticleSystem implements IParticleSystem {
   // Per-kart emitter accumulators.
   private readonly accDrift = new Float32Array(MAX_KARTS);
   private readonly accFlame = new Float32Array(MAX_KARTS);
+
+  private readonly accCharge = new Float32Array(MAX_KARTS);
+
+  private readonly accDraft = new Float32Array(MAX_KARTS);
   private readonly accSmoke = new Float32Array(MAX_KARTS);
   private readonly accDust = new Float32Array(MAX_KARTS);
   private readonly accStar = new Float32Array(MAX_KARTS);
@@ -668,7 +673,7 @@ export class ParticleSystem implements IParticleSystem {
     for (let i = 0; i < karts.length; i++) {
       const st = karts[i].state;
       if (st.finished && !st.isBoosting && !st.isDrifting) continue;
-      this.updateKartEmitters(dt, st, now);
+      this.updateKartEmitters(dt, karts[i], now);
       // Camera streaks only for a strong boost at genuinely high speed.
       if (st.isPlayer && st.isBoosting && st.boostStrength >= 0.35 && Math.abs(st.speed) > BASE_TOP_SPEED * 1.12) {
         this.updateSpeedStreaks(dt, now);
@@ -683,7 +688,8 @@ export class ParticleSystem implements IParticleSystem {
     this.alpha.flush();
   }
 
-  private updateKartEmitters(dt: number, st: KartState, now: number): void {
+  private updateKartEmitters(dt: number, kart: IKart, now: number): void {
+    const st = kart.state;
     const idx = this.slot(st.id);
     const p = st.position;
     const h = st.heading;
@@ -754,6 +760,9 @@ export class ParticleSystem implements IParticleSystem {
     }
 
     // --- boost flames from the exhausts ------------------------------------
+    // Jets come out of the body's real pipes (single centre pipe, quad pipes, Rosa's
+    // vertical stacks…) when the kart exposes them; otherwise the classic twin offsets.
+    const anchors = kart.getExhaustAnchors?.();
     if (st.isBoosting) {
       // Short, tight jets: coloured core (never white) with a quick fade so the
       // kart stays readable under bloom.
@@ -761,15 +770,24 @@ export class ParticleSystem implements IParticleSystem {
       const src = this.boostSource[idx];
       for (let k = 0; k < n; k++) {
         const side = k % 2 === 0 ? 1 : -1;
-        S.x = p.x - fx * 0.9 + rx * 0.25 * side + rnd(-0.025, 0.025);
-        S.y = p.y + 0.42 * shrink + rnd(-0.025, 0.025);
-        S.z = p.z - fz * 0.9 + rz * 0.25 * side + rnd(-0.025, 0.025);
+        let dx = -fx, dy = 0, dz = -fz;
+        if (anchors && anchors.length > 0) {
+          const a = anchors[k % anchors.length];
+          S.x = a.position.x + rnd(-0.025, 0.025);
+          S.y = a.position.y + rnd(-0.025, 0.025);
+          S.z = a.position.z + rnd(-0.025, 0.025);
+          dx = a.direction.x; dy = a.direction.y; dz = a.direction.z;
+        } else {
+          S.x = p.x - fx * 0.9 + rx * 0.25 * side + rnd(-0.025, 0.025);
+          S.y = p.y + 0.42 * shrink + rnd(-0.025, 0.025);
+          S.z = p.z - fz * 0.9 + rz * 0.25 * side + rnd(-0.025, 0.025);
+        }
         // Inherit most of the kart velocity so the jet stays attached to the
         // exhaust instead of leaving a long dotted trail on the road.
         const back = rnd(4, 7);
-        S.vx = st.velocity.x * 0.8 - fx * back + rnd(-0.3, 0.3);
-        S.vy = rnd(-0.1, 0.5);
-        S.vz = st.velocity.z * 0.8 - fz * back + rnd(-0.3, 0.3);
+        S.vx = st.velocity.x * 0.8 + dx * back + rnd(-0.3, 0.3);
+        S.vy = st.velocity.y * 0.8 + dy * back + rnd(-0.1, 0.5);
+        S.vz = st.velocity.z * 0.8 + dz * back + rnd(-0.3, 0.3);
         S.life = rnd(0.09, 0.18);
         S.size0 = 0.24 * shrink; S.size1 = 0.05;
         if (src === BOOST_SOURCE_MUSHROOM) {
@@ -789,6 +807,74 @@ export class ParticleSystem implements IParticleSystem {
       }
     } else {
       this.accFlame[idx] = 0;
+    }
+
+    // --- rocket-start charge: revving on the grid puffs from the pipes ----------
+    if (st.isFrozen && st.startCharge > 0.12 && anchors && anchors.length > 0) {
+      const c = st.startCharge;
+      const perfect = c >= B.race.startChargePerfect;
+      const danger = c >= B.race.startSpinoutHold - 0.35;
+      const n = this.take(this.accCharge, idx, 26 + c * 30, dt);
+      for (let k = 0; k < n; k++) {
+        const a = anchors[k % anchors.length];
+        S.x = a.position.x + rnd(-0.03, 0.03);
+        S.y = a.position.y + rnd(-0.03, 0.03);
+        S.z = a.position.z + rnd(-0.03, 0.03);
+        const push = rnd(1.2, 2.4) + c * 0.8;
+        S.vx = a.direction.x * push + rnd(-0.25, 0.25);
+        S.vy = a.direction.y * push + rnd(0.4, 1.0);
+        S.vz = a.direction.z * push + rnd(-0.25, 0.25);
+        if (perfect && k % 2 === 0) {
+          // Hot exhaust: small flame licks once the charge is in the sweet spot.
+          S.life = rnd(0.1, 0.2);
+          S.size0 = 0.16; S.size1 = 0.04;
+          if (danger) { S.r0 = 1.6; S.g0 = 0.35; S.b0 = 0.2; S.r1 = 0.9; S.g1 = 0.1; S.b1 = 0.05; }
+          else { S.r0 = 1.5; S.g0 = 0.8; S.b0 = 0.25; S.r1 = 1.0; S.g1 = 0.3; S.b1 = 0.05; }
+          S.a0 = 0.8; S.a1 = 0;
+          S.atlas = ATLAS_FLAME; S.align = 1; S.drag = 3; S.gravity = -0.5;
+          S.rot = 0; S.rotSpeed = 0;
+          this.additive.spawn(S, now);
+        } else {
+          S.life = rnd(0.5, 0.9);
+          S.size0 = 0.12; S.size1 = 0.42 + c * 0.1;
+          const g = danger ? 0.25 : 0.55;
+          S.r0 = g + 0.1; S.g0 = g; S.b0 = g + (danger ? -0.05 : 0.05); S.r1 = g * 0.6; S.g1 = g * 0.6; S.b1 = g * 0.6;
+          S.a0 = 0.35 + c * 0.1; S.a1 = 0;
+          S.atlas = ATLAS_SMOKE; S.align = 0; S.drag = 2.5; S.gravity = -1.2;
+          S.rot = rnd(0, 6.28); S.rotSpeed = rnd(-1.5, 1.5);
+          this.alpha.spawn(S, now);
+        }
+      }
+    } else {
+      this.accCharge[idx] = 0;
+    }
+
+    // --- slipstream: air streaks rushing past the kart ------------------------
+    if (st.draftCharge > 0.15 && speed > 6) {
+      const c = st.draftCharge;
+      const full = st.isDrafting;
+      const n = this.take(this.accDraft, idx, 40 + c * 80 + (full ? 50 : 0), dt);
+      for (let k = 0; k < n; k++) {
+        const side = rnd(-1, 1);
+        const lift = rnd(0.15, 1.25);
+        S.x = p.x + fx * rnd(1.2, 2.2) + rx * side * 1.15;
+        S.y = p.y + lift;
+        S.z = p.z + fz * rnd(1.2, 2.2) + rz * side * 1.15;
+        // Air flows past: mostly backwards relative to the kart, hugging the body.
+        const flow = rnd(12, 19);
+        S.vx = st.velocity.x * 0.5 - fx * flow - rx * side * 0.5;
+        S.vy = rnd(-0.25, 0.25);
+        S.vz = st.velocity.z * 0.5 - fz * flow - rz * side * 0.5;
+        S.life = rnd(0.3, 0.45);
+        S.size0 = full ? 0.42 : 0.28; S.size1 = 0.06;
+        S.r0 = 0.85; S.g0 = 1.0; S.b0 = 1.3; S.r1 = 0.5; S.g1 = 0.8; S.b1 = 1.2;
+        S.a0 = full ? 0.85 : 0.5; S.a1 = 0;
+        S.atlas = ATLAS_STREAK; S.align = 1; S.drag = 0; S.gravity = 0;
+        S.rot = 0; S.rotSpeed = 0;
+        this.additive.spawn(S, now);
+      }
+    } else {
+      this.accDraft[idx] = 0;
     }
 
     // --- off-road dust --------------------------------------------------------

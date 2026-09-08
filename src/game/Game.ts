@@ -837,7 +837,7 @@ export class Game {
     this.particles.update(dt, r.karts, this.camera);
     this.audio.update(dt, r.karts, player.state.id, this.camera);
     const raceTime = r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime;
-    r.hud.update(dt, player, r.karts, raceTime, r.raceManager.totalLaps);
+    r.hud.update(dt, player, r.karts, raceTime, r.raceManager.totalLaps, r.items.getHazards());
     this.updatePostFxFeel(dt, player);
 
     if (this.state === 'finished' && r.resultsTimer > 0) {

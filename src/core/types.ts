@@ -353,6 +353,8 @@ export interface KartState {
   /** Magnet item: kart id being followed, -1 when detached. */
   magnetTargetId: number;
   magnetTimer: number;
+  /** Seconds the throttle has been held while frozen on the grid (rocket-start charge; HUD gauge). */
+  startCharge: number;
 
   lap: number;
   /** Next checkpoint index the kart must cross. */
@@ -379,6 +381,12 @@ export interface KartState {
   wheelSpin: number;
 }
 
+export interface ExhaustAnchor {
+  position: THREE.Vector3;
+  /** Unit vector the pipe points along (world space). */
+  direction: THREE.Vector3;
+}
+
 export interface IKart {
   readonly state: KartState;
   /** Root object (kart body + driver + wheels). Added to the scene by Game. */
@@ -399,6 +407,8 @@ export interface IKart {
   applyStar(duration: number): void;
   /** Contract addition (gameplay-2): latch onto `targetId` for `duration` seconds (magnet item). */
   applyMagnet(targetId: number, duration: number): void;
+  /** Contract addition (gameplay-3): world-space exhaust tips (updated in updateVisuals) so FX can attach flames to the real pipes. */
+  getExhaustAnchors?(): readonly ExhaustAnchor[];
   applyShrink(duration: number): void;
   applyImpulse(impulse: THREE.Vector3): void;
   setFrozen(frozen: boolean): void;

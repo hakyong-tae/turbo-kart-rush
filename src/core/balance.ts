@@ -133,9 +133,9 @@ export interface Balance {
     boxSeekDistance: number;
   };
   race: {
-    /** Rocket start: throttle within this many seconds after GO = strong boost, weak window = small boost. */
-    startBoostWindow: number;
-    startBoostWeakWindow: number;
+    /** Rocket start charge (seconds the throttle is held before GO): ≥ good = medium boost, ≥ perfect = big boost. */
+    startChargeGood: number;
+    startChargePerfect: number;
     /** Holding throttle this long before GO = spin out. */
     startSpinoutHold: number;
     wrongWaySeconds: number;
@@ -275,8 +275,8 @@ export function createDefaultBalance(): Balance {
       boxSeekDistance: 60,
     },
     race: {
-      startBoostWindow: 0.6,
-      startBoostWeakWindow: 1.2,
+      startChargeGood: 0.6,
+      startChargePerfect: 1.6,
       startSpinoutHold: 2.6,
       wrongWaySeconds: 1.2,
       stuckSeconds: 6,

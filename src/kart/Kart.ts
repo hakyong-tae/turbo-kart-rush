@@ -19,7 +19,7 @@ import type {
   KartState,
   SurfaceQuery,
   NetKartPose,
-} from '../core/types';
+ ExhaustAnchor } from '../core/types';
 import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_RADIUS } from '../core/constants';
@@ -72,6 +72,10 @@ export class Kart implements IKart {
   readonly input: InputState = createEmptyInput();
 
   private readonly parts: KartModelPartsEx;
+  private readonly exhaustAnchors: ExhaustAnchor[];
+  private overchargeEmitted = false;
+  /** Forward distance to the wake source on the last in-wake frame (slipstream exit rule). */
+  private lastDraftAlong = 0;
   /** Model root; receives visual-only offsets. `object` always equals the physics pose. */
   private readonly visual: THREE.Group;
 
@@ -146,6 +150,7 @@ export class Kart implements IKart {
       isDrafting: false,
       magnetTargetId: -1,
       magnetTimer: 0,
+      startCharge: 0,
       lap: 0,
       checkpointIndex: 0,
       trackT: 0,
@@ -161,6 +166,7 @@ export class Kart implements IKart {
       wheelSpin: 0,
     };
     this.parts = buildKartModel(character);
+    this.exhaustAnchors = this.parts.exhausts.map(() => ({ position: new THREE.Vector3(), direction: new THREE.Vector3(0, 0, 1) }));
     this.visual = this.parts.root;
     this.object = new THREE.Group();
     this.object.name = `kart-${id}-${character.id}`;
@@ -201,6 +207,11 @@ export class Kart implements IKart {
       this.lateralVel = 0;
       this.slip = 0;
       this.frozenThrottleTime = this.input.throttle > 0.5 ? this.frozenThrottleTime + dt : 0;
+      s.startCharge = this.frozenThrottleTime;
+      if (!this.overchargeEmitted && this.frozenThrottleTime >= B.race.startSpinoutHold) {
+        this.overchargeEmitted = true;
+        events.emit('kart:startOvercharge', { kartId: s.id });
+      }
       s.steerVisual = damp(s.steerVisual, this.input.steer, 10, dt);
       this.vy -= GRAVITY * dt;
       this.freeY += this.vy * dt;
@@ -371,7 +382,20 @@ export class Kart implements IKart {
     const ex = p.exhausts;
     const exs = 1 + 0.12 * this.visGlow * flicker;
     const exz = 1 + 0.25 * this.visGlow * flicker;
-    for (let i = 0; i < ex.length; i++) ex[i].scale.set(exs, exs, exz);
+    for (let i = 0; i < ex.length; i++) {
+      const g = ex[i];
+      const lengthScale = (g.userData.lengthScale as number | undefined) ?? 1;
+      g.scale.set(exs, exs, exz * lengthScale);
+      // World-space pipe tip + direction for the FX layer (local +Z is the pipe axis).
+      const a = this.exhaustAnchors[i];
+      const len = ((g.userData.length as number | undefined) ?? 0.28) * exz;
+      a.direction.set(0, 0, 1).applyEuler(g.rotation).applyQuaternion(s.quaternion).normalize();
+      a.position.set(0, 0, len).applyEuler(g.rotation).add(g.position).applyQuaternion(s.quaternion).add(s.position);
+    }
+  }
+
+  getExhaustAnchors(): readonly ExhaustAnchor[] {
+    return this.exhaustAnchors;
   }
 
   applyBoost(strength: number, duration: number, source: BoostSource): void {
@@ -465,6 +489,7 @@ export class Kart implements IKart {
         const otherAlong = o.velocity.x * fx + o.velocity.z * fz;
         if (otherAlong < 0.5 * s.speed) continue;
         inWake = true;
+        this.lastDraftAlong = along;
         break;
       }
     }
@@ -475,7 +500,13 @@ export class Kart implements IKart {
         events.emit('kart:draftStart', { kartId: s.id });
       }
     } else {
-      if (s.isDrafting) this.applyBoost(S.exitBoostStrength, S.exitBoostDuration, 'slipstream');
+      if (s.isDrafting) {
+        // F1 rule: the tow pays off when you pull OUT of the wake to pass (you were still close);
+        // simply falling back out of range earns nothing.
+        const burst = this.lastDraftAlong < S.maxDistance * 0.75;
+        if (burst) this.applyBoost(S.exitBoostStrength, S.exitBoostDuration, 'slipstream');
+        events.emit('kart:draftEnd', { kartId: s.id, burst });
+      }
       s.isDrafting = false;
       s.draftCharge = Math.max(0, s.draftCharge - dt * 2);
     }
@@ -546,11 +577,7 @@ export class Kart implements IKart {
 
   setFrozen(frozen: boolean): void {
     const s = this.state;
-    if (s.isFrozen && !frozen) {
-      // Rocket start: throttle pressed shortly before GO.
-      const t = this.frozenThrottleTime;
-      if (t > 0 && t < 0.45) this.applyBoost(0.3, 1.2, 'start');
-    }
+    // The launch boost / stall is decided by RaceManager.go() from the charge it tracked.
     s.isFrozen = frozen;
     if (frozen) {
       if (s.isDrifting) this.endDrift(false);
@@ -559,6 +586,10 @@ export class Kart implements IKart {
       this.lateralVel = 0;
       this.slip = 0;
       this.frozenThrottleTime = 0;
+      s.startCharge = 0;
+      this.overchargeEmitted = false;
+    } else {
+      s.startCharge = 0;
     }
   }
 

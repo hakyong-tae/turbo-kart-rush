@@ -32,6 +32,10 @@ export interface GameEvents {
   'kart:starStart': { kartId: number };
   'kart:starEnd': { kartId: number };
   'kart:draftStart': { kartId: number };
+  /** burst = the exit earned the slipstream burst (pulled out / passed), false = fell out of the wake. */
+  'kart:draftEnd': { kartId: number; burst: boolean };
+  /** Throttle held too long on the grid — the engine stalls at GO. */
+  'kart:startOvercharge': { kartId: number };
   'kart:magnetStart': { kartId: number; targetId: number };
   'kart:magnetEnd': { kartId: number };
   'kart:shrink': { kartId: number };

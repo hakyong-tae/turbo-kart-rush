@@ -290,12 +290,16 @@ export class RaceManager {
     // Start boost / jump-start penalty.
     const p = this.playerTracker;
     if (p) {
+      // Mario Kart style charge: the longer the throttle is held before GO the bigger the
+      // launch — until the engine stalls past startSpinoutHold.
       const held = p.throttleStreak;
       if (held >= B.race.startSpinoutHold) {
         p.kart.applyHit('collision', -1);
-      } else if (held > 0.02 && held <= B.race.startBoostWindow) {
-        p.kart.applyBoost(0.4, 1.0, 'start');
-      } else if (held > B.race.startBoostWindow && held <= B.race.startBoostWeakWindow) {
+      } else if (held >= B.race.startChargePerfect) {
+        p.kart.applyBoost(0.5, 1.3, 'start');
+      } else if (held >= B.race.startChargeGood) {
+        p.kart.applyBoost(0.35, 1.0, 'start');
+      } else if (held > 0.15) {
         p.kart.applyBoost(0.2, 0.6, 'start');
       }
     }

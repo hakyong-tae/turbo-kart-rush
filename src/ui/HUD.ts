@@ -2,7 +2,8 @@
  * In-race heads-up display. Pure DOM over the canvas; DOM writes only happen
  * when a displayed value actually changes.
  */
-import type { IKart, ITrack, ItemType } from '../core/types';
+import type { IKart, ITrack, ItemType, HazardInfo, KartState } from '../core/types';
+import { BALANCE as B } from '../core/balance';
 import { ALL_ITEM_TYPES } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED } from '../core/constants';
@@ -80,6 +81,17 @@ export class HUD {
   private vignetteApplied = -1;
   private readonly timed: TimedNode[] = [];
   private readonly boostGlow: HTMLElement;
+  private readonly mirror: HTMLElement;
+  private readonly mirrorIcon: HTMLElement;
+  private readonly mirrorText: TextField;
+  private mirrorIconType: ItemType | 'kart' | null = null;
+  private mirrorLevel = '';
+  private readonly draftNode: HTMLElement;
+  private readonly draftFill: HTMLElement;
+  private draftShown = -1;
+  private readonly chargeNode: HTMLElement;
+  private readonly chargeFill: HTMLElement;
+  private chargeClass = '';
   private boostGlowApplied = -1;
 
   constructor(
@@ -101,6 +113,10 @@ export class HUD {
     el('span', 'hud-lap-label', t('hud.lap'), lapBox);
     this.lapText = new TextField(el('span', 'hud-lap-value', '', lapBox));
     this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
+    // Rear-view mirror: lights up when a kart closes in from behind or a shell is incoming.
+    this.mirror = el('div', 'hud-mirror glass', undefined, topRight);
+    this.mirrorIcon = el('div', 'hud-mirror-icon', undefined, this.mirror);
+    this.mirrorText = new TextField(el('div', 'hud-mirror-text', '', this.mirror));
 
     // Bottom-left: place
     this.placeNode = el('div', 'hud-place', undefined, this.rootNode);
@@ -131,6 +147,20 @@ export class HUD {
     const speedInner = el('div', 'speed-inner', undefined, speedWrap);
     this.speedText = new TextField(el('div', 'speed-value', '0', speedInner));
     el('div', 'speed-unit', 'km/h', speedInner);
+    // Slipstream meter under the speedometer.
+    this.draftNode = el('div', 'hud-draft', undefined, speedWrap);
+    el('span', 'hud-draft-label', `≫ ${t('hud.slipstream')}`, this.draftNode);
+    const draftBar = el('div', 'hud-draft-bar', undefined, this.draftNode);
+    this.draftFill = el('div', 'hud-draft-fill', undefined, draftBar);
+    // Rocket-start charge gauge (grid only).
+    this.chargeNode = el('div', 'hud-charge', undefined, this.rootNode);
+    el('span', 'hud-charge-label', t('hud.charge'), this.chargeNode);
+    const chargeBar = el('div', 'hud-charge-bar', undefined, this.chargeNode);
+    this.chargeFill = el('div', 'hud-charge-fill', undefined, chargeBar);
+    const good = (B.race.startChargeGood / B.race.startSpinoutHold) * 100;
+    const perfect = (B.race.startChargePerfect / B.race.startSpinoutHold) * 100;
+    el('span', 'hud-charge-tick', undefined, chargeBar).style.left = `${good}%`;
+    el('span', 'hud-charge-tick perfect', undefined, chargeBar).style.left = `${perfect}%`;
 
     // Bottom-right: minimap
     const mapWrap = el('div', 'hud-minimap glass', undefined, this.rootNode);
@@ -149,6 +179,111 @@ export class HUD {
 
   // ------------------------------------------------------------------ public
 
+  /** Rocket-start gauge: visible only while frozen on the grid with the throttle down. */
+  private updateCharge(s: KartState): void {
+    const show = s.isFrozen && s.startCharge > 0.02;
+    this.chargeNode.classList.toggle('visible', show);
+    if (!show) return;
+    const frac = clamp01(s.startCharge / B.race.startSpinoutHold);
+    this.chargeFill.style.width = `${(frac * 100).toFixed(1)}%`;
+    const cls =
+      s.startCharge >= B.race.startSpinoutHold ? 'stall' : s.startCharge >= B.race.startSpinoutHold - 0.4 ? 'danger' : s.startCharge >= B.race.startChargePerfect ? 'perfect' : s.startCharge >= B.race.startChargeGood ? 'good' : 'weak';
+    if (cls !== this.chargeClass) {
+      this.chargeNode.classList.remove('weak', 'good', 'perfect', 'danger', 'stall');
+      this.chargeNode.classList.add(cls);
+      this.chargeClass = cls;
+    }
+  }
+
+  private updateDraft(s: KartState): void {
+    const c = s.draftCharge;
+    const shown = c > 0.02 ? 1 : 0;
+    if (shown !== this.draftShown) {
+      this.draftShown = shown;
+      this.draftNode.classList.toggle('visible', shown === 1);
+    }
+    if (shown) {
+      this.draftFill.style.width = `${(clamp01(c) * 100).toFixed(1)}%`;
+      this.draftNode.classList.toggle('active', s.isDrafting);
+    }
+  }
+
+  /** Threat scan behind the player: closest kart within 14 m or any hazard homing in within 30 m. */
+  private updateMirror(player: IKart, karts: readonly IKart[], hazards: readonly HazardInfo[]): void {
+    const s = player.state;
+    if (s.isFrozen || s.finished) {
+      this.setMirror(null, '', '');
+      return;
+    }
+    const fx = -Math.sin(s.heading);
+    const fz = -Math.cos(s.heading);
+    let level = '';
+    let icon: ItemType | 'kart' | null = null;
+    let text = '';
+    // Hazards first (they outrank karts).
+    let bestHazard = Infinity;
+    for (const h of hazards) {
+      if (h.ownerId === s.id) continue;
+      if (h.type !== 'red_shell' && h.type !== 'green_shell' && h.type !== 'blue_shell' && h.type !== 'bob_omb') continue;
+      const dx = h.position.x - s.position.x;
+      const dz = h.position.z - s.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > 30 || dist >= bestHazard) continue;
+      // Approaching us: relative velocity points toward the player.
+      const rvx = h.velocity.x - s.velocity.x;
+      const rvz = h.velocity.z - s.velocity.z;
+      const closing = -(rvx * dx + rvz * dz) / Math.max(0.1, dist);
+      const behind = dx * fx + dz * fz < 0;
+      if (h.type === 'blue_shell' || (closing > 2 && (behind || h.type === 'red_shell'))) {
+        bestHazard = dist;
+        icon = h.type;
+        level = h.type === 'blue_shell' ? 'blue' : 'danger';
+        text = h.type === 'blue_shell' ? t('hud.mirror.blue') : t('hud.mirror.shell', { d: Math.round(dist) });
+      }
+    }
+    if (!icon) {
+      let bestKart = Infinity;
+      for (const k of karts) {
+        const o = k.state;
+        if (o.id === s.id || o.finished) continue;
+        const dx = o.position.x - s.position.x;
+        const dz = o.position.z - s.position.z;
+        const along = dx * fx + dz * fz;
+        if (along > -0.5 || along < -14) continue;
+        const lateral = Math.abs(dx * fz - dz * fx);
+        if (lateral > 4) continue;
+        const closing = (o.velocity.x - s.velocity.x) * fx + (o.velocity.z - s.velocity.z) * fz;
+        const dist = -along;
+        if (closing > 0.5 && dist < bestKart) {
+          bestKart = dist;
+          icon = 'kart';
+          level = dist < 5 ? 'warn-near' : 'warn';
+          text = t('hud.mirror.kart', { d: Math.round(dist) });
+        }
+      }
+    }
+    this.setMirror(icon, level, text);
+  }
+
+  private setMirror(icon: ItemType | 'kart' | null, level: string, text: string): void {
+    if (icon !== this.mirrorIconType) {
+      this.mirrorIconType = icon;
+      this.mirrorIcon.replaceChildren();
+      if (icon === 'kart') this.mirrorIcon.textContent = '🏎';
+      else if (icon) {
+        this.mirrorIcon.textContent = '';
+        this.mirrorIcon.appendChild(this.buildIcon(icon));
+      }
+    }
+    if (level !== this.mirrorLevel) {
+      this.mirror.classList.remove('warn', 'warn-near', 'danger', 'blue', 'visible');
+      if (level) this.mirror.classList.add('visible', level);
+      this.mirrorLevel = level;
+      if (level === 'danger' || level === 'blue') restartAnimation(this.mirror, 'rumble');
+    }
+    this.mirrorText.set(text);
+  }
+
   setTrack(track: ITrack | null): void {
     this.minimap.setTrack(track);
   }
@@ -163,10 +298,14 @@ export class HUD {
     this.visible = false;
   }
 
-  update(dt: number, player: IKart, karts: readonly IKart[], raceTime: number, totalLaps: number): void {
+  update(dt: number, player: IKart, karts: readonly IKart[], raceTime: number, totalLaps: number, hazards: readonly HazardInfo[] = []): void {
     if (!this.visible) return;
     const s = player.state;
     this.playerId = s.id;
+
+    this.updateCharge(s);
+    this.updateDraft(s);
+    this.updateMirror(player, karts, hazards);
 
     // Place numeral
     const place = s.place > 0 ? s.place : karts.length;
@@ -263,6 +402,16 @@ export class HUD {
       }),
       on('race:start', () => {
         this.flashCenter(t('hud.go'), 'hud-count hud-go', 1.1);
+        this.chargeNode.classList.remove('visible');
+      }),
+      on('kart:startOvercharge', (e) => {
+        if (e.kartId !== this.playerId) return;
+        this.flashCenter(t('hud.overcharge'), 'hud-banner down', 1.4);
+        restartAnimation(this.rootNode, 'hit-shake');
+      }),
+      on('kart:draftEnd', (e) => {
+        if (e.kartId !== this.playerId || !e.burst) return;
+        this.flashCenter(`≫ ${t('hud.slipstreamBoost')}`, 'hud-posflash up', 0.9);
       }),
       on('race:lap', (e) => {
         if (!e.isPlayer) return;
