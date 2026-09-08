@@ -2106,6 +2106,46 @@ html[lang='ko'] .touch-btn {
   word-break: keep-all;
 }
 
+/* Korean type system: Impact still draws Latin display glyphs where it exists (numbers,
+   racer names); Hangul falls through to Black Han Sans, a heavy arcade display face.
+   Body copy switches from the system UI font to Noto Sans KR. */
+html[lang='ko'] {
+  --display: 'Impact', 'Haettenschweiler', 'Black Han Sans', 'Arial Narrow Bold', 'Arial Black', sans-serif;
+  --body: 'Noto Sans KR', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+/* Small display labels are too heavy in Black Han Sans — use bold Noto there. */
+html[lang='ko'] .pill,
+html[lang='ko'] .stat-label,
+html[lang='ko'] .panel-kicker,
+html[lang='ko'] .hud-lap-label,
+html[lang='ko'] .card-tag,
+html[lang='ko'] .select-info-tagline,
+html[lang='ko'] .loading-tip-label,
+html[lang='ko'] .settings-label,
+html[lang='ko'] .lb-tab,
+html[lang='ko'] .difficulty-label {
+  font-family: var(--body);
+  font-weight: 700;
+}
+html[lang='ko'] .panel-title,
+html[lang='ko'] .results-title,
+html[lang='ko'] .hud-msg,
+html[lang='ko'] .btn,
+html[lang='ko'] .seg,
+html[lang='ko'] .touch-btn {
+  letter-spacing: 0.02em;
+}
+html[lang='ko'] .panel-title {
+  line-height: 1.1;
+}
+html[lang='ko'] body,
+html[lang='ko'] .settings-hint,
+html[lang='ko'] .lock-body,
+html[lang='ko'] .lb-status,
+html[lang='ko'] .online-hint {
+  font-weight: 500;
+}
+
 /* ----------------------------------------------------------------------------
    Verse8: title corner buttons, premium locks, lock sheet, records, settings, mocks
    --------------------------------------------------------------------------- */
