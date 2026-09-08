@@ -1,0 +1,147 @@
+/* Late layout overrides: HUD relayout (standings/item slot), lobby offsets */
+/* ---- HUD: item slot top-right, standings top-left ---- */
+.hud-item {
+  left: auto;
+  right: var(--hud-pad);
+  top: var(--hud-pad);
+}
+.hud-topright {
+  top: calc(var(--hud-pad) + 100px);
+}
+.item-label {
+  display: none;
+}
+.item-count {
+  display: none;
+}
+.item-icon.stacked .item-icon-canvas {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.15s var(--ease-out);
+}
+.item-icon.stacked .stack-0 { transform: translate(-9px, 7px) rotate(-10deg); }
+.item-icon.stacked .stack-1 { transform: translate(0, -2px); }
+.item-icon.stacked .stack-2 { transform: translate(9px, 7px) rotate(10deg); }
+.item-icon.stacked {
+  position: relative;
+}
+.item-frame.overdrive {
+  background: conic-gradient(#ffd23f var(--od, 100%), rgba(255, 255, 255, 0.1) 0) border-box;
+  box-shadow: 0 0 22px rgba(255, 200, 60, 0.7);
+}
+#ui.touch .touch-pause {
+  left: auto;
+  right: calc(var(--hud-pad) + 100px + env(safe-area-inset-right, 0px));
+}
+#ui.touch .hud-minimap {
+  left: 50%;
+}
+.hud-standings {
+  position: absolute;
+  top: var(--hud-pad);
+  left: var(--hud-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  min-width: 150px;
+}
+.hud-standing {
+  display: grid;
+  grid-template-columns: 1.4em 10px 1fr;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: var(--ink-dim);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.hud-standing.you {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+.hud-standing.dnf {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.hud-standing.done .hud-standing-place {
+  color: var(--gold);
+}
+.hud-standing-place {
+  text-align: right;
+}
+.hud-standing-chip {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.hud-standing-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 11em;
+}
+#ui.touch .hud-standings {
+  min-width: 120px;
+  padding: 6px 8px;
+}
+#ui.touch .hud-standing {
+  font-size: 11px;
+}
+@media (max-height: 480px) {
+  .hud-standings {
+    top: calc(var(--hud-pad) * 0.6);
+    gap: 1px;
+  }
+  .hud-standing {
+    font-size: 10.5px;
+    padding: 1px 5px;
+  }
+  .hud-topright {
+    top: calc(var(--hud-pad) + 78px);
+  }
+}
+/* Team tally and touch minimap no longer collide with the standings (both centred). */
+/* Lobby buttons reuse the old corner-toggle class names for tooling; neutralise those offsets. */
+.lobby .lobby-btn {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  z-index: auto;
+}
+.lobby .settings-toggle {
+  font-size: clamp(16px, 1.6vw, 21px);
+  padding: 14px 22px;
+}
+@media (max-height: 480px) {
+  .lobby .settings-toggle {
+    padding: 9px 16px;
+    font-size: 15px;
+  }
+  .version {
+    display: none;
+  }
+}
+#ui.touch .hud-team {
+  top: calc(var(--hud-pad) + 150px);
+}
+
+/* Lobby sits right of the showcase kart on anything wider than a phone. */
+@media (min-width: 701px) {
+  .lobby {
+    left: auto;
+    right: clamp(40px, 9vw, 160px);
+    transform: none;
+    bottom: clamp(48px, 12vh, 120px);
+    width: min(340px, 34vw);
+  }
+  .logo,
+  .logo-sub {
+    /* keep the logo centred */
+  }
+}

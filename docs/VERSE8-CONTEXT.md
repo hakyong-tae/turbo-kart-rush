@@ -52,7 +52,7 @@ bun run build
 
 
 ## 7. 모바일 / 원스토어 요건 (2026-09-07)
-- 폰 브레이크포인트 `@media (max-width: 700px), (max-height: 480px)` (style.css 말미): 키보드 안내 숨김, 선택 패널은 **스크롤 컬럼 + sticky 푸터**, 레이서 카드 세로 2열(`MainMenu.charColumns()`가 실제 열 수를 읽어 ↑↓ 이동), 가로 폰은 카드 축약. 일시정지 중 `.hud` 페이드.
+- 폰 브레이크포인트 `@media (max-width: 700px), (max-height: 480px)` (`src/styles/11-phone.css`): 키보드 안내 숨김, 선택 패널은 **스크롤 컬럼 + sticky 푸터**, 레이서 카드 세로 2열(`MainMenu.charColumns()`가 실제 열 수를 읽어 ↑↓ 이동), 가로 폰은 카드 축약. 일시정지 중 `.hud` 페이드.
 - 세로 화면 메뉴 카메라는 `MenuBackdrop.PORTRAIT_FRAMINGS` + 거리 `1/aspect` — 지우면 카트가 카드 뒤를 가득 채운다.
 - 검증: `node tools/mobile-audit.mjs` → `marketing/.audit/` 40장(390×844·844×390, ko/en, 10화면). 원스토어 폼 답변·증빙은 `docs/ONESTORE-FORM.md`, `marketing/onestore/`.
 8. **시작 시 서버 연결 필수**: `Game` 생성자에서 `initShop()` + `refreshEntitlements()`를 호출한다(26-09-07 리뷰 수정). 빠지면 호스트에서 레이스 완주 전까지 게임서버에 붙지 않아 기록 패널이 오프라인으로 보이고 VXShop이 열리지 않는다. 기록 패널은 `inVerse8Host()`로만 게이트하고 소켓 상태로 게이트하지 않는다.
@@ -60,3 +60,4 @@ bun run build
 10. **한글 폰트**: `index.html`이 Google Fonts(Black Han Sans = 디스플레이/버튼, Noto Sans KR = 본문)를 로드하고 `html[lang='ko']`에서 `--display/--body`를 바꾼다. 라틴 디스플레이 글리프는 Impact가 있으면 Impact, 없으면 Black Han Sans. 폰트 CDN이 막히면 시스템 폰트로 자연 폴백(레이아웃 깨지지 않음). 작은 라벨(pill·stat·kicker)은 Noto 700.
 11. **팀전/리타이어**: `src/core/teams.ts`가 규칙의 단일 출처(짝수 kartId=레드, 홀수=블루, 점수표 10/8/6/5/4/3/2/1, 1등 우선제). 리타이어는 1등 완주 후 `BALANCE.race.retireSeconds`(10s) — `finishTime -1`, 점수 0, 기록 제출 안 함. 온라인 방은 아직 `mode`를 전송하지 않아 항상 개인전.
 12. **모바일 = 가로 전용**: `Game.onOrientationCheck`가 터치 기기 세로에서 `.rotate-gate`를 띄우고 레이스를 일시정지. 타이틀은 로비(싱글/온라인/설정/기록 버튼, `.single-toggle` 등 클래스는 툴 스크립트가 참조). HUD: 좌상단 순위표(`.hud-standings`), 우상단 아이템(라벨 없음, 3개는 겹친 아이콘, 오버드라이브는 링 게이지), 그 아래 랩/타임. 아이템 id: `nitro`/`triple_nitro`/`overdrive`(구 버섯류 — 넷 코드 인덱스는 동일).
+13. **구조**: 모듈 지도와 '무엇을 바꾸려면 어디' 표는 `docs/ARCHITECTURE.md`. CSS는 `src/styles/` 번호순 임포트(순서=캐스케이드). 새 기능은 `ui/hud/`·`kart/assists/` 식으로 위젯/모듈 단위 파일 추가.

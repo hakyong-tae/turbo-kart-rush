@@ -1,0 +1,66 @@
+/* Desktop responsive tweaks (≤720px tall, ≤1100px wide) */
+/* ----------------------------------------------------------------------------
+   Responsive (down to 1024×600)
+   --------------------------------------------------------------------------- */
+
+@media (max-height: 720px) {
+  .card {
+    padding: 10px 10px 8px;
+  }
+  .card-tag {
+    display: none;
+  }
+  .char-swatch {
+    height: 56px;
+  }
+  .track-art {
+    height: 64px;
+  }
+  .stats {
+    gap: 3px;
+  }
+  .stat-bar {
+    height: 4px;
+  }
+  .select-header .panel-title {
+    font-size: 30px;
+  }
+  .select-footer {
+    padding: 10px 16px;
+  }
+  .controls-legend {
+    display: none;
+  }
+  .logo-word {
+    font-size: clamp(44px, 6.4vw, 84px);
+  }
+  .logo-word-2 {
+    font-size: clamp(38px, 5vw, 66px);
+  }
+  .hud-place .place-num {
+    font-size: 96px;
+  }
+  .hud-speed {
+    width: 110px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .difficulty-blurb {
+    display: none;
+  }
+  .select-footer {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -53,6 +53,36 @@ describe('gameplay-2', () => {
     expect(bonusSeen).toBe(true);
   });
 
+  it('slipstream: bonus follows the leader → follower weight-class matrix', () => {
+    // Light kart behind a heavy kart gets the biggest tow (×1.12); heavy behind light the smallest (×1.02).
+    const cases: [string, string, number][] = [
+      ['bram', 'zippy', 1.12],
+      ['zippy', 'bram', 1.02],
+      ['max', 'max', 1.08],
+    ];
+    for (const [leaderId, followerId, expected] of cases) {
+      const track = new FakeTrack();
+      const leader = new Kart(0, getCharacter(leaderId), false);
+      const follower = new Kart(1, getCharacter(followerId), true);
+      const slot = track.startGrid[0];
+      leader.resetTo(slot.position, slot.quaternion);
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(slot.quaternion);
+      follower.resetTo(slot.position.clone().addScaledVector(fwd, -4), slot.quaternion);
+      // Leader on partial throttle so the follower can sit in the wake without ramming it.
+      leader.setInput({ ...createEmptyInput(), throttle: 0.7 });
+      follower.setInput(fullThrottle);
+      const karts = [leader, follower];
+      let ratio = 0;
+      run(karts, track, 9, () => {
+        if (follower.state.isDrafting && !follower.state.isBoosting && ratio === 0) {
+          const soloTop = follower.topSpeed() / BALANCE.slipstream.bonus[leader.state.character.weightClass][follower.state.character.weightClass];
+          ratio = follower.topSpeed() / soloTop;
+        }
+      });
+      expect(ratio, `${leaderId} → ${followerId}`).toBeCloseTo(expected, 5);
+    }
+  });
+
   it('slipstream: a lone kart never drafts', () => {
     const track = new FakeTrack();
     const { follower, karts } = pair(track, 60);

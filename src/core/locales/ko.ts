@@ -64,8 +64,6 @@ export const ko: Record<StringKey, string> = {
   'hud.finalLap': '마지막 랩!',
   'hud.lapN': '{n}랩',
   'hud.finish': '완주',
-  'hud.slipstream': '슬립스트림',
-  'hud.slipstreamBoost': '슬립스트림 부스트',
   'hud.charge': '기 모으기',
   'hud.overcharge': '엔진 과열!',
   'hud.mirror.kart': '후방 {d}m 접근',

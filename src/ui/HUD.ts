@@ -4,8 +4,13 @@
  */
 import type { IKart, ITrack, ItemType, HazardInfo, KartState, RaceMode } from '../core/types';
 import { BALANCE as B } from '../core/balance';
-import { TEAM_COLORS, isTeamMode, pointsFor, teamOf } from '../core/teams';
+import { isTeamMode } from '../core/teams';
 import { baseItemType } from '../items/itemVisuals';
+import { ChargeGauge } from './hud/ChargeGauge';
+import { DraftMeter } from './hud/DraftMeter';
+import { MirrorPanel } from './hud/MirrorPanel';
+import { StandingsBoard } from './hud/StandingsBoard';
+import { TeamTally } from './hud/TeamTally';
 import { ALL_ITEM_TYPES } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED } from '../core/constants';
@@ -56,9 +61,6 @@ export class HUD {
   private readonly itemIconHost: HTMLElement;
   private readonly itemCount: TextField;
   private shownStack = 0;
-  private readonly standingsNode: HTMLElement;
-  private readonly standingRows: { row: HTMLElement; place: TextField; chip: HTMLElement; name: TextField }[] = [];
-  private standingsSig = '';
   private readonly iconCache = new Map<ItemType, HTMLCanvasElement>();
   private shownIcon: ItemType = 'none';
   private shownCount = 0;
@@ -86,23 +88,13 @@ export class HUD {
   private vignetteApplied = -1;
   private readonly timed: TimedNode[] = [];
   private readonly boostGlow: HTMLElement;
-  private readonly mirror: HTMLElement;
   private mode: RaceMode = 'solo';
-  private readonly teamNode: HTMLElement;
-  private readonly teamRed: TextField;
-  private readonly teamMid: TextField;
-  private readonly teamBlue: TextField;
-  private readonly mirrorView: HTMLElement;
-  private readonly mirrorIcon: HTMLElement;
-  private readonly mirrorText: TextField;
-  private mirrorIconType: ItemType | 'kart' | null = null;
-  private mirrorLevel = '';
-  private readonly draftNode: HTMLElement;
-  private readonly draftFill: HTMLElement;
-  private draftShown = -1;
-  private readonly chargeNode: HTMLElement;
-  private readonly chargeFill: HTMLElement;
-  private chargeClass = '';
+  // Widgets (src/ui/hud/*)
+  private readonly mirror: MirrorPanel;
+  private readonly teamTally: TeamTally;
+  private readonly draft: DraftMeter;
+  private readonly charge: ChargeGauge;
+  private readonly standings: StandingsBoard;
   private boostGlowApplied = -1;
 
   constructor(
@@ -118,7 +110,7 @@ export class HUD {
     this.itemCount = new TextField(el('div', 'item-count', '', this.itemFrame));
 
     // Top-left: standings board
-    this.standingsNode = el('div', 'hud-standings glass', undefined, this.rootNode);
+    this.standings = new StandingsBoard(this.rootNode);
 
     // Top-right: lap + timer
     const topRight = el('div', 'hud-topright', undefined, this.rootNode);
@@ -126,19 +118,9 @@ export class HUD {
     el('span', 'hud-lap-label', t('hud.lap'), lapBox);
     this.lapText = new TextField(el('span', 'hud-lap-value', '', lapBox));
     this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
-    // Team tally (team modes only): live provisional score / current P1 team.
-    this.teamNode = el('div', 'hud-team glass', undefined, this.rootNode);
-    this.teamRed = new TextField(el('span', 'hud-team-red', '', this.teamNode));
-    this.teamMid = new TextField(el('span', 'hud-team-mid', '', this.teamNode));
-    this.teamBlue = new TextField(el('span', 'hud-team-blue', '', this.teamNode));
-
-    // Rear-view mirror (picture-in-picture, bottom-left): the game renders the rear camera into
-    // `.hud-mirror-view`'s rectangle while a kart or shell closes in from behind.
-    this.mirror = el('div', 'hud-mirror', undefined, this.rootNode);
-    this.mirrorView = el('div', 'hud-mirror-view', undefined, this.mirror);
-    const mirrorBar = el('div', 'hud-mirror-bar', undefined, this.mirror);
-    this.mirrorIcon = el('div', 'hud-mirror-icon', undefined, mirrorBar);
-    this.mirrorText = new TextField(el('div', 'hud-mirror-text', '', mirrorBar));
+    // Team tally (team modes only) + rear-view mirror PiP frame (bottom-left).
+    this.teamTally = new TeamTally(this.rootNode);
+    this.mirror = new MirrorPanel(this.rootNode, (item) => this.getIcon(item));
 
     // Bottom-left: place
     this.placeNode = el('div', 'hud-place', undefined, this.rootNode);
@@ -169,20 +151,9 @@ export class HUD {
     const speedInner = el('div', 'speed-inner', undefined, speedWrap);
     this.speedText = new TextField(el('div', 'speed-value', '0', speedInner));
     el('div', 'speed-unit', 'km/h', speedInner);
-    // Slipstream meter under the speedometer.
-    this.draftNode = el('div', 'hud-draft', undefined, speedWrap);
-    el('span', 'hud-draft-label', `≫ ${t('hud.slipstream')}`, this.draftNode);
-    const draftBar = el('div', 'hud-draft-bar', undefined, this.draftNode);
-    this.draftFill = el('div', 'hud-draft-fill', undefined, draftBar);
-    // Rocket-start charge gauge (grid only).
-    this.chargeNode = el('div', 'hud-charge', undefined, this.rootNode);
-    el('span', 'hud-charge-label', t('hud.charge'), this.chargeNode);
-    const chargeBar = el('div', 'hud-charge-bar', undefined, this.chargeNode);
-    this.chargeFill = el('div', 'hud-charge-fill', undefined, chargeBar);
-    const good = (B.race.startChargeGood / B.race.startSpinoutHold) * 100;
-    const perfect = (B.race.startChargePerfect / B.race.startSpinoutHold) * 100;
-    el('span', 'hud-charge-tick', undefined, chargeBar).style.left = `${good}%`;
-    el('span', 'hud-charge-tick perfect', undefined, chargeBar).style.left = `${perfect}%`;
+    // Slipstream meter (wordless bar) under the speedometer; rocket-start charge gauge (grid only).
+    this.draft = new DraftMeter(speedWrap);
+    this.charge = new ChargeGauge(this.rootNode);
 
     // Bottom-right: minimap
     const mapWrap = el('div', 'hud-minimap glass', undefined, this.rootNode);
@@ -203,151 +174,16 @@ export class HUD {
 
   setMode(mode: RaceMode): void {
     this.mode = mode;
-    const team = isTeamMode(mode);
-    this.teamNode.classList.toggle('visible', team);
-    this.minimap.setTeamColors(team);
-    this.teamMid.set(mode === 'teamFirst' ? t('hud.team.first') : ':');
-  }
-
-  /** Live team read-out: provisional points by current place, or which team currently holds P1. */
-  private updateTeam(karts: readonly IKart[]): void {
-    if (!isTeamMode(this.mode)) return;
-    if (this.mode === 'teamPoints') {
-      let red = 0;
-      let blue = 0;
-      for (const k of karts) {
-        const s = k.state;
-        const pts = s.finished ? pointsFor(s.place, s.finishTime) : pointsFor(s.place, 1);
-        if (teamOf(s.id) === 'red') red += pts;
-        else blue += pts;
-      }
-      this.teamRed.set(`${t('team.red')} ${red}`);
-      this.teamBlue.set(`${blue} ${t('team.blue')}`);
-      this.teamNode.classList.toggle('lead-red', red > blue);
-      this.teamNode.classList.toggle('lead-blue', blue > red);
-    } else {
-      let leader: IKart | null = null;
-      for (const k of karts) if (k.state.place === 1) leader = k;
-      const team = leader ? teamOf(leader.state.id) : null;
-      this.teamRed.set(team === 'red' ? t('team.red') : '');
-      this.teamBlue.set(team === 'blue' ? t('team.blue') : '');
-      this.teamNode.classList.toggle('lead-red', team === 'red');
-      this.teamNode.classList.toggle('lead-blue', team === 'blue');
-    }
+    this.teamTally.setMode(mode);
+    this.standings.setMode(mode);
+    this.minimap.setTeamColors(isTeamMode(mode));
   }
 
   /** Screen rectangle (CSS px) the rear camera should be drawn into, or null while the mirror is hidden. */
   getMirrorRect(): { x: number; y: number; w: number; h: number } | null {
-    if (!this.visible || !this.mirrorLevel) return null;
-    const r = this.mirrorView.getBoundingClientRect();
-    if (r.width < 2 || r.height < 2) return null;
-    return { x: r.left, y: r.top, w: r.width, h: r.height };
+    return this.visible ? this.mirror.getRect() : null;
   }
 
-  /** Rocket-start gauge: visible only while frozen on the grid with the throttle down. */
-  private updateCharge(s: KartState): void {
-    const show = s.isFrozen && s.startCharge > 0.02;
-    this.chargeNode.classList.toggle('visible', show);
-    if (!show) return;
-    const frac = clamp01(s.startCharge / B.race.startSpinoutHold);
-    this.chargeFill.style.width = `${(frac * 100).toFixed(1)}%`;
-    const cls =
-      s.startCharge >= B.race.startSpinoutHold ? 'stall' : s.startCharge >= B.race.startSpinoutHold - 0.4 ? 'danger' : s.startCharge >= B.race.startChargePerfect ? 'perfect' : s.startCharge >= B.race.startChargeGood ? 'good' : 'weak';
-    if (cls !== this.chargeClass) {
-      this.chargeNode.classList.remove('weak', 'good', 'perfect', 'danger', 'stall');
-      this.chargeNode.classList.add(cls);
-      this.chargeClass = cls;
-    }
-  }
-
-  private updateDraft(s: KartState): void {
-    const c = s.draftCharge;
-    const shown = c > 0.02 ? 1 : 0;
-    if (shown !== this.draftShown) {
-      this.draftShown = shown;
-      this.draftNode.classList.toggle('visible', shown === 1);
-    }
-    if (shown) {
-      this.draftFill.style.width = `${(clamp01(c) * 100).toFixed(1)}%`;
-      this.draftNode.classList.toggle('active', s.isDrafting);
-    }
-  }
-
-  /** Threat scan behind the player: closest kart within 14 m or any hazard homing in within 30 m. */
-  private updateMirror(player: IKart, karts: readonly IKart[], hazards: readonly HazardInfo[]): void {
-    const s = player.state;
-    if (s.isFrozen || s.finished) {
-      this.setMirror(null, '', '');
-      return;
-    }
-    const fx = -Math.sin(s.heading);
-    const fz = -Math.cos(s.heading);
-    let level = '';
-    let icon: ItemType | 'kart' | null = null;
-    let text = '';
-    // Hazards first (they outrank karts).
-    let bestHazard = Infinity;
-    for (const h of hazards) {
-      if (h.ownerId === s.id) continue;
-      if (h.type !== 'red_shell' && h.type !== 'green_shell' && h.type !== 'blue_shell' && h.type !== 'bob_omb') continue;
-      const dx = h.position.x - s.position.x;
-      const dz = h.position.z - s.position.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 30 || dist >= bestHazard) continue;
-      // Approaching us: relative velocity points toward the player.
-      const rvx = h.velocity.x - s.velocity.x;
-      const rvz = h.velocity.z - s.velocity.z;
-      const closing = -(rvx * dx + rvz * dz) / Math.max(0.1, dist);
-      const behind = dx * fx + dz * fz < 0;
-      if (h.type === 'blue_shell' || (closing > 2 && (behind || h.type === 'red_shell'))) {
-        bestHazard = dist;
-        icon = h.type;
-        level = h.type === 'blue_shell' ? 'blue' : 'danger';
-        text = h.type === 'blue_shell' ? t('hud.mirror.blue') : t('hud.mirror.shell', { d: Math.round(dist) });
-      }
-    }
-    if (!icon) {
-      let bestKart = Infinity;
-      for (const k of karts) {
-        const o = k.state;
-        if (o.id === s.id || o.finished) continue;
-        const dx = o.position.x - s.position.x;
-        const dz = o.position.z - s.position.z;
-        const along = dx * fx + dz * fz;
-        if (along > -0.5 || along < -14) continue;
-        const lateral = Math.abs(dx * fz - dz * fx);
-        if (lateral > 4) continue;
-        const closing = (o.velocity.x - s.velocity.x) * fx + (o.velocity.z - s.velocity.z) * fz;
-        const dist = -along;
-        if (closing > 0.5 && dist < bestKart) {
-          bestKart = dist;
-          icon = 'kart';
-          level = dist < 5 ? 'warn-near' : 'warn';
-          text = t('hud.mirror.kart', { d: Math.round(dist) });
-        }
-      }
-    }
-    this.setMirror(icon, level, text);
-  }
-
-  private setMirror(icon: ItemType | 'kart' | null, level: string, text: string): void {
-    if (icon !== this.mirrorIconType) {
-      this.mirrorIconType = icon;
-      this.mirrorIcon.replaceChildren();
-      if (icon === 'kart') this.mirrorIcon.textContent = '🏎';
-      else if (icon) {
-        this.mirrorIcon.textContent = '';
-        this.mirrorIcon.appendChild(this.buildIcon(icon));
-      }
-    }
-    if (level !== this.mirrorLevel) {
-      this.mirror.classList.remove('warn', 'warn-near', 'danger', 'blue', 'visible');
-      if (level) this.mirror.classList.add('visible', level);
-      this.mirrorLevel = level;
-      if (level === 'danger' || level === 'blue') restartAnimation(this.mirror, 'rumble');
-    }
-    this.mirrorText.set(text);
-  }
 
   setTrack(track: ITrack | null): void {
     this.minimap.setTrack(track);
@@ -368,10 +204,10 @@ export class HUD {
     const s = player.state;
     this.playerId = s.id;
 
-    this.updateCharge(s);
-    this.updateDraft(s);
-    this.updateMirror(player, karts, hazards);
-    this.updateTeam(karts);
+    this.charge.update(s);
+    this.draft.update(s);
+    this.mirror.update(player, karts, hazards);
+    this.teamTally.update(karts);
 
     // Place numeral
     const place = s.place > 0 ? s.place : karts.length;
@@ -408,7 +244,7 @@ export class HUD {
 
     // Item slot
     this.updateItemSlot(dt, s.item, s.itemCount, s.itemRouletteActive, s.overdriveTimer);
-    this.updateStandings(karts, s.id);
+    this.standings.update(karts, s.id);
 
     // Wrong way
     if (s.wrongWay !== this.wrongWayShown) {
@@ -469,17 +305,14 @@ export class HUD {
       }),
       on('race:start', () => {
         this.flashCenter(t('hud.go'), 'hud-count hud-go', 1.1);
-        this.chargeNode.classList.remove('visible');
+        this.charge.hide();
       }),
       on('kart:startOvercharge', (e) => {
         if (e.kartId !== this.playerId) return;
         this.flashCenter(t('hud.overcharge'), 'hud-banner down', 1.4);
         restartAnimation(this.rootNode, 'hit-shake');
       }),
-      on('kart:draftEnd', (e) => {
-        if (e.kartId !== this.playerId || !e.burst) return;
-        this.flashCenter(`≫ ${t('hud.slipstreamBoost')}`, 'hud-posflash up', 0.9);
-      }),
+
       on('race:lap', (e) => {
         if (!e.isPlayer) return;
         if (e.isFinalLap) this.flashCenter(t('hud.finalLap'), 'hud-banner final', 2.4);
@@ -569,35 +402,6 @@ export class HUD {
       c.classList.add('item-icon-canvas', `stack-${i}`);
       this.itemIconHost.appendChild(c);
     }
-  }
-
-  /** Left-hand standings board: every racer by place, the player highlighted. */
-  private updateStandings(karts: readonly IKart[], playerId: number): void {
-    const sorted = karts.slice().sort((a, b) => a.state.place - b.state.place);
-    let sig = '';
-    for (const k of sorted) sig += k.state.id + (k.state.finished ? (k.state.finishTime > 0 ? 'f' : 'x') : '') + ',';
-    if (sig === this.standingsSig) return;
-    this.standingsSig = sig;
-    while (this.standingRows.length < sorted.length) {
-      const row = el('div', 'hud-standing', undefined, this.standingsNode);
-      const place = new TextField(el('span', 'hud-standing-place', '', row));
-      const chip = el('span', 'hud-standing-chip', undefined, row);
-      const name = new TextField(el('span', 'hud-standing-name', '', row));
-      this.standingRows.push({ row, place, chip, name });
-    }
-    const team = isTeamMode(this.mode);
-    sorted.forEach((k, i) => {
-      const s = k.state;
-      const r = this.standingRows[i];
-      r.row.hidden = false;
-      r.row.classList.toggle('you', s.id === playerId);
-      r.row.classList.toggle('dnf', s.finished && s.finishTime <= 0);
-      r.row.classList.toggle('done', s.finished && s.finishTime > 0);
-      r.place.set(String(i + 1));
-      r.chip.style.background = cssHex(team ? TEAM_COLORS[teamOf(s.id)] : s.character.color);
-      r.name.set(s.character.name.toUpperCase());
-    });
-    for (let i = sorted.length; i < this.standingRows.length; i++) this.standingRows[i].row.hidden = true;
   }
 
   private setIcon(item: ItemType, pop: boolean): void {

@@ -1,0 +1,79 @@
+/* Lobby title menu + landscape rotate gate */
+/* ---- Lobby (title screen) ---- */
+.lobby {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(40px, 9vh, 90px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: min(360px, 78vw);
+  pointer-events: auto;
+  animation: fade-up 0.8s 0.35s var(--ease-out) both;
+}
+.lobby-btn {
+  font-size: clamp(16px, 1.6vw, 21px);
+  padding: 14px 22px;
+  letter-spacing: 0.12em;
+}
+.lobby-btn.small {
+  font-size: 13px;
+  padding: 9px 16px;
+  align-self: center;
+}
+.lobby-btn.focused {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+@media (max-height: 480px) {
+  .lobby {
+    bottom: 16px;
+    gap: 8px;
+    width: min(300px, 60vw);
+  }
+  .lobby-btn {
+    padding: 9px 16px;
+    font-size: 15px;
+  }
+  .lobby-btn.small {
+    display: none;
+  }
+}
+
+/* ---- Landscape gate ---- */
+.rotate-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(6, 6, 18, 0.96);
+  pointer-events: auto;
+  text-align: center;
+  padding: 24px;
+}
+.rotate-gate.hidden {
+  display: none;
+}
+.rotate-gate-icon {
+  font-size: 64px;
+  animation: rotate-hint 1.6s ease-in-out infinite;
+}
+.rotate-gate-title {
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: 0.08em;
+}
+.rotate-gate-body {
+  color: var(--ink-dim);
+  font-size: 14px;
+}
+@keyframes rotate-hint {
+  0%, 20% { transform: rotate(0deg); }
+  60%, 100% { transform: rotate(-90deg); }
+}

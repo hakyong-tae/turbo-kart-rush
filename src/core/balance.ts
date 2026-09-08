@@ -8,7 +8,7 @@
  *   - ai.profiles.*  -> captured in the AIDriver constructor: applies from the next race.
  *   - itemTable      -> read per roulette: immediate.
  */
-import type { Difficulty, ItemType } from './types';
+import type { Difficulty, ItemType, WeightClass } from './types';
 
 export interface DifficultyProfile {
   /** Steering noise amplitude (rad). */
@@ -116,7 +116,8 @@ export interface Balance {
     lateralTolerance: number;
     /** Seconds in the wake before the bonus kicks in. */
     chargeTime: number;
-    speedBonus: number;
+    /** Top-speed multiplier while drafting, by leader class → follower class. */
+    bonus: Record<WeightClass, Record<WeightClass, number>>;
     exitBoostStrength: number;
     exitBoostDuration: number;
   };
@@ -208,7 +209,12 @@ export function createDefaultBalance(): Balance {
       maxDistance: 9,
       lateralTolerance: 1.3,
       chargeTime: 1.0,
-      speedBonus: 0.1,
+      bonus: {
+        // behind a HEAVY kart: biggest hole
+        heavy: { heavy: 1.08, medium: 1.1, light: 1.12 },
+        medium: { heavy: 1.05, medium: 1.08, light: 1.1 },
+        light: { heavy: 1.02, medium: 1.05, light: 1.08 },
+      },
       exitBoostStrength: 0.22,
       exitBoostDuration: 0.8,
     },

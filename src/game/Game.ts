@@ -36,8 +36,10 @@ import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
 import { PostFX } from '../fx/PostFX';
 import { RearView } from '../fx/RearView';
-import { TEAM_COLORS, isTeamMode, teamOf } from '../core/teams';
-import type { Team } from '../core/types';
+import { isTeamMode } from '../core/teams';
+import { TeamMarkers } from './TeamMarkers';
+import { OrientationGate } from './OrientationGate';
+import { VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, readVolume, writeVolume } from './settingsStore';
 
 import { RaceManager } from './RaceManager';
 import { FollowCamera } from './FollowCamera';
@@ -88,7 +90,7 @@ interface PartialRace {
   items: IItemManager | null;
   followCamera: FollowCamera | null;
   hud: HUD | null;
-  teamMarkers?: THREE.Sprite[];
+  teamMarkers?: TeamMarkers;
 }
 
 interface RaceContext {
@@ -104,8 +106,8 @@ interface RaceContext {
   raceManager: RaceManager;
   followCamera: FollowCamera;
   hud: HUD;
-  /** Team chevrons above karts (empty in solo). */
-  teamMarkers: THREE.Sprite[];
+  /** Team chevrons above karts (no sprites in solo). */
+  teamMarkers: TeamMarkers;
   sun: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
   /** Soft camera-following fill so karts read on dark tracks (0 intensity on bright ones). */
@@ -122,60 +124,7 @@ interface RaceContext {
   itemsEnabled: boolean;
 }
 
-const teamMarkerMaterials = new Map<Team, THREE.SpriteMaterial>();
-/** Downward chevron in the team colour, shared per team. */
-function teamMarkerMaterial(team: Team): THREE.SpriteMaterial {
-  let mat = teamMarkerMaterials.get(team);
-  if (mat) return mat;
-  const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 64;
-  const ctx = c.getContext('2d');
-  if (ctx) {
-    const hex = '#' + TEAM_COLORS[team].toString(16).padStart(6, '0');
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.beginPath();
-    ctx.moveTo(8, 8);
-    ctx.lineTo(56, 8);
-    ctx.lineTo(32, 56);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = hex;
-    ctx.beginPath();
-    ctx.moveTo(12, 10);
-    ctx.lineTo(52, 10);
-    ctx.lineTo(32, 50);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.beginPath();
-    ctx.moveTo(20, 14);
-    ctx.lineTo(44, 14);
-    ctx.lineTo(32, 26);
-    ctx.closePath();
-    ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
-  teamMarkerMaterials.set(team, mat);
-  return mat;
-}
 
-const VOLUME_KEY_MUSIC = 'tkr.vol.music';
-const VOLUME_KEY_SFX = 'tkr.vol.sfx';
-
-/** Stored mixer level (0..1) or the fallback when unset / unreadable. */
-function readVolume(key: string, fallback: number): number {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    const v = Number(raw);
-    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export class Game {
   private readonly container: HTMLElement;
@@ -196,7 +145,7 @@ export class Game {
   private readonly audio: IAudioEngine;
   private readonly particles: IParticleSystem;
   private readonly rearView: RearView;
-  private readonly rotateGate: HTMLElement;
+  private readonly orientationGate: OrientationGate;
   private readonly postfx: IPostFX;
   private postfxOk = true;
 
@@ -292,15 +241,15 @@ export class Game {
     this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
-    // Phones must play in landscape: a full-screen gate covers the game (and pauses a race)
-    // while a touch device is held in portrait.
-    this.rotateGate = el('div', 'rotate-gate hidden', undefined, this.uiRoot);
-    el('div', 'rotate-gate-icon', '📱', this.rotateGate);
-    el('div', 'rotate-gate-title', t('rotate.title'), this.rotateGate);
-    el('div', 'rotate-gate-body', t('rotate.body'), this.rotateGate);
-    window.addEventListener('resize', this.onOrientationCheck);
-    window.addEventListener('orientationchange', this.onOrientationCheck);
-    this.onOrientationCheck();
+    // Phones must play in landscape (src/game/OrientationGate.ts).
+    this.orientationGate = new OrientationGate(
+      this.uiRoot,
+      () => this.touch.isEnabled || Boolean(window.matchMedia?.('(pointer: coarse)').matches),
+      (gated) => {
+        this.uiRoot.classList.toggle('gated', gated);
+        if (gated && this.state === 'racing') this.pause();
+      },
+    );
 
     // ---------------------------------------------------------- listeners
     window.addEventListener('resize', this.onResize);
@@ -333,8 +282,7 @@ export class Game {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
     window.removeEventListener('resize', this.onResize);
-    window.removeEventListener('resize', this.onOrientationCheck);
-    window.removeEventListener('orientationchange', this.onOrientationCheck);
+    this.safe(() => this.orientationGate.dispose());
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('pointerdown', this.onGesture);
     window.removeEventListener('keydown', this.onGesture);
@@ -893,12 +841,7 @@ export class Game {
     }
     const player = r.karts[r.localKartId];
     for (let i = 0; i < r.karts.length; i++) r.karts[i].updateVisuals(dt);
-    for (let i = 0; i < r.teamMarkers.length; i++) {
-      const ks = r.karts[i].state;
-      const m = r.teamMarkers[i];
-      m.position.set(ks.position.x, ks.position.y + 1.55 + Math.sin(this.elapsed * 4 + i) * 0.05, ks.position.z);
-      m.visible = !ks.finished || ks.finishTime > 0;
-    }
+    r.teamMarkers.update(r.karts, this.elapsed);
     r.track.update(dt, this.elapsed);
     r.followCamera.update(dt, player, lookBack);
     this.updateSun(r, player);
@@ -1144,16 +1087,8 @@ export class Game {
     for (const k of karts) this.scene.add(k.object);
     this.scene.add(items.object);
     // Team modes: a coloured chevron floats over every kart so friend / foe reads at a glance.
-    const teamMarkers: THREE.Sprite[] = [];
-    if (isTeamMode(settings.mode)) {
-      for (const k of karts) {
-        const sprite = new THREE.Sprite(teamMarkerMaterial(teamOf(k.state.id)));
-        sprite.scale.set(0.7, 0.7, 1);
-        sprite.renderOrder = 5;
-        this.scene.add(sprite);
-        teamMarkers.push(sprite);
-      }
-    }
+    const teamMarkers = new TeamMarkers();
+    if (isTeamMode(settings.mode)) teamMarkers.attach(this.scene, karts);
     partial.teamMarkers = teamMarkers;
     this.scene.add(sun, sun.target, hemi, fill, fill.target);
     this.scene.fog = fog;
@@ -1171,7 +1106,7 @@ export class Game {
       raceManager,
       followCamera,
       hud,
-      teamMarkers: partial.teamMarkers ?? [],
+      teamMarkers: partial.teamMarkers ?? new TeamMarkers(),
       sun,
       hemi,
       fill,
@@ -1345,7 +1280,7 @@ export class Game {
     this.scene.remove(r.track.object);
     for (const k of r.karts) this.scene.remove(k.object);
     this.scene.remove(r.items.object);
-    for (const m of r.teamMarkers) this.scene.remove(m);
+    r.teamMarkers.dispose();
     this.scene.remove(r.sun, r.sun.target, r.hemi, r.fill, r.fill.target);
     r.sun.dispose();
     r.hemi.dispose();
@@ -1398,27 +1333,8 @@ export class Game {
   private setVolume(kind: 'music' | 'sfx', v: number): void {
     const level = Math.max(0, Math.min(1, v));
     this.safe(() => (kind === 'music' ? this.audio.setMusicVolume(level) : this.audio.setSfxVolume(level)));
-    try {
-      localStorage.setItem(kind === 'music' ? VOLUME_KEY_MUSIC : VOLUME_KEY_SFX, String(level));
-    } catch {
-      /* private mode */
-    }
+    writeVolume(kind === 'music' ? VOLUME_KEY_MUSIC : VOLUME_KEY_SFX, level);
   }
-
-  /** Touch device in portrait → show the rotate gate (and pause a running race). */
-  private readonly onOrientationCheck = (): void => {
-    const touch = this.touch.isEnabled || window.matchMedia?.('(pointer: coarse)').matches;
-    const portrait = window.innerHeight > window.innerWidth;
-    const gate = Boolean(touch && portrait);
-    this.rotateGate.classList.toggle('hidden', !gate);
-    this.uiRoot.classList.toggle('gated', gate);
-    if (gate && this.state === 'racing') this.pause();
-    if (!gate) {
-      // Best effort: some browsers honour a landscape lock once we are full-screen.
-      const so = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
-      so?.lock?.('landscape').catch(() => undefined);
-    }
-  };
 
   private toggleMute(): void {
     const muted = !this.audio.muted;

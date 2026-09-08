@@ -1,0 +1,88 @@
+/* Design tokens, resets, canvas/#ui layers */
+/* =============================================================================
+   TURBO KART RUSH — UI stylesheet (workstream A)
+   Dark navy base, electric-blue → magenta → orange accents, glass panels,
+   condensed display type via system fonts only (no webfont downloads).
+   ============================================================================ */
+
+:root {
+  --bg: #0b0b1a;
+  --bg-2: #12122a;
+  --ink: #f4f6ff;
+  --ink-dim: rgba(244, 246, 255, 0.62);
+  --ink-faint: rgba(244, 246, 255, 0.34);
+  --blue: #37a8ff;
+  --magenta: #ff3ab8;
+  --orange: #ff7a2f;
+  --gold: #ffd23f;
+  --silver: #d7dce8;
+  --bronze: #e08a4a;
+  --green: #5cff8a;
+  --red: #ff4d5e;
+  --accent-grad: linear-gradient(100deg, var(--blue) 0%, var(--magenta) 55%, var(--orange) 100%);
+  --glass-bg: rgba(16, 17, 38, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', 'Arial Black', system-ui,
+    sans-serif;
+  --body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --radius: 18px;
+  --radius-sm: 10px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Panning is allowed (menus scroll); double-tap / pinch zoom is not. */
+  touch-action: pan-x pan-y;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+}
+
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  outline: none;
+}
+
+/* The UI layer floats above the canvas and is click-through by default. */
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hidden {
+  display: none !important;
+}

@@ -1,0 +1,193 @@
+/* Pause / results / fatal panels */
+/* ----------------------------------------------------------------------------
+   Pause / Results / Fatal
+   --------------------------------------------------------------------------- */
+
+.pause {
+  background: rgba(6, 6, 16, 0.45);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  pointer-events: auto;
+  animation: fade-in 0.25s ease-out both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pause-panel {
+  text-align: center;
+  min-width: 360px;
+  animation: panel-in 0.4s var(--ease-out) both;
+}
+
+.pause-panel .actions .btn {
+  width: 100%;
+}
+
+.results {
+  background: radial-gradient(80% 80% at 50% 50%, rgba(11, 11, 26, 0.25) 0%, rgba(11, 11, 26, 0.8) 100%);
+  pointer-events: auto;
+}
+
+.results-panel {
+  width: min(92vw, 720px);
+  text-align: center;
+}
+
+.results-panel.gold::before {
+  background: linear-gradient(90deg, #ffd23f, #fff2b0, #ffd23f);
+}
+
+.results-title {
+  font-size: clamp(44px, 7vw, 84px);
+}
+
+.results-panel.gold .results-title {
+  background: linear-gradient(180deg, #fffbe6 0%, #ffd23f 55%, #ff9a3c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35)) drop-shadow(0 10px 30px rgba(255, 210, 63, 0.35));
+}
+
+.results-sub {
+  color: var(--ink-dim);
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+
+.standings {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  max-height: 46vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.standing-row {
+  display: grid;
+  grid-template-columns: 58px 16px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  animation: row-in 0.5s var(--ease-out) both;
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.standing-row.you {
+  background: linear-gradient(90deg, rgba(55, 168, 255, 0.28), rgba(255, 58, 184, 0.18));
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 10px 30px rgba(55, 168, 255, 0.2);
+}
+
+.standing-place {
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+}
+
+.podium-1 .standing-place {
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(255, 210, 63, 0.7);
+}
+.podium-2 .standing-place {
+  color: var(--silver);
+}
+.podium-3 .standing-place {
+  color: var(--bronze);
+}
+
+.standing-chip {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.standing-name {
+  font-family: var(--display);
+  font-size: 19px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.standing-time {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--display);
+  letter-spacing: 0.06em;
+  font-size: 17px;
+  color: var(--ink-dim);
+}
+
+.confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation: confetti-fall linear infinite;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-5vh) rotate(0deg) translateX(0);
+  }
+  25% {
+    transform: translateY(25vh) rotate(180deg) translateX(30px);
+  }
+  50% {
+    transform: translateY(50vh) rotate(360deg) translateX(-30px);
+  }
+  75% {
+    transform: translateY(75vh) rotate(540deg) translateX(30px);
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg) translateX(0);
+  }
+}
+
+.fatal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(80% 80% at 50% 40%, #1a1030, var(--bg));
+}
+
+.fatal-panel {
+  text-align: center;
+  max-width: 560px;
+}
+
+.fatal-body {
+  color: var(--ink-dim);
+  line-height: 1.5;
+  margin: 12px 0 20px;
+}

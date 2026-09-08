@@ -25,6 +25,8 @@ import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_RADIUS } from '../core/constants';
 import { TAU, clamp, clamp01, damp, lerp, smoothstep, wrapAngle, angleDelta } from '../core/math';
 import { buildKartModel, type KartModelPartsEx } from './KartModel';
+import { SlipstreamTracker, type SlipstreamHost } from './assists/slipstream';
+import { startMagnet, updateMagnet, type MagnetHost } from './assists/magnet';
 import { BALANCE } from '../core/balance';
 
 // --- tuning ------------------------------------------------------------------
@@ -75,8 +77,9 @@ export class Kart implements IKart {
   private readonly exhaustAnchors: ExhaustAnchor[];
   private overchargeEmitted = false;
   private neonTinted = false;
-  /** Forward distance to the wake source on the last in-wake frame (slipstream exit rule). */
-  private lastDraftAlong = 0;
+  private readonly slipstream = new SlipstreamTracker();
+  /** Adapter the assist modules (slipstream / magnet) drive the kart through. Allocated once. */
+  private readonly assistHost: MagnetHost & SlipstreamHost;
   /** Model root; receives visual-only offsets. `object` always equals the physics pose. */
   private readonly visual: THREE.Group;
 
@@ -167,6 +170,16 @@ export class Kart implements IKart {
       surface: 'road',
       wheelSpin: 0,
     };
+    this.assistHost = {
+      state: this.state,
+      baseTopSpeed: () => this.baseTopSpeed(),
+      applyBoost: (strength, duration, source) => this.applyBoost(strength, duration, source),
+      cancelDrift: () => this.endDrift(false),
+      getLateralVel: () => this.lateralVel,
+      setLateralVel: (v) => {
+        this.lateralVel = v;
+      },
+    };
     this.parts = buildKartModel(character);
     this.exhaustAnchors = this.parts.exhausts.map(() => ({ position: new THREE.Vector3(), direction: new THREE.Vector3(0, 0, 1) }));
     this.visual = this.parts.root;
@@ -224,13 +237,13 @@ export class Kart implements IKart {
       return;
     }
 
-    this.updateSlipstream(dt, others);
+    this.slipstream.update(this.assistHost, others, dt);
     const top = this.topSpeed();
     const canControl = !s.isSpinning;
 
     s.steerVisual = damp(s.steerVisual, canControl ? this.input.steer : 0, 12, dt);
 
-    const magnet = this.updateMagnet(dt, others);
+    const magnet = updateMagnet(this.assistHost, others, dt);
     if (!magnet) {
       this.updateSpeed(dt, top, canControl);
       this.updateHopDrift(dt, canControl);
@@ -480,109 +493,7 @@ export class Kart implements IKart {
   }
 
   applyMagnet(targetId: number, duration: number): void {
-    const s = this.state;
-    if (duration <= 0 || targetId === s.id) return;
-    s.magnetTargetId = targetId;
-    s.magnetTimer = duration;
-    if (s.isDrifting) this.endDrift(false);
-    events.emit('kart:magnetStart', { kartId: s.id, targetId });
-  }
-
-  /**
-   * Slipstream: tucked into another kart's wake (close, aligned, both moving) for
-   * `chargeTime` → top-speed bonus while it lasts; leaving a charged wake (e.g. pulling out
-   * to pass) fires a short burst.
-   */
-  private updateSlipstream(dt: number, others: readonly IKart[]): void {
-    const s = this.state;
-    const S = B.slipstream;
-    let inWake = false;
-    if (!s.isSpinning && !s.isAirborne && !s.isFrozen && s.speed > S.minSpeedFrac * this.baseTopSpeed()) {
-      const fx = -Math.sin(s.heading);
-      const fz = -Math.cos(s.heading);
-      for (let i = 0; i < others.length; i++) {
-        const other = others[i];
-        if (other === this) continue;
-        const o = other.state;
-        if (o.isFrozen || o.finished) continue;
-        if (Math.abs(o.position.y - s.position.y) > 1.5) continue;
-        const dx = o.position.x - s.position.x;
-        const dz = o.position.z - s.position.z;
-        const along = dx * fx + dz * fz;
-        if (along < S.minDistance || along > S.maxDistance) continue;
-        const lateral = Math.abs(dx * fz - dz * fx);
-        if (lateral > S.lateralTolerance) continue;
-        const otherAlong = o.velocity.x * fx + o.velocity.z * fz;
-        if (otherAlong < 0.5 * s.speed) continue;
-        inWake = true;
-        this.lastDraftAlong = along;
-        break;
-      }
-    }
-    if (inWake) {
-      s.draftCharge = Math.min(1, s.draftCharge + dt / S.chargeTime);
-      if (!s.isDrafting && s.draftCharge >= 1) {
-        s.isDrafting = true;
-        events.emit('kart:draftStart', { kartId: s.id });
-      }
-    } else {
-      if (s.isDrafting) {
-        // F1 rule: the tow pays off when you pull OUT of the wake to pass (you were still close);
-        // simply falling back out of range earns nothing.
-        const burst = this.lastDraftAlong < S.maxDistance * 0.75;
-        if (burst) this.applyBoost(S.exitBoostStrength, S.exitBoostDuration, 'slipstream');
-        events.emit('kart:draftEnd', { kartId: s.id, burst });
-      }
-      s.isDrafting = false;
-      s.draftCharge = Math.max(0, s.draftCharge - dt * 2);
-    }
-  }
-
-  /**
-   * Magnet item: while latched, the kart is towed to a point just behind its target —
-   * heading and speed follow the target, so even a faster kart cannot pull past.
-   * Returns true while the magnet overrides normal driving.
-   */
-  private updateMagnet(dt: number, others: readonly IKart[]): boolean {
-    const s = this.state;
-    if (s.magnetTargetId < 0) return false;
-    s.magnetTimer -= dt;
-    let target: IKart | null = null;
-    for (let i = 0; i < others.length; i++) {
-      if (others[i].state.id === s.magnetTargetId) {
-        target = others[i];
-        break;
-      }
-    }
-    if (s.magnetTimer <= 0 || !target || target.state.isFrozen || target.state.finished || s.isSpinning) {
-      s.magnetTargetId = -1;
-      s.magnetTimer = 0;
-      if (!s.isSpinning) this.applyBoost(B.items.magnetBoostStrength, B.items.magnetBoostDuration, 'magnet');
-      events.emit('kart:magnetEnd', { kartId: s.id });
-      return false;
-    }
-    const t = target.state;
-    // Anchor a fixed distance behind the target, along ITS heading.
-    const tfx = -Math.sin(t.heading);
-    const tfz = -Math.cos(t.heading);
-    const ax = t.position.x - tfx * B.items.magnetAnchor;
-    const az = t.position.z - tfz * B.items.magnetAnchor;
-    const dx = ax - s.position.x;
-    const dz = az - s.position.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    // Steer toward the anchor when it is far, toward the target's heading when tucked in.
-    const wantHeading = dist > 0.6 ? Math.atan2(-dx, -dz) : t.heading;
-    s.heading = wrapAngle(s.heading + angleDelta(s.heading, wantHeading) * Math.min(1, 9 * dt));
-    // Speed: match the target, plus a pull proportional to the gap along our heading.
-    const fx = -Math.sin(s.heading);
-    const fz = -Math.cos(s.heading);
-    const along = dx * fx + dz * fz;
-    const targetSpeed = Math.max(0, t.velocity.x * fx + t.velocity.z * fz);
-    const wanted = Math.min(this.baseTopSpeed() * 1.6, Math.max(0, targetSpeed + along * 3));
-    s.speed = damp(s.speed, wanted, 8, dt);
-    this.lateralVel = damp(this.lateralVel, 0, 12, dt);
-    if (s.isDrifting) this.endDrift(false);
-    return true;
+    startMagnet(this.assistHost, targetId, duration);
   }
 
   applyShrink(duration: number): void {
@@ -718,7 +629,7 @@ export class Kart implements IKart {
     if (s.surface === 'offroad' && !protectedSpeed) v *= B.status.offroadFactor;
     if (s.isShrunk) v *= B.status.shrunkFactor;
     if (s.isInvincible) v *= B.status.starFactor;
-    if (s.isDrafting) v *= 1 + B.slipstream.speedBonus;
+    v *= this.slipstream.bonus(this.assistHost);
     if (s.isBoosting) v *= 1 + s.boostStrength;
     if (s.isSquished) v *= B.status.squishFactor;
     return v;

@@ -66,8 +66,6 @@ export const en = {
   'hud.lapN': 'LAP {n}',
   'hud.finish': 'FINISH',
   'hud.wrongWay': 'WRONG WAY',
-  'hud.slipstream': 'SLIPSTREAM',
-  'hud.slipstreamBoost': 'SLIPSTREAM BOOST',
   'hud.charge': 'REV',
   'hud.overcharge': 'ENGINE STALL!',
   'hud.mirror.kart': 'BEHIND {d} m',
