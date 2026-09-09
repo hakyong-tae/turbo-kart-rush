@@ -1,31 +1,13 @@
 /* HUD widgets: rear mirror PiP, slipstream meter, start charge, team tally/results */
-/* Rear-view mirror — appearance only; the PiP block further down owns where it sits. */
+/* Rear-view mirror — appearance only; the PiP block further down owns where it sits.
+   Frame and image only: no label, no icon. What the frame says, it says in colour. */
 .hud-mirror {
   display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 8px;
   border-radius: 14px;
   border: 2px solid rgba(255, 255, 255, 0.25);
-  font-family: var(--display);
-  font-size: 15px;
-  letter-spacing: 0.06em;
-  color: var(--ink);
-  min-width: 150px;
 }
 .hud-mirror.visible {
   display: flex;
-}
-.hud-mirror-icon {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  font-size: 18px;
-}
-.hud-mirror-icon canvas {
-  width: 26px;
-  height: 26px;
 }
 .hud-mirror.warn {
   border-color: rgba(255, 210, 63, 0.7);
@@ -184,11 +166,6 @@
   top: auto;
   right: auto;
   width: clamp(190px, 21vw, 300px);
-  min-width: 0;
-  padding: 0;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
   border-width: 3px;
   border-radius: 14px;
   overflow: hidden;
@@ -200,15 +177,6 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   background: transparent;
-}
-.hud-mirror-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px 5px 8px;
-  min-width: 0;
-  background: rgba(8, 10, 22, 0.78);
-  font-size: 13px;
 }
 .hud-mirror.rumble {
   animation: mirror-rumble 0.35s linear, mirror-pulse 0.32s ease-in-out infinite;

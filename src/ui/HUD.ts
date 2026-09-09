@@ -120,7 +120,7 @@ export class HUD {
     this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
     // Team tally (team modes only) + rear-view mirror PiP frame (bottom-left).
     this.teamTally = new TeamTally(this.rootNode);
-    this.mirror = new MirrorPanel(this.rootNode, (item) => this.getIcon(item));
+    this.mirror = new MirrorPanel(this.rootNode);
 
     // Bottom-left: place
     this.placeNode = el('div', 'hud-place', undefined, this.rootNode);
