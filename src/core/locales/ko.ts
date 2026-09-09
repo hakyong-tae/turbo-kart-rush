@@ -304,6 +304,7 @@ export const ko: Record<StringKey, string> = {
   'garage.color.trail': '트레일 색',
   'garage.freeHint': '도색은 모두 무료',
   'garage.paidHint': '라이버리와 이펙트는 차고 패스 전용',
+  'garage.loading': '차고 패스 확인 중…',
   'garage.locked': '잠김',
   'garage.preview': '미리보기 3초',
   'garage.unlock': '차고 해금 · 100 VX',

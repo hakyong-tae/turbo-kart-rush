@@ -316,6 +316,7 @@ export const en = {
   'garage.color.trail': 'Trail colour',
   'garage.freeHint': 'Colours are free for everyone',
   'garage.paidHint': 'Liveries and effects need the garage pass',
+  'garage.loading': 'Checking your garage pass…',
   'garage.locked': 'LOCKED',
   'garage.preview': 'Preview · 3s',
   'garage.unlock': 'UNLOCK GARAGE · 100 VX',

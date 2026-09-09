@@ -28,7 +28,14 @@ import {
 import { t } from '../core/i18n';
 import type { CharacterDef, InputState } from '../core/types';
 import { getCharacter } from '../kart/roster';
-import { getCosmetics, getEntitlements, saveCosmetics, serverReachable } from '../verse8/entitlements';
+import { inVerse8Host } from '../verse8/embed';
+import {
+  getCosmetics,
+  getEntitlements,
+  onEntitlementsChange,
+  saveCosmetics,
+  serverReachable,
+} from '../verse8/entitlements';
 import { badgeElement } from './badges';
 import { button, el } from './dom';
 import { GaragePreview } from './garage/GaragePreview';
@@ -82,6 +89,7 @@ export class GaragePanel {
   private readonly rows: HTMLElement;
   private readonly stateChip: HTMLElement;
   private readonly unlockBtn: HTMLButtonElement;
+  private readonly saveBtn: HTMLButtonElement;
   private readonly preview: GaragePreview;
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
 
@@ -91,6 +99,7 @@ export class GaragePanel {
   private visible = false;
   /** Set while a locked entry is on the kart; holds the look to restore. */
   private audition: { timer: number; restore: KartCosmetics } | null = null;
+  private readonly unsubEntitlements: () => void;
 
   constructor(root: HTMLElement) {
     this.character = getCharacter('zippy');
@@ -119,8 +128,35 @@ export class GaragePanel {
     this.unlockBtn = button(t('garage.unlock'), 'primary garage-unlock', () => this.onUnlock?.());
     actions.appendChild(this.unlockBtn);
     actions.appendChild(button(t('garage.reset'), 'garage-reset', () => this.reset()));
-    actions.appendChild(button(t('garage.save'), 'primary garage-save', () => void this.save()));
+    this.saveBtn = button(t('garage.save'), 'primary garage-save', () => void this.save());
+    actions.appendChild(this.saveBtn);
     actions.appendChild(button(t('menu.back'), 'garage-close', () => this.close()));
+
+    // Entitlements land asynchronously inside the host. When they do — a purchase completing, or
+    // just the first read finishing — the locks and the saved look have to catch up in place.
+    this.unsubEntitlements = onEntitlementsChange(() => {
+      if (!this.visible) return;
+      if (!this.touched) this.draft = { ...getCosmetics() };
+      this.apply();
+      this.syncChrome();
+      this.setTab(this.tab);
+    });
+  }
+
+  /**
+   * True once the player has changed something. Until then the panel keeps mirroring the stored
+   * look, so a late server read does not overwrite edits already made on screen.
+   */
+  private touched = false;
+
+  /**
+   * Saving is what makes the load race dangerous: `sanitize` strips paid fields for a player the
+   * client currently believes is free, so a premium player who saves before their entitlement
+   * arrives would write their livery away. Inside the host the server is the truth, so the button
+   * waits for it. Offline and in local dev there is nothing to wait for.
+   */
+  private get entitlementsKnown(): boolean {
+    return !inVerse8Host() || getEntitlements().loaded;
   }
 
   get isVisible(): boolean {
@@ -131,6 +167,7 @@ export class GaragePanel {
   show(characterId: string): void {
     this.character = getCharacter(characterId);
     this.draft = { ...getCosmetics() };
+    this.touched = false;
     this.cancelAudition();
     this.preview.setCharacter(this.character, this.draft);
     this.preview.start();
@@ -154,6 +191,7 @@ export class GaragePanel {
 
   dispose(): void {
     this.cancelAudition();
+    this.unsubEntitlements();
     this.preview.dispose();
     this.rootNode.remove();
   }
@@ -170,10 +208,12 @@ export class GaragePanel {
   }
 
   private syncChrome(): void {
+    const known = this.entitlementsKnown;
     const owned = this.premium;
-    this.stateChip.textContent = owned ? t('garage.owned') : t('garage.paidHint');
-    this.stateChip.classList.toggle('owned', owned);
-    this.unlockBtn.classList.toggle('hidden', owned);
+    this.stateChip.textContent = !known ? t('garage.loading') : owned ? t('garage.owned') : t('garage.paidHint');
+    this.stateChip.classList.toggle('owned', known && owned);
+    this.unlockBtn.classList.toggle('hidden', !known || owned);
+    this.saveBtn.disabled = !known;
   }
 
   private setTab(id: TabId): void {
@@ -211,6 +251,7 @@ export class GaragePanel {
     def.type = 'button';
     def.addEventListener('click', () => {
       delete this.draft[field];
+      this.touched = true;
       this.apply();
       paint();
     });
@@ -221,6 +262,7 @@ export class GaragePanel {
       b.style.background = `#${hex.toString(16).padStart(6, '0')}`;
       b.addEventListener('click', () => {
         this.draft[field] = hex;
+        this.touched = true;
         this.apply();
         paint();
       });
@@ -256,6 +298,7 @@ export class GaragePanel {
         }
         if (entry.id === first) delete this.draft[field];
         else (this.draft as Record<string, unknown>)[field] = entry.id;
+        this.touched = true;
         this.apply();
         paint();
       });
@@ -279,6 +322,7 @@ export class GaragePanel {
           return;
         }
         this.draft = { ...preset.cos };
+        this.touched = true;
         this.apply();
         this.setTab('preset');
       });
@@ -328,6 +372,7 @@ export class GaragePanel {
 
   private reset(): void {
     this.cancelAudition(false);
+    this.touched = true;
     this.draft = {};
     this.apply();
     this.setTab(this.tab);
@@ -335,6 +380,7 @@ export class GaragePanel {
   }
 
   private async save(): Promise<void> {
+    if (!this.entitlementsKnown) return;
     this.cancelAudition();
     const clean = sanitize(this.draft, this.premium);
     this.draft = clean;

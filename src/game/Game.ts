@@ -359,6 +359,7 @@ export class Game {
     menu.onGarage = () => this.garage.show(this.garageCharacterId);
     menu.onDaily = () => this.daily.show();
     menu.onStartCup = (cupId, settings) => {
+      this.dailyRun = null;
       this.cup = { id: cupId, index: 0, table: [], settings };
       void this.startRaceGated(settings);
     };
@@ -412,16 +413,10 @@ export class Game {
     };
     results.onChangeTrack = () => {
       if (this.race?.online) this.returnToRoom();
-      else {
-        this.cup = null;
-        this.dailyRun = null;
-        this.returnToMenu('trackSelect');
-      }
+      else this.returnToMenu('trackSelect');
     };
     results.onMainMenu = () => {
       if (this.race?.online) void this.online?.leave();
-      this.cup = null;
-      this.dailyRun = null;
       this.returnToMenu('title');
     };
     return results;
@@ -1073,7 +1068,14 @@ export class Game {
     }
   }
 
+  /**
+   * Every path back to the menu goes through here — results buttons, the pause menu, a failed
+   * ticket check — so this is where a Grand Prix and a daily run end. Leaving them set would
+   * chain the next ordinary race into an abandoned cup, or file its time on the daily board.
+   */
   private returnToMenu(panel: MenuPanel): void {
+    this.cup = null;
+    this.dailyRun = null;
     this.disposeRace();
     this.showMenu(panel);
   }

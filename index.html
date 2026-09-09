@@ -17,6 +17,61 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      // Storage shim — must run BEFORE the module bundle.
+      //
+      // @agent8/gameserver reads window.localStorage in a module static initializer, so the read
+      // happens while the bundle is evaluating, before any of our code exists. When a browser
+      // denies storage to this frame — third-party site data turned off, a locked-down WebView,
+      // an embedder with an opaque origin — that read THROWS, the whole bundle fails to evaluate,
+      // and the player gets a blank page instead of a game they could have played offline.
+      //
+      // Merely accessing the property is what throws, so it cannot be caught downstream. We probe
+      // it once here and, if it is denied, install an in-memory stand-in with the same surface.
+      // Nothing is persisted in that case, which is the correct degradation: settings and local
+      // best times last for the session, and the server layer reports itself unreachable.
+      (function () {
+        try {
+          var probe = window.localStorage;
+          probe.setItem('__tkr_probe__', '1');
+          probe.removeItem('__tkr_probe__');
+          return;
+        } catch (err) {
+          console.warn('[tkr] localStorage unavailable, using in-memory storage:', err && err.message);
+        }
+        var mem = Object.create(null);
+        var shim = {
+          getItem: function (k) {
+            return Object.prototype.hasOwnProperty.call(mem, String(k)) ? mem[String(k)] : null;
+          },
+          setItem: function (k, v) {
+            mem[String(k)] = String(v);
+          },
+          removeItem: function (k) {
+            delete mem[String(k)];
+          },
+          clear: function () {
+            mem = Object.create(null);
+          },
+          key: function (i) {
+            var keys = Object.keys(mem);
+            return i >= 0 && i < keys.length ? keys[i] : null;
+          },
+        };
+        Object.defineProperty(shim, 'length', {
+          get: function () {
+            return Object.keys(mem).length;
+          },
+        });
+        for (var name of ['localStorage', 'sessionStorage']) {
+          try {
+            Object.defineProperty(window, name, { value: shim, configurable: true, writable: false });
+          } catch (err) {
+            console.warn('[tkr] could not install the ' + name + ' shim:', err && err.message);
+          }
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
