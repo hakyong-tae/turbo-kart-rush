@@ -4,7 +4,6 @@
  */
 import type { IKart, ITrack, ItemType, HazardInfo, KartState, RaceMode } from '../core/types';
 import { BALANCE as B } from '../core/balance';
-import { isTeamMode } from '../core/teams';
 import { baseItemType } from '../items/itemVisuals';
 import { ChargeGauge } from './hud/ChargeGauge';
 import { DraftMeter } from './hud/DraftMeter';
@@ -89,6 +88,7 @@ export class HUD {
   private readonly timed: TimedNode[] = [];
   private readonly boostGlow: HTMLElement;
   private mode: RaceMode = 'solo';
+  private localKartId = 0;
   // Widgets (src/ui/hud/*)
   private readonly mirror: MirrorPanel;
   private readonly teamTally: TeamTally;
@@ -172,11 +172,12 @@ export class HUD {
 
   // ------------------------------------------------------------------ public
 
-  setMode(mode: RaceMode): void {
+  setMode(mode: RaceMode, localKartId = 0): void {
     this.mode = mode;
-    this.teamTally.setMode(mode);
+    this.localKartId = localKartId;
+    this.teamTally.setMode(mode, localKartId);
     this.standings.setMode(mode);
-    this.minimap.setTeamColors(isTeamMode(mode));
+    this.minimap.setMode(mode);
   }
 
   /** Screen rectangle (CSS px) the rear camera should be drawn into, or null while the mirror is hidden. */

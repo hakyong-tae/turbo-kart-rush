@@ -33,6 +33,8 @@ export const ko: Record<StringKey, string> = {
   'mode.teamFirst': '팀 · 1등 우선',
   'team.red': '레드',
   'team.blue': '블루',
+  'team.us': '우리 팀',
+  'team.them': '상대 팀',
   'menu.difficulty': '난이도',
   'menu.laps': '{n}랩',
   'menu.weightClass': '체급',

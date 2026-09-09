@@ -14,6 +14,8 @@ import type { CharacterDef } from '../core/types';
 import { createBodyKit, getBodySpec, type WheelSize } from './bodies';
 import { Batch, addVertexColor, limbGeometry, makeMesh } from './modelUtils';
 import { CHARACTERS } from './roster';
+import type { FlameId, KartCosmetics, WheelFxId } from '../core/cosmetics';
+import { attachPatternShader } from './patternShader';
 
 export interface KartModelParts {
   root: THREE.Group;
@@ -32,6 +34,26 @@ export interface KartModelParts {
   accentMaterial: THREE.MeshStandardMaterial;
 }
 
+/** Exhaust flame looks: colour, cone length multiplier, halo strength. `prism` cycles hue. */
+const FLAME_STYLE: Readonly<Record<Exclude<FlameId, 'none'>, { color: number; length: number; halo: number; cycle?: true }>> = {
+  jet: { color: 0x9fd8ff, length: 1.25, halo: 1 },
+  plasma: { color: 0xc26bff, length: 1.1, halo: 1.4 },
+  ember: { color: 0xff6a1a, length: 0.9, halo: 1.2 },
+  ion: { color: 0x36d5ea, length: 1.15, halo: 1.1 },
+  frost: { color: 0xbfe8ff, length: 0.95, halo: 1.3 },
+  void: { color: 0x6b3aa0, length: 0.8, halo: 1.6 },
+  prism: { color: 0xffffff, length: 1.1, halo: 1.3, cycle: true },
+  pulseJet: { color: 0xff9a2e, length: 1.35, halo: 0.9 },
+};
+
+/** Wheel looks that only need material changes; particle-based ones live in the FX layer. */
+const WHEEL_STYLE: Readonly<Record<Exclude<WheelFxId, 'none'>, { emissive: number; intensity: number }>> = {
+  spokeGlow: { emissive: 0xffb020, intensity: 1.6 },
+  rimLight: { emissive: 0x9fd8ff, intensity: 1.4 },
+  tyreTrail: { emissive: 0x2a2e34, intensity: 1 },
+  spinBlur: { emissive: 0x2a2e34, intensity: 1 },
+};
+
 /** Extra handles the Kart uses for animation; a structural subtype of KartModelParts. */
 export interface KartModelPartsEx extends KartModelParts {
   /** Emissive material on the exhaust tips (flickers while boosting). */
@@ -44,8 +66,14 @@ export interface KartModelPartsEx extends KartModelParts {
   neonHaloMaterial: THREE.MeshBasicMaterial;
   /** Cone meshes (one per exhaust; userData.lengthScale compensates the stack stretch). */
   neonFlames: THREE.Object3D[];
-  /** Resting neon colour (accent tinted toward white). */
+  /** Resting neon colour (accent tinted toward white). Mutated by `applyCosmetics`. */
   neonColor: THREE.Color;
+  /** Exhaust cone length multiplier from the flame cosmetic. */
+  neonLength: number;
+  /** True when the flame cosmetic cycles hue on its own. */
+  neonCycle: boolean;
+  /** Repaints and re-liveries this kart in place. Safe to call every frame in the garage. */
+  applyCosmetics(cos: KartCosmetics): void;
   /** Disposes every geometry, material and texture owned by this model. */
   dispose(): void;
 }
@@ -59,6 +87,7 @@ const WHEEL_X = 0.52;
 const WHEEL_Z_F = -0.52;
 const WHEEL_Z_R = 0.5;
 const BASE_PIPE_LENGTH = 0.28;
+const WHITE = new THREE.Color(0xffffff);
 
 function makeNumberTexture(num: number, accent: number, color: number): THREE.CanvasTexture {
   const size = 128;
@@ -128,7 +157,7 @@ function buildWheelGeometry(radius: number, width: number): WheelGeos {
   return { tyre: tyreBatch.build(), rim: rimBatch.build() };
 }
 
-export function buildKartModel(character: CharacterDef): KartModelPartsEx {
+export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetics): KartModelPartsEx {
   const spec = getBodySpec(character.id);
   const lift = spec.lift;
   const root = new THREE.Group();
@@ -205,6 +234,9 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
       roughness: 0.6,
     }),
   );
+  // Liveries: an object-space shader patch, because the chassis has no usable UVs.
+  const livery = attachPatternShader(bodyMaterial, character.accent);
+
   const number = Math.max(1, CHARACTERS.indexOf(character) + 1);
   const plateTex = makeNumberTexture(number, character.accent, character.color);
   textures.add(plateTex);
@@ -450,6 +482,32 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
   driver.add(driverHead);
   root.add(driver);
 
+  const parts = { neonLength: 1, neonCycle: false };
+  const applyCosmetics = (cos: KartCosmetics): void => {
+    bodyMaterial.color.setHex(cos.body ?? character.color);
+    const accentHex = cos.accent ?? character.accent;
+    accentMaterial.color.setHex(accentHex);
+    accentMaterial.emissive.setHex(accentHex);
+    rimMat.color.setHex(cos.rim ?? 0xcfd6e0);
+    helmetMat.color.setHex(cos.helmet ?? character.driverColor);
+    livery.setPattern(cos.pattern);
+    livery.setColor(cos.patternColor ?? accentHex);
+    // Exhaust neon: the flame cosmetic overrides the accent-derived default.
+    const flame = cos.flame && cos.flame !== 'none' ? FLAME_STYLE[cos.flame] : null;
+    neonColor.setHex(flame ? flame.color : accentHex).lerp(WHITE, flame ? 0.15 : 0.35);
+    neonRingMaterial.color.copy(neonColor);
+    neonFlameMaterial.color.copy(neonColor);
+    neonHaloMaterial.color.copy(neonColor);
+    neonHaloMaterial.userData.strength = flame ? flame.halo : 1;
+    parts.neonLength = flame ? flame.length : 1;
+    parts.neonCycle = Boolean(flame?.cycle);
+    const wheel = cos.wheelFx && cos.wheelFx !== 'none' ? WHEEL_STYLE[cos.wheelFx] : null;
+    rimMat.emissive.setHex(wheel ? wheel.emissive : 0x2a2e34);
+    rimMat.emissiveIntensity = wheel ? wheel.intensity : 1;
+  };
+
+  if (cosmetics) applyCosmetics(cosmetics);
+
   const dispose = () => {
     for (const g of geometries) g.dispose();
     for (const m of materials) m.dispose();
@@ -478,6 +536,13 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
     neonHaloMaterial,
     neonFlames,
     neonColor,
+    get neonLength() {
+      return parts.neonLength;
+    },
+    get neonCycle() {
+      return parts.neonCycle;
+    },
+    applyCosmetics,
     dispose,
   };
 }

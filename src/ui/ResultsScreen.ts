@@ -3,7 +3,7 @@
  * finish and Race Again / Change Track / Main Menu actions.
  */
 import type { InputState, RaceStanding, RaceMode, Team } from '../core/types';
-import { TEAM_COLORS, computeTeamResult, isTeamMode, pointsFor, teamOf } from '../core/teams';
+import { SIDE_COLORS, computeTeamResult, isTeamMode, pointsFor, teamOf } from '../core/teams';
 import { events } from '../core/events';
 import { formatRaceTime } from '../core/math';
 import { localOrdinal, t } from '../core/i18n';
@@ -67,18 +67,21 @@ export class ResultsScreen {
     this.table.classList.toggle('points', mode === 'teamPoints');
 
     if (teamResult) {
-      const teamName = (tm: Team) => t(tm === 'red' ? 'team.red' : 'team.blue');
+      // Sides read relative to the viewer, matching the friend-or-foe colours in the HUD.
+      const sideName = (tm: Team) => t(tm === myTeam ? 'team.us' : 'team.them');
+      const ourPoints = myTeam === 'red' ? teamResult.red : teamResult.blue;
+      const theirPoints = myTeam === 'red' ? teamResult.blue : teamResult.red;
       this.heading.set(
-        teamResult.winner === 'draw' ? t('results.teamDraw') : t(teamWon ? 'results.teamWin' : 'results.teamLose', { team: teamName(teamResult.winner) }),
+        teamResult.winner === 'draw' ? t('results.teamDraw') : t(teamWon ? 'results.teamWin' : 'results.teamLose', { team: sideName(teamResult.winner) }),
       );
       this.subheading.set(
         mode === 'teamPoints'
-          ? `${teamName('red')} ${teamResult.red}  :  ${teamResult.blue} ${teamName('blue')}`
-          : t('results.firstRule', { team: teamResult.firstTeam ? teamName(teamResult.firstTeam) : '—' }),
+          ? `${t('team.us')} ${ourPoints}  :  ${theirPoints} ${t('team.them')}`
+          : t('results.firstRule', { team: teamResult.firstTeam ? sideName(teamResult.firstTeam) : '—' }),
       );
       this.panel.classList.toggle('gold', teamWon);
-      this.panel.classList.toggle('team-red', teamResult.winner === 'red');
-      this.panel.classList.toggle('team-blue', teamResult.winner === 'blue');
+      this.panel.classList.toggle('team-us', teamWon);
+      this.panel.classList.toggle('team-them', teamResult.winner !== 'draw' && !teamWon);
     } else {
       this.heading.set(place === 1 ? t('results.victory') : t('results.place', { ord: localOrdinal(place).toUpperCase() }));
       this.subheading.set(
@@ -91,7 +94,7 @@ export class ResultsScreen {
               : t('results.sub.rough'),
       );
       this.panel.classList.toggle('gold', place === 1);
-      this.panel.classList.remove('team-red', 'team-blue');
+      this.panel.classList.remove('team-us', 'team-them');
     }
     this.rankBanner.set('');
     this.rankBanner.node.classList.add('hidden');
@@ -102,10 +105,11 @@ export class ResultsScreen {
       if (s.isPlayer) row.classList.add('you');
       if (s.place <= 3) row.classList.add(`podium-${s.place}`);
       const team = s.team ?? teamOf(s.kartId);
-      if (teamMode) row.classList.add(`team-${team}`);
+      const ally = team === myTeam;
+      if (teamMode) row.classList.add(ally ? 'side-ally' : 'side-rival');
       el('span', 'standing-place', localOrdinal(s.place), row);
       const chip = el('span', 'standing-chip', undefined, row);
-      chip.style.background = cssHex(teamMode ? TEAM_COLORS[team] : s.color);
+      chip.style.background = cssHex(teamMode ? SIDE_COLORS[ally ? 'ally' : 'rival'] : s.color);
       el('span', 'standing-name', s.name + (s.isPlayer ? `  ${t('results.you')}` : ''), row);
       const time = s.finishTime;
       const label =

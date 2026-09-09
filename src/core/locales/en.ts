@@ -34,6 +34,8 @@ export const en = {
   'mode.teamFirst': 'TEAM · P1 WINS',
   'team.red': 'RED',
   'team.blue': 'BLUE',
+  'team.us': 'OUR TEAM',
+  'team.them': 'RIVAL TEAM',
   'menu.laps': '{n} LAPS',
   'menu.weightClass': 'Weight class',
   'diff.easy': 'EASY',

@@ -27,6 +27,7 @@ import { TAU, clamp, clamp01, damp, lerp, smoothstep, wrapAngle, angleDelta } fr
 import { buildKartModel, type KartModelPartsEx } from './KartModel';
 import { SlipstreamTracker, type SlipstreamHost } from './assists/slipstream';
 import { startMagnet, updateMagnet, type MagnetHost } from './assists/magnet';
+import type { KartCosmetics } from '../core/cosmetics';
 import { BALANCE } from '../core/balance';
 
 // --- tuning ------------------------------------------------------------------
@@ -120,7 +121,7 @@ export class Kart implements IKart {
   private starVisualActive = false;
   private accentStage = -1;
 
-  constructor(id: number, character: CharacterDef, isPlayer: boolean) {
+  constructor(id: number, character: CharacterDef, isPlayer: boolean, cosmetics?: KartCosmetics) {
     this.state = {
       id,
       isPlayer,
@@ -180,7 +181,7 @@ export class Kart implements IKart {
         this.lateralVel = v;
       },
     };
-    this.parts = buildKartModel(character);
+    this.parts = buildKartModel(character, cosmetics);
     this.exhaustAnchors = this.parts.exhausts.map(() => ({ position: new THREE.Vector3(), direction: new THREE.Vector3(0, 0, 1) }));
     this.visual = this.parts.root;
     this.object = new THREE.Group();
@@ -413,14 +414,15 @@ export class Kart implements IKart {
     p.neonFlameMaterial.opacity = Math.min(1, glow * (0.6 + 0.4 * flicker));
     p.neonHaloMaterial.opacity = Math.min(1, glow * 0.32 * (0.7 + 0.3 * flicker));
     p.neonRingMaterial.opacity = 0.5 + 0.5 * glow;
-    const flameLen = 0.55 + 0.75 * glow * (0.8 + 0.2 * flicker);
+    p.neonHaloMaterial.opacity *= (p.neonHaloMaterial.userData.strength as number | undefined) ?? 1;
+    const flameLen = (0.55 + 0.75 * glow * (0.8 + 0.2 * flicker)) * p.neonLength;
     for (let i = 0; i < p.neonFlames.length; i++) {
       const f = p.neonFlames[i];
       const ls = (f.userData.lengthScale as number | undefined) ?? 1;
       f.scale.set(0.8 + 0.4 * glow, 0.8 + 0.4 * glow, flameLen / ls);
     }
-    if (s.isInvincible) {
-      const hue = (this.time * 1.6 + 0.33) % 1;
+    if (s.isInvincible || p.neonCycle) {
+      const hue = (this.time * (s.isInvincible ? 1.6 : 0.35) + 0.33) % 1;
       p.neonFlameMaterial.color.setHSL(hue, 1, 0.65);
       p.neonHaloMaterial.color.copy(p.neonFlameMaterial.color);
       p.neonRingMaterial.color.copy(p.neonFlameMaterial.color);
@@ -435,6 +437,11 @@ export class Kart implements IKart {
 
   getExhaustAnchors(): readonly ExhaustAnchor[] {
     return this.exhaustAnchors;
+  }
+
+  /** Repaint / re-livery this kart. Used by the garage preview and by net cosmetics. */
+  applyCosmetics(cos: KartCosmetics): void {
+    this.parts.applyCosmetics(cos);
   }
 
   applyBoost(strength: number, duration: number, source: BoostSource): void {

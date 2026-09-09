@@ -2,8 +2,8 @@
  * North-up canvas minimap: static road layer (rendered once per track) plus
  * kart dots redrawn at ~30 Hz.
  */
-import type { IKart, ITrack } from '../core/types';
-import { TEAM_COLORS, teamOf } from '../core/teams';
+import type { IKart, ITrack, RaceMode } from '../core/types';
+import { sideColor } from '../core/teams';
 import { MINIMAP_SIZE } from '../core/constants';
 import { cssHex, el } from './dom';
 
@@ -13,7 +13,7 @@ const REDRAW_INTERVAL = 1 / 30;
 export class Minimap {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D | null;
-  private teamColors = false;
+  private mode: RaceMode | undefined;
   private readonly layer: HTMLCanvasElement;
   private track: ITrack | null = null;
   private timer = 0;
@@ -38,9 +38,9 @@ export class Minimap {
     this.timer = REDRAW_INTERVAL; // force an immediate redraw
   }
 
-  /** Team modes colour the dots by team instead of by racer. */
-  setTeamColors(on: boolean): void {
-    this.teamColors = on;
+  /** Dots are friend-or-foe coloured; the mode only decides who counts as an ally. */
+  setMode(mode: RaceMode | undefined): void {
+    this.mode = mode;
   }
 
   update(dt: number, karts: readonly IKart[], playerId: number): void {
@@ -69,7 +69,7 @@ export class Minimap {
         const r = (isPlayer ? 6.5 : 4.5) * this.dpr;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = cssHex(this.teamColors ? TEAM_COLORS[teamOf(k.state.id)] : k.state.character.color);
+        ctx.fillStyle = cssHex(sideColor(k.state.id, playerId, this.mode));
         ctx.fill();
         ctx.lineWidth = (isPlayer ? 2.5 : 1.2) * this.dpr;
         ctx.strokeStyle = isPlayer ? '#ffffff' : 'rgba(0,0,0,0.6)';

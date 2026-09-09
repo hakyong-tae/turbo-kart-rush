@@ -4,7 +4,7 @@
  * per-frame allocations — the sort buffer is reused).
  */
 import type { IKart, RaceMode } from '../../core/types';
-import { TEAM_COLORS, isTeamMode, teamOf } from '../../core/teams';
+import { sideColor, sideOf } from '../../core/teams';
 import { TextField, cssHex, el } from '../dom';
 
 interface Row {
@@ -61,7 +61,6 @@ export class StandingsBoard {
       const name = new TextField(el('span', 'hud-standing-name', '', row));
       this.rows.push({ row, place, chip, name });
     }
-    const team = isTeamMode(this.mode);
     for (let i = 0; i < sorted.length; i++) {
       const s = sorted[i].state;
       const r = this.rows[i];
@@ -70,7 +69,8 @@ export class StandingsBoard {
       r.row.classList.toggle('dnf', s.finished && s.finishTime <= 0);
       r.row.classList.toggle('done', s.finished && s.finishTime > 0);
       r.place.set(String(i + 1));
-      r.chip.style.background = cssHex(team ? TEAM_COLORS[teamOf(s.id)] : s.character.color);
+      r.chip.style.background = cssHex(sideColor(s.id, playerId, this.mode));
+      r.row.classList.toggle('ally', sideOf(s.id, playerId, this.mode) === 'ally');
       r.name.set(s.character.name.toUpperCase());
     }
     for (let i = sorted.length; i < this.rows.length; i++) this.rows[i].row.hidden = true;

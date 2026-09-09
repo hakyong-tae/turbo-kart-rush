@@ -212,3 +212,8 @@
   color: var(--ink-faint);
   font-size: 11px;
 }
+
+/* Allies in the standings board get a faint tint so a glance separates the two sides. */
+.hud-standing.ally {
+  background: rgba(58, 123, 255, 0.12);
+}

@@ -12,6 +12,24 @@ import type { RaceMode, RaceStanding, Team } from './types';
 export const POINTS_BY_PLACE: readonly number[] = [10, 8, 6, 5, 4, 3, 2, 1];
 export const TEAM_COLORS: Readonly<Record<Team, number>> = { red: 0xff3b4a, blue: 0x3a7bff };
 
+/**
+ * HUD identification is friend-or-foe, not identity: the viewer and their allies are blue,
+ * everyone else is red, in solo races as well as team races. The 3D kart keeps its own colour
+ * and paint, so a player can repaint freely without hurting online readability.
+ */
+export type Side = 'self' | 'ally' | 'rival';
+export const SIDE_COLORS: Readonly<Record<Side, number>> = { self: 0x3a7bff, ally: 0x3a7bff, rival: 0xff3b4a };
+
+export function sideOf(kartId: number, localKartId: number, mode: RaceMode | undefined): Side {
+  if (kartId === localKartId) return 'self';
+  if (isTeamMode(mode) && teamOf(kartId) === teamOf(localKartId)) return 'ally';
+  return 'rival';
+}
+
+export function sideColor(kartId: number, localKartId: number, mode: RaceMode | undefined): number {
+  return SIDE_COLORS[sideOf(kartId, localKartId, mode)];
+}
+
 export function teamOf(kartId: number): Team {
   return kartId % 2 === 0 ? 'red' : 'blue';
 }

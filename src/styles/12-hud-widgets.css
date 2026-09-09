@@ -241,11 +241,11 @@
 .hud-team.visible {
   display: flex;
 }
-.hud-team-red { color: #ff6b74; }
-.hud-team-blue { color: #6fa3ff; }
+.hud-team-us { color: #6fa3ff; }
+.hud-team-them { color: #ff6b74; }
 .hud-team-mid { color: var(--ink-dim); font-size: 14px; }
-.hud-team.lead-red .hud-team-red,
-.hud-team.lead-blue .hud-team-blue {
+.hud-team.lead-us .hud-team-us,
+.hud-team.lead-them .hud-team-them {
   text-shadow: 0 0 12px currentColor;
 }
 #ui.touch .hud-team {
@@ -255,8 +255,8 @@
 .race-mode .segmented .seg {
   font-size: 12px;
 }
-.standing-row.team-red .standing-place { color: #ff6b74; }
-.standing-row.team-blue .standing-place { color: #6fa3ff; }
+.standing-row.side-ally .standing-place { color: #6fa3ff; }
+.standing-row.side-rival .standing-place { color: #ff6b74; }
 .standing-points {
   font-family: var(--display);
   font-size: 16px;
@@ -268,8 +268,8 @@
 .standing-points.zero {
   color: var(--ink-faint);
 }
-.results-panel.team-red .results-title { color: #ff6b74; }
-.results-panel.team-blue .results-title { color: #6fa3ff; }
+.results-panel.team-us .results-title { color: #6fa3ff; }
+.results-panel.team-them .results-title { color: #ff6b74; }
 .hud-finish.retired {
   color: #ff6b74;
 }

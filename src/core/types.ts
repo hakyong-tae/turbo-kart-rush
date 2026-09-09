@@ -411,6 +411,8 @@ export interface IKart {
   applyMagnet(targetId: number, duration: number): void;
   /** Contract addition (gameplay-3): world-space exhaust tips (updated in updateVisuals) so FX can attach flames to the real pipes. */
   getExhaustAnchors?(): readonly ExhaustAnchor[];
+  /** Contract addition (garage): repaint / re-livery in place. */
+  applyCosmetics?(cos: import('./cosmetics').KartCosmetics): void;
   applyShrink(duration: number): void;
   applyImpulse(impulse: THREE.Vector3): void;
   setFrozen(frozen: boolean): void;

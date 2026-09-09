@@ -38,6 +38,7 @@ import { PostFX } from '../fx/PostFX';
 import { RearView } from '../fx/RearView';
 import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
+import { tickPatternTime } from '../kart/patternShader';
 import { OrientationGate } from './OrientationGate';
 import { VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, readVolume, writeVolume } from './settingsStore';
 
@@ -840,6 +841,7 @@ export class Game {
       return;
     }
     const player = r.karts[r.localKartId];
+    tickPatternTime(dt);
     for (let i = 0; i < r.karts.length; i++) r.karts[i].updateVisuals(dt);
     r.teamMarkers.update(r.karts, this.elapsed);
     r.track.update(dt, this.elapsed);
@@ -1052,7 +1054,7 @@ export class Game {
     const hud = new HUD(this.uiRoot, buildItemIcon);
     partial.hud = hud;
     hud.setTrack(track);
-    hud.setMode(settings.mode ?? 'solo');
+    hud.setMode(settings.mode ?? 'solo', localKartId);
 
     // Lights from the track environment.
     const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity);
@@ -1088,7 +1090,7 @@ export class Game {
     this.scene.add(items.object);
     // Team modes: a coloured chevron floats over every kart so friend / foe reads at a glance.
     const teamMarkers = new TeamMarkers();
-    if (isTeamMode(settings.mode)) teamMarkers.attach(this.scene, karts);
+    if (isTeamMode(settings.mode)) teamMarkers.attach(this.scene, karts, localKartId, settings.mode);
     partial.teamMarkers = teamMarkers;
     this.scene.add(sun, sun.target, hemi, fill, fill.target);
     this.scene.fog = fog;
