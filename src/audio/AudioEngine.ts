@@ -10,6 +10,7 @@ import { events } from '../core/events';
 import { clamp01 } from '../core/math';
 import { KART_COUNT } from '../core/constants';
 import { dbToGain, softClipCurve } from './synth';
+import type { EnginePackId } from '../core/cosmetics';
 import { EngineVoice, setListenerPose } from './engine';
 import { Crowd, SfxBank } from './sfx';
 import { MusicPlayer, Sequencer, buildStarJingle, warmMusic } from './music';
@@ -51,6 +52,8 @@ export class AudioEngine implements IAudioEngine {
 
   /** Dense array indexed by kart id; null = no voice. Iterated without allocating. */
   private readonly engines: (VoiceSlot | null)[] = new Array<VoiceSlot | null>(MAX_VOICES).fill(null);
+  /** Engine pack per kart id, kept alive across voice teardown so a re-created voice sounds right. */
+  private readonly enginePacks: (EnginePackId | undefined)[] = new Array<EnginePackId | undefined>(MAX_VOICES).fill(undefined);
   private frame = 0;
   private voiceTierTimer = 0;
 
@@ -78,6 +81,12 @@ export class AudioEngine implements IAudioEngine {
     const u = this.unsubs;
     u.push(events.on('kart:starStart', (e) => { if (e.kartId >= 0 && e.kartId < MAX_VOICES) this.starFlags[e.kartId] = 1; }));
     u.push(events.on('kart:starEnd', (e) => { if (e.kartId >= 0 && e.kartId < MAX_VOICES) this.starFlags[e.kartId] = 0; }));
+    u.push(events.on('kart:cosmetics', (e) => {
+      if (e.kartId < 0 || e.kartId >= MAX_VOICES) return;
+      // Cached because the voice is created lazily on the kart's first update, which is after this.
+      this.enginePacks[e.kartId] = e.cos.enginePack;
+      this.engines[e.kartId]?.voice.setPack(e.cos.enginePack);
+    }));
     u.push(events.on('item:lightning', () => { this.lightningDuck = LIGHTNING_DUCK_SECONDS; }));
     u.push(events.on('race:lap', (e) => {
       if (!e.isPlayer) return;
@@ -284,6 +293,7 @@ export class AudioEngine implements IAudioEngine {
           lastSeen: this.frame,
           distance: 0,
         };
+        slot.voice.setPack(this.enginePacks[id]);
         engines[id] = slot;
       }
       slot.lastSeen = this.frame;

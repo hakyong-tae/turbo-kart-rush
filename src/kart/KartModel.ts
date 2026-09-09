@@ -16,6 +16,7 @@ import { Batch, addVertexColor, limbGeometry, makeMesh } from './modelUtils';
 import { CHARACTERS } from './roster';
 import type { FlameId, KartCosmetics, WheelFxId } from '../core/cosmetics';
 import { attachPatternShader } from './patternShader';
+import { createUnderglow, type UnderglowHandles } from './underglow';
 
 export interface KartModelParts {
   root: THREE.Group;
@@ -72,6 +73,11 @@ export interface KartModelPartsEx extends KartModelParts {
   neonLength: number;
   /** True when the flame cosmetic cycles hue on its own. */
   neonCycle: boolean;
+  /**
+   * Road glow. The mesh is deliberately NOT under `root`: the Kart parents it to its ground
+   * object so the pool ignores body roll, squash and shrink.
+   */
+  underglow: UnderglowHandles;
   /** Repaints and re-liveries this kart in place. Safe to call every frame in the garage. */
   applyCosmetics(cos: KartCosmetics): void;
   /** Disposes every geometry, material and texture owned by this model. */
@@ -289,6 +295,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   const glowGeo = track(new THREE.CircleGeometry(0.04, 12));
   glowGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.003);
   // Neon: a thin ring hugging the pipe tip (always lit) and an additive afterburner cone + halo.
+  const underglow = createUnderglow(track, mat, character.accent);
   const neonColor = new THREE.Color(character.accent).lerp(new THREE.Color(0xffffff), 0.35);
   const neonRingMaterial = mat(
     new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
@@ -501,6 +508,8 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
     neonHaloMaterial.userData.strength = flame ? flame.halo : 1;
     parts.neonLength = flame ? flame.length : 1;
     parts.neonCycle = Boolean(flame?.cycle);
+    underglow.setStyle(cos.underglow);
+    underglow.setColor(cos.underglowColor ?? accentHex);
     const wheel = cos.wheelFx && cos.wheelFx !== 'none' ? WHEEL_STYLE[cos.wheelFx] : null;
     rimMat.emissive.setHex(wheel ? wheel.emissive : 0x2a2e34);
     rimMat.emissiveIntensity = wheel ? wheel.intensity : 1;
@@ -516,6 +525,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
     materials.clear();
     textures.clear();
     root.removeFromParent();
+    underglow.mesh.removeFromParent();
   };
 
   return {
@@ -542,6 +552,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
     get neonCycle() {
       return parts.neonCycle;
     },
+    underglow,
     applyCosmetics,
     dispose,
   };

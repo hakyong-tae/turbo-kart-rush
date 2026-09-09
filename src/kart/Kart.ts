@@ -110,6 +110,7 @@ export class Kart implements IKart {
   private visSquash = 0;
   private visSquashVel = 0;
   private visShrink = 1;
+  private visUnderglow = 1;
   private visSquishY = 1;
   private visGlow = 0;
   private visHeadYaw = 0;
@@ -187,6 +188,11 @@ export class Kart implements IKart {
     this.object = new THREE.Group();
     this.object.name = `kart-${id}-${character.id}`;
     this.object.add(this.visual);
+    // Outside `visual` on purpose: the road glow follows the chassis, not the body's roll and squash.
+    this.object.add(this.parts.underglow.mesh);
+    // Announced even when empty: the FX and audio caches key on kart id, and a fresh kart in that
+    // slot must clear whatever the last race's owner was wearing.
+    events.emit('kart:cosmetics', { kartId: id, cos: cosmetics ?? {} });
   }
 
   // ===========================================================================
@@ -361,6 +367,11 @@ export class Kart implements IKart {
     p.driverHead.rotation.set(0, this.visHeadYaw, this.visHeadLean);
     p.driver.rotation.set(clamp(this.accelEst * 0.004, -0.08, 0.1), 0, this.visHeadLean * 0.35);
 
+    // Underglow: light needs a surface, so the pool fades out as the kart leaves the road and
+    // shrinks with a squished kart rather than spilling out from under it.
+    this.visUnderglow = damp(this.visUnderglow, s.isAirborne ? 0.15 : 1, 7, dt);
+    this.parts.underglow.setStrength(this.visUnderglow * (s.isShrunk ? 0.5 : 1));
+
     // Star rainbow.
     if (s.isInvincible) {
       const hue = (this.time * 1.6) % 1;
@@ -442,6 +453,7 @@ export class Kart implements IKart {
   /** Repaint / re-livery this kart. Used by the garage preview and by net cosmetics. */
   applyCosmetics(cos: KartCosmetics): void {
     this.parts.applyCosmetics(cos);
+    events.emit('kart:cosmetics', { kartId: this.state.id, cos });
   }
 
   applyBoost(strength: number, duration: number, source: BoostSource): void {

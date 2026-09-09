@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { BALANCE as B } from '../core/balance';
 import type { IKart, IParticleSystem, ItemType, KartState, ParticlePreset, BoostSource } from '../core/types';
+import { TRAILS } from '../core/cosmetics';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_COUNT } from '../core/constants';
 import { clamp01, TAU } from '../core/math';
@@ -29,6 +30,47 @@ const ADDITIVE_CAPACITY = 6144;
 const ALPHA_CAPACITY = 4096;
 const MAX_KARTS = Math.max(KART_COUNT, 16);
 const MAX_PER_EMITTER_PER_FRAME = 14;
+
+/**
+ * Cosmetic boost trails, indexed by position in the TRAILS catalogue (0 = none, never emitted).
+ * Each style owns a different atlas shape so two trails are never confused at racing distance,
+ * and every rate is per second at full speed — `updateCosmeticTrail` scales them down as the kart
+ * slows so a parked kart is not sitting in its own smoke.
+ */
+interface TrailStyle {
+  atlas: number;
+  additive: boolean;
+  rate: number;
+  life0: number; life1: number;
+  size0: number; size1: number;
+  gravity: number;
+  drag: number;
+  spread: number;
+  rise: number;
+  spin: number;
+  align: number;
+  alpha: number;
+  /** Brightness multiplier on the player's chosen colour. */
+  gain: number;
+}
+
+const TRAIL_STYLES: readonly (TrailStyle | null)[] = [
+  null, // none
+  { atlas: ATLAS_STREAK, additive: true, rate: 150, life0: 0.5, life1: 0.75, size0: 0.85, size1: 0.22, gravity: 0, drag: 1.4, spread: 0.1, rise: 0.2, spin: 0, align: 1, alpha: 1, gain: 1.9 },
+  { atlas: ATLAS_DOT, additive: true, rate: 124, life0: 0.25, life1: 0.45, size0: 0.13, size1: 0.02, gravity: 3.2, drag: 1.1, spread: 0.9, rise: 1.6, spin: 0, align: 0, alpha: 1, gain: 2.3 },
+  { atlas: ATLAS_SMOKE, additive: false, rate: 46, life0: 0.6, life1: 1.0, size0: 0.26, size1: 1.0, gravity: 0, drag: 2.0, spread: 0.35, rise: 0.5, spin: 1.1, align: 0, alpha: 0.4, gain: 1 },
+  { atlas: ATLAS_STAR, additive: true, rate: 46, life0: 0.55, life1: 0.85, size0: 0.34, size1: 0.05, gravity: -0.4, drag: 1.6, spread: 0.7, rise: 0.9, spin: 2.2, align: 0, alpha: 1, gain: 2.1 },
+  { atlas: ATLAS_HEX, additive: true, rate: 42, life0: 0.5, life1: 0.8, size0: 0.28, size1: 0.06, gravity: -0.2, drag: 1.8, spread: 0.55, rise: 0.7, spin: 1.4, align: 0, alpha: 1, gain: 2.0 },
+  { atlas: ATLAS_BOLT, additive: true, rate: 58, life0: 0.22, life1: 0.38, size0: 0.34, size1: 0.08, gravity: 0, drag: 1.2, spread: 1.1, rise: 1.1, spin: 3.0, align: 0, alpha: 1, gain: 2.6 },
+  { atlas: ATLAS_SHARD, additive: true, rate: 54, life0: 0.35, life1: 0.6, size0: 0.26, size1: 0.04, gravity: 4.0, drag: 0.9, spread: 1.0, rise: 2.2, spin: 4.0, align: 0, alpha: 1, gain: 2.0 },
+  { atlas: ATLAS_RING, additive: true, rate: 21, life0: 0.45, life1: 0.65, size0: 0.3, size1: 1.45, gravity: 0, drag: 2.4, spread: 0.12, rise: 0.2, spin: 0.4, align: 0, alpha: 1, gain: 1.7 },
+  { atlas: ATLAS_FLAME, additive: true, rate: 76, life0: 0.5, life1: 0.9, size0: 0.22, size1: 0.03, gravity: -1.4, drag: 1.5, spread: 0.6, rise: 1.3, spin: 1.0, align: 0, alpha: 1, gain: 2.2 },
+  { atlas: ATLAS_SQUARE, additive: true, rate: 64, life0: 0.3, life1: 0.5, size0: 0.2, size1: 0.2, gravity: 0, drag: 1.0, spread: 0.8, rise: 0.8, spin: 0, align: 0, alpha: 1, gain: 2.2 },
+];
+
+/** Speed below which a trail stops emitting entirely, in m/s. */
+const TRAIL_MIN_SPEED = 3;
+
 
 /** Reusable spawn descriptor. Emitters fill this and call group.spawn(). */
 interface SpawnParams {
@@ -513,6 +555,14 @@ export class ParticleSystem implements IParticleSystem {
 
   private readonly accCharge = new Float32Array(MAX_KARTS);
 
+  // Cosmetic trails: pushed in on 'kart:cosmetics' and cached as plain numbers, so the hot loop
+  // never touches a cosmetics object.
+  private readonly trailStyle = new Uint8Array(MAX_KARTS);
+  private readonly trailColor = new Float32Array(MAX_KARTS * 3);
+  private readonly accTrail = new Float32Array(MAX_KARTS);
+  private readonly tyreMarks = new Uint8Array(MAX_KARTS);
+  private readonly accTyre = new Float32Array(MAX_KARTS);
+
   private readonly accDraft = new Float32Array(MAX_KARTS);
   private readonly accSmoke = new Float32Array(MAX_KARTS);
   private readonly accDust = new Float32Array(MAX_KARTS);
@@ -552,6 +602,17 @@ export class ParticleSystem implements IParticleSystem {
 
   private subscribe(): void {
     const u = this.unsubs;
+    u.push(events.on('kart:cosmetics', (e) => {
+      const idx = this.slot(e.kartId);
+      const style = e.cos.trail ? TRAILS.findIndex((x) => x.id === e.cos.trail) : 0;
+      this.trailStyle[idx] = style > 0 && style < TRAIL_STYLES.length ? style : 0;
+      const c = rgb(e.cos.trailColor ?? e.cos.accent ?? 0xffffff);
+      this.trailColor[idx * 3] = c.r;
+      this.trailColor[idx * 3 + 1] = c.g;
+      this.trailColor[idx * 3 + 2] = c.b;
+      // The one wheel look that is particles rather than materials.
+      this.tyreMarks[idx] = e.cos.wheelFx === 'tyreTrail' ? 1 : 0;
+    }));
     u.push(events.on('item:explosion', (e) => {
       this.emit('explosion', e.position, { scale: Math.max(0.6, e.radius / 4) });
     }));
@@ -932,6 +993,8 @@ export class ParticleSystem implements IParticleSystem {
     } else {
       this.accStar[idx] = 0;
     }
+
+    this.updateCosmeticTrail(dt, st, idx, now, fx, fz, rx, rz, speed, shrink);
   }
 
   private updateSpeedStreaks(dt: number, now: number): void {
@@ -998,6 +1061,76 @@ export class ParticleSystem implements IParticleSystem {
       // low gravity + drag → a fluttery fall (~1.5 m/s terminal)
       S.gravity = 0.09; S.atlas = k % 5 === 0 ? ATLAS_HEX : ATLAS_SQUARE; S.align = 0; S.drag = 1.6;
       this.alpha.spawn(S, now);
+    }
+  }
+
+  /**
+   * Cosmetic trail and tyre marks. Runs after the gameplay emitters so a bought look never buries
+   * a drift spark or a boost jet: rates are modest, and everything stops below walking pace.
+   */
+  private updateCosmeticTrail(dt: number, st: IKart['state'], idx: number, now: number, fx: number, fz: number, rx: number, rz: number, speed: number, shrink: number): void {
+    const style = TRAIL_STYLES[this.trailStyle[idx]];
+    if (style && speed > TRAIL_MIN_SPEED && !st.finished) {
+      const ramp = Math.min(1, (speed - TRAIL_MIN_SPEED) / (BASE_TOP_SPEED * 0.7));
+      const boosted = st.isBoosting ? 1.5 : 1;
+      const n = this.take(this.accTrail, idx, style.rate * (0.35 + 0.65 * ramp) * boosted, dt);
+      const r = this.trailColor[idx * 3] * style.gain;
+      const g = this.trailColor[idx * 3 + 1] * style.gain;
+      const b = this.trailColor[idx * 3 + 2] * style.gain;
+      const p = st.position;
+      for (let k = 0; k < n; k++) {
+        const side = k % 2 === 0 ? 1 : -1;
+        S.x = p.x - fx * 1.0 + rx * 0.3 * side + rnd(-0.1, 0.1);
+        S.y = p.y + 0.3 + rnd(-0.08, 0.12);
+        S.z = p.z - fz * 1.0 + rz * 0.3 * side + rnd(-0.1, 0.1);
+        // Shed backwards relative to the kart, so a fast kart lays a longer streak.
+        const back = 1.2 + speed * 0.12;
+        S.vx = -fx * back + rx * side * rnd(0, style.spread) + rnd(-0.2, 0.2);
+        S.vy = rnd(0, style.rise);
+        S.vz = -fz * back + rz * side * rnd(0, style.spread) + rnd(-0.2, 0.2);
+        S.life = rnd(style.life0, style.life1);
+        S.size0 = style.size0 * shrink;
+        S.size1 = style.size1 * shrink;
+        S.r0 = r; S.g0 = g; S.b0 = b;
+        S.r1 = r * 0.45; S.g1 = g * 0.45; S.b1 = b * 0.45;
+        S.a0 = style.alpha; S.a1 = 0;
+        S.rot = style.spin > 0 ? rnd(0, TAU) : 0;
+        S.rotSpeed = style.spin > 0 ? rnd(-style.spin, style.spin) : 0;
+        S.gravity = style.gravity;
+        S.atlas = style.atlas;
+        S.align = style.align;
+        S.drag = style.drag;
+        if (style.additive) this.additive.spawn(S, now);
+        else this.alpha.spawn(S, now);
+      }
+    } else {
+      this.accTrail[idx] = 0;
+    }
+
+    // Tyre marks: dark scuffs pressed into the road under the rear wheels, no drift needed.
+    if (this.tyreMarks[idx] && speed > TRAIL_MIN_SPEED && !st.isAirborne && !st.finished) {
+      const n = this.take(this.accTyre, idx, 30, dt);
+      const p = st.position;
+      for (let k = 0; k < n; k++) {
+        const side = k % 2 === 0 ? 1 : -1;
+        S.x = p.x - fx * 0.78 + rx * 0.55 * side;
+        S.y = p.y + 0.04;
+        S.z = p.z - fz * 0.78 + rz * 0.55 * side;
+        S.vx = 0; S.vy = 0; S.vz = 0;
+        S.life = rnd(0.7, 1.2);
+        S.size0 = 0.2 * shrink; S.size1 = 0.26 * shrink;
+        S.r0 = 0.05; S.g0 = 0.05; S.b0 = 0.06;
+        S.r1 = 0.05; S.g1 = 0.05; S.b1 = 0.06;
+        S.a0 = 0.5; S.a1 = 0;
+        S.rot = 0; S.rotSpeed = 0;
+        S.gravity = 0;
+        S.atlas = ATLAS_SQUARE;
+        S.align = 0;
+        S.drag = 0;
+        this.alpha.spawn(S, now);
+      }
+    } else {
+      this.accTyre[idx] = 0;
     }
   }
 
@@ -1373,6 +1506,8 @@ export class ParticleSystem implements IParticleSystem {
     this.accDrift.fill(0);
     this.accFlame.fill(0);
     this.accSmoke.fill(0);
+    this.accTrail.fill(0);
+    this.accTyre.fill(0);
     this.accDust.fill(0);
     this.accStar.fill(0);
     this.boostSource.fill(BOOST_SOURCE_NONE);

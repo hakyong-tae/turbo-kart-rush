@@ -3,6 +3,7 @@
  * cutoff tracks rpm → tanh soft-clip → gain, with optional turbo whistle and a
  * filtered-noise skid loop. Non-player voices are positioned with a PannerNode.
  */
+import type { EnginePackId } from '../core/cosmetics';
 import type { KartState, WeightClass } from '../core/types';
 import { clamp, clamp01, damp } from '../core/math';
 import { glide, noiseBuffer, softClipCurve } from './synth';
@@ -22,7 +23,63 @@ const GEAR_TOPS = [0.13, 0.24, 0.36, 0.5, 0.65, 0.82, 1.4];
 const SHIFT_TIME = 0.09;
 const LIMITER_RPM = 0.985;
 
-let sharedClipCurve: Float32Array<ArrayBuffer> | null = null;
+/**
+ * Engine packs: a re-voicing of the same graph, not a second synth. Every pack moves the same
+ * nodes — oscillator shapes, the pitch window, the lowpass sweep, the resonant formant, the
+ * clip drive — so switching one costs a handful of parameter writes and no allocation, and a
+ * grid of eight karts running eight packs is still eight voices.
+ *
+ * `scream` reproduces the stock F1 numbers exactly: a player who owns nothing hears no change.
+ */
+interface VoicePack {
+  /** Multiplier on the weight-class base frequency, and on the rev sweep width. */
+  pitch: number;
+  span: number;
+  oscA: OscillatorType;
+  oscB: OscillatorType;
+  /** Frequency of the upper layer relative to the fundamental, and its level. */
+  oscBRatio: number;
+  oscBGain: number;
+  /** Lowpass cutoff at idle and at the limiter, and its resonance. */
+  cutoff0: number;
+  cutoff1: number;
+  q: number;
+  /** Resonant band that gives each pack its character, swept with the revs. */
+  formant0: number;
+  formant1: number;
+  formantGain: number;
+  /** Soft-clip drive: rasp. */
+  clip: number;
+  /** Level scales for the turbo whistle and the sub layer. */
+  turbo: number;
+  sub: number;
+}
+
+const VOICE_PACKS: Readonly<Record<EnginePackId, VoicePack>> = {
+  // Stock: high-revving F1 scream.
+  scream: { pitch: 1, span: 1, oscA: 'sawtooth', oscB: 'sawtooth', oscBRatio: 2, oscBGain: 1, cutoff0: 700, cutoff1: 7700, q: 1.7, formant0: 1500, formant1: 4100, formantGain: 1, clip: 3.2, turbo: 1, sub: 1 },
+  // American V8: an octave down, fat and lazy, resonance low in the chest.
+  rumble: { pitch: 0.6, span: 0.72, oscA: 'sawtooth', oscB: 'square', oscBRatio: 1.5, oscBGain: 0.8, cutoff0: 300, cutoff1: 3200, q: 3.0, formant0: 620, formant1: 1500, formantGain: 1.5, clip: 5.0, turbo: 0.5, sub: 1.9 },
+  // EV: no combustion, just inverter whine climbing with speed.
+  electric: { pitch: 1.75, span: 1.4, oscA: 'triangle', oscB: 'sine', oscBRatio: 3, oscBGain: 0.9, cutoff0: 1800, cutoff1: 12000, q: 1.0, formant0: 2600, formant1: 6200, formantGain: 0.9, clip: 1.3, turbo: 1.5, sub: 0.3 },
+  // Diesel: slow, clattery, almost no top end.
+  diesel: { pitch: 0.48, span: 0.55, oscA: 'square', oscB: 'sawtooth', oscBRatio: 1.01, oscBGain: 0.7, cutoff0: 240, cutoff1: 1700, q: 4.0, formant0: 480, formant1: 1100, formantGain: 1.7, clip: 6.0, turbo: 0.8, sub: 2.1 },
+  // Turbine: gas turbine, wide sweep, whistle-forward.
+  turbine: { pitch: 1.3, span: 1.55, oscA: 'sawtooth', oscB: 'triangle', oscBRatio: 2.5, oscBGain: 1.15, cutoff0: 1200, cutoff1: 14000, q: 0.8, formant0: 3000, formant1: 7000, formantGain: 1.4, clip: 2.0, turbo: 2.3, sub: 0.6 },
+  // Chiptune: two square waves and no shame.
+  chiptune: { pitch: 1.2, span: 1.05, oscA: 'square', oscB: 'square', oscBRatio: 2, oscBGain: 1, cutoff0: 2600, cutoff1: 9000, q: 0.7, formant0: 1800, formant1: 3000, formantGain: 0.4, clip: 1.0, turbo: 1, sub: 0.5 },
+};
+
+/** Clip curves are shared per drive amount; six packs mean at most six tables for the whole grid. */
+const clipCurves = new Map<number, Float32Array<ArrayBuffer>>();
+function clipCurve(amount: number): Float32Array<ArrayBuffer> {
+  let c = clipCurves.get(amount);
+  if (!c) {
+    c = softClipCurve(amount);
+    clipCurves.set(amount, c);
+  }
+  return c;
+}
 
 export class EngineVoice {
   readonly kartId: number;
@@ -56,6 +113,7 @@ export class EngineVoice {
   private readonly skidFilter: BiquadFilterNode;
   private readonly skidGain: GainNode;
 
+  private pack: VoicePack = VOICE_PACKS.scream;
   private rpm = IDLE_RPM;
   private gear = 0;
   private shiftTimer = 0;
@@ -107,8 +165,7 @@ export class EngineVoice {
     this.formantGain.gain.value = 0.35;
 
     this.shaper = ctx.createWaveShaper();
-    if (!sharedClipCurve) sharedClipCurve = softClipCurve(3.2);
-    this.shaper.curve = sharedClipCurve;
+    this.shaper.curve = clipCurve(this.pack.clip);
     this.shaper.oversample = 'none';
 
     this.engineGain = ctx.createGain();
@@ -187,6 +244,24 @@ export class EngineVoice {
     this.setRich(isPlayer);
   }
 
+  /**
+   * Swaps the engine pack. Only parameter writes: no node is created or reconnected, so this is
+   * safe mid-race and safe to call every frame while the garage auditions a pack.
+   */
+  setPack(id: EnginePackId | undefined): void {
+    if (this.disposed) return;
+    const pack = (id && VOICE_PACKS[id]) || VOICE_PACKS.scream;
+    if (pack === this.pack) return;
+    this.pack = pack;
+    this.saw.type = pack.oscA;
+    this.saw2.type = pack.oscB;
+    this.saw2Gain.gain.value = (this.isPlayer ? 0.2 : 0.12) * pack.oscBGain;
+    this.filter.Q.value = pack.q;
+    this.shaper.curve = clipCurve(pack.clip);
+    if (this.subGain) this.subGain.gain.value = 0.16 * pack.sub;
+    if (this.square) this.square.type = pack.oscA === 'square' ? 'sawtooth' : 'square';
+  }
+
   /** Full (saw + square + sub) vs cheap (saw only) voice. */
   setRich(rich: boolean): void {
     if (this.disposed || rich === this.rich) return;
@@ -195,7 +270,7 @@ export class EngineVoice {
     if (rich) {
       const now = ctx.currentTime;
       this.square = ctx.createOscillator();
-      this.square.type = 'square';
+      this.square.type = this.pack.oscA === 'square' ? 'sawtooth' : 'square';
       this.square.detune.value = 11;
       this.square.frequency.value = this.saw.frequency.value;
       this.squareGain = ctx.createGain();
@@ -210,7 +285,7 @@ export class EngineVoice {
       this.sub.frequency.value = this.saw.frequency.value * 0.5;
       this.subGain = ctx.createGain();
       this.subGain.gain.setValueAtTime(0, now);
-      this.subGain.gain.linearRampToValueAtTime(0.16, now + 0.2);
+      this.subGain.gain.linearRampToValueAtTime(0.16 * this.pack.sub, now + 0.2);
       this.sub.connect(this.subGain);
       this.subGain.connect(this.filter);
       this.sub.start();
@@ -292,15 +367,16 @@ export class EngineVoice {
     this.rpm = damp(this.rpm, target, lambda, dt);
     const rpm = this.rpm;
 
+    const pack = this.pack;
     const pitchMul = state.isShrunk ? 1.5 : 1;
-    const freq = this.baseFreq * (PITCH_LO + PITCH_SPAN * rpm) * pitchMul;
+    const freq = this.baseFreq * pack.pitch * (PITCH_LO + PITCH_SPAN * pack.span * rpm) * pitchMul;
     glide(this.saw.frequency, freq, now, 0.025);
-    glide(this.saw2.frequency, freq * 2, now, 0.025);
+    glide(this.saw2.frequency, freq * pack.oscBRatio, now, 0.025);
     if (this.square) glide(this.square.frequency, freq, now, 0.025);
     if (this.sub) glide(this.sub.frequency, freq * 0.5, now, 0.025);
-    glide(this.filter.frequency, 700 + rpm * 7000, now, 0.05);
-    glide(this.formant.frequency, 1500 + rpm * 2600, now, 0.05);
-    glide(this.formantGain.gain, 0.2 + 0.3 * rpm, now, 0.08);
+    glide(this.filter.frequency, pack.cutoff0 + rpm * (pack.cutoff1 - pack.cutoff0), now, 0.05);
+    glide(this.formant.frequency, pack.formant0 + rpm * (pack.formant1 - pack.formant0), now, 0.05);
+    glide(this.formantGain.gain, (0.2 + 0.3 * rpm) * pack.formantGain, now, 0.08);
 
     const load = 0.5 + 0.5 * clamp01(throttle);
     const base = this.isPlayer ? 0.26 : 0.22;
@@ -308,7 +384,7 @@ export class EngineVoice {
     glide(this.engineGain.gain, vol, now, 0.06);
 
     // Turbo whistle while boosting.
-    const turbo = state.isBoosting ? 0.11 : 0;
+    const turbo = state.isBoosting ? 0.11 * pack.turbo : 0;
     glide(this.turboGain.gain, turbo, now, 0.08);
     if (state.isBoosting) {
       const tf = 900 + rpm * 700 + clamp01(state.boostTimer) * 400;

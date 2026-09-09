@@ -19,11 +19,14 @@ import { PATTERNS, type PatternId } from '../core/cosmetics';
 /** Pattern id → shader branch index, in catalogue order. */
 const INDEX: Readonly<Record<string, number>> = Object.fromEntries(PATTERNS.map((p, i) => [p.id, i]));
 
-/** Shared by every patterned material so animated liveries advance with one write per frame. */
-const timeUniform = { value: 0 };
+/**
+ * One clock for every animated cosmetic — liveries here, underglow next door. Shared so the whole
+ * grid advances with a single write per frame, and so effects stay in phase with each other.
+ */
+export const cosmeticTime = { value: 0 };
 
 export function tickPatternTime(dt: number): void {
-  timeUniform.value = (timeUniform.value + dt) % 3600;
+  cosmeticTime.value = (cosmeticTime.value + dt) % 3600;
 }
 
 const COMMON = /* glsl */ `
@@ -162,7 +165,7 @@ export function attachPatternShader(material: THREE.Material, defaultColor: numb
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uPattern = uPattern;
     shader.uniforms.uPatternColor = uPatternColor;
-    shader.uniforms.uPatternTime = timeUniform;
+    shader.uniforms.uPatternTime = cosmeticTime;
     shader.vertexShader = shader.vertexShader
       .replace('void main() {', `${COMMON}\nvoid main() {`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\n${VERTEX_HOOK}`);

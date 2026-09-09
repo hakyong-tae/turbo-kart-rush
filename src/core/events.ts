@@ -6,6 +6,7 @@
  * The payload types are the contract; do not change existing ones.
  */
 import type * as THREE from 'three';
+import type { KartCosmetics } from './cosmetics';
 import type { BoostSource, GameState, ItemType, SurfaceType } from './types';
 
 export interface GameEvents {
@@ -42,6 +43,11 @@ export interface GameEvents {
   'kart:unshrink': { kartId: number };
   'kart:surfaceChange': { kartId: number; from: SurfaceType; to: SurfaceType };
   'kart:respawn': { kartId: number; position: THREE.Vector3 };
+  /**
+   * A kart's look was set or changed. Pushed rather than polled: the FX and audio layers cache
+   * what they need from it, so nothing reads a cosmetics object per frame. Always sanitized.
+   */
+  'kart:cosmetics': { kartId: number; cos: KartCosmetics };
 
   // --- items ------------------------------------------------------------
   'item:pickup': { kartId: number; position: THREE.Vector3; isPlayer: boolean };
