@@ -60,6 +60,7 @@ import { createEmptyInput } from '../core/types';
 import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
 import { LeaderboardPanel, localBestKey, readLocalBest } from '../ui/LeaderboardPanel';
 import { GaragePanel } from '../ui/GaragePanel';
+import type { CupView } from '../ui/ResultsScreen';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
 import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
@@ -72,7 +73,14 @@ import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
 import { sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
-import { getCosmetics, getEntitlements, refreshEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
+import { addRaceToCup, cupPlaceOf, getCup, type CupEntry, type CupId } from '../core/cups';
+import {
+  getCosmetics,
+  getEntitlements,
+  refreshEntitlements,
+  saveCupResult,
+  consumePremiumRace as consumeTicket,
+} from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
@@ -143,6 +151,8 @@ export class Game {
   private garage: GaragePanel;
   /** Last character the player picked; the garage previews the kart they will actually drive. */
   private garageCharacterId = 'zippy';
+  /** In-progress Grand Prix. Null outside a cup; cleared on quitting to the menu. */
+  private cup: { id: CupId; index: number; table: CupEntry[]; settings: RaceSettings } | null = null;
   private lastSubmit: SubmitResult | null = null;
   private online: OnlineController | null = null;
   private onlinePanel: OnlinePanel;
@@ -339,14 +349,50 @@ export class Game {
     menu.onRecords = () => this.leaderboard.show(TRACKS[0]?.id ?? 'sunny_circuit');
     menu.onSettings = () => this.settings.show();
     menu.onGarage = () => this.garage.show(this.garageCharacterId);
+    menu.onStartCup = (cupId, settings) => {
+      this.cup = { id: cupId, index: 0, table: [], settings };
+      void this.startRaceGated(settings);
+    };
     menu.onOnline = () => this.onlinePanel.show();
     return menu;
+  }
+
+  /** Starts the next leg on the cup's own track list, keeping kart, mode and difficulty. */
+  private async advanceCup(): Promise<void> {
+    const cup = this.cup;
+    if (!cup) return;
+    const def = getCup(cup.id);
+    cup.index += 1;
+    if (cup.index >= def.trackIds.length) {
+      this.cup = null;
+      this.returnToMenu('trackSelect');
+      return;
+    }
+    const trackId = def.trackIds[cup.index];
+    const trackDef = TRACKS.find((tr) => tr.id === trackId);
+    await this.startRaceGated({
+      ...cup.settings,
+      trackId,
+      laps: trackDef && trackDef.laps > 0 ? trackDef.laps : cup.settings.laps,
+    });
+  }
+
+  /**
+   * Banks the cup result. Fire-and-forget: the placing is cached locally first, so the unlock is
+   * already visible on the next screen whether or not the server answers.
+   */
+  private finishCup(): void {
+    const cup = this.cup;
+    if (!cup) return;
+    const place = cupPlaceOf(cup.table);
+    if (place > 0) void saveCupResult(cup.id, place);
   }
 
   private buildResults(): ResultsScreen {
     const results = new ResultsScreen(this.uiRoot);
     results.onRaceAgain = () => {
       if (this.race?.online) this.returnToRoom();
+      else if (this.cup) void this.advanceCup();
       else if (this.race) void this.startRaceGated(this.race.settings);
     };
     results.onRecords = () => {
@@ -354,10 +400,14 @@ export class Game {
     };
     results.onChangeTrack = () => {
       if (this.race?.online) this.returnToRoom();
-      else this.returnToMenu('trackSelect');
+      else {
+        this.cup = null;
+        this.returnToMenu('trackSelect');
+      }
     };
     results.onMainMenu = () => {
       if (this.race?.online) void this.online?.leave();
+      this.cup = null;
       this.returnToMenu('title');
     };
     return results;
@@ -1280,7 +1330,20 @@ export class Game {
     const r = this.race;
     if (!r || this.state === 'results') return;
     r.hud.hide();
-    this.results.show(r.raceManager.getStandings(), r.settings.mode ?? 'solo', Boolean(r.online));
+    const standings = r.raceManager.getStandings();
+    let cupView: CupView | undefined;
+    if (this.cup) {
+      const cupDef = getCup(this.cup.id);
+      this.cup.table = addRaceToCup(this.cup.table, standings);
+      cupView = {
+        table: this.cup.table,
+        raceIndex: this.cup.index,
+        raceCount: cupDef.trackIds.length,
+        isFinal: this.cup.index >= cupDef.trackIds.length - 1,
+      };
+      if (cupView.isFinal) this.finishCup();
+    }
+    this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
     }

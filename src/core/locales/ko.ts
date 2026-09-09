@@ -245,6 +245,24 @@ export const ko: Record<StringKey, string> = {
   'online.promoted': '방장이 나가서 이제 당신이 방장입니다.',
   'online.migrating': '방장 연결 끊김, 인수인계 중…',
 
+  // grand prix
+  'cup.label': '그랑프리',
+  'cup.rookie': '루키 컵',
+  'cup.pro': '프로 컵',
+  'cup.championship': '챔피언십',
+  'cup.blurb': '{n}개 서킷 합산 점수로 순위 결정',
+  'cup.best': '최고 성적 {place}위 · {n}개 서킷',
+  'cup.locked': '{cup}에서 3위 안에 들면 열림',
+  'cup.race': '{i} / {n} 레이스',
+  'cup.standings': '컵 순위',
+  'cup.next': '다음 레이스',
+  'cup.finish': '컵 마무리',
+  'cup.quit': '컵 나가기',
+  'cup.points': '{n}점',
+  'cup.won': '컵 우승',
+  'cup.placed': '컵 {ord}',
+  'cup.unlocked': '{cup} 해금',
+
   // garage: chrome
   'lobby.garage': '차고',
   'garage.title': '차고',

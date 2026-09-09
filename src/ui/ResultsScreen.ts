@@ -8,6 +8,7 @@ import { events } from '../core/events';
 import { formatRaceTime } from '../core/math';
 import { localOrdinal, t } from '../core/i18n';
 import { unpackCosmetics } from '../core/cosmetics';
+import type { CupEntry } from '../core/cups';
 import { badgeElement } from './badges';
 import { CHARACTERS } from '../kart/roster';
 import { getLookThumbnail } from './kartThumbnails';
@@ -15,6 +16,14 @@ import { button, cssHex, el, FocusRing, TextField } from './dom';
 
 const CONFETTI_COUNT = 56;
 const CONFETTI_COLORS = ['#ffd23f', '#ff3ab8', '#37a8ff', '#7cff6b', '#ff7a2f', '#ffffff'];
+
+/** What the results screen needs to know about an in-progress cup. */
+export interface CupView {
+  table: readonly CupEntry[];
+  raceIndex: number;
+  raceCount: number;
+  isFinal: boolean;
+}
 
 export class ResultsScreen {
   onRaceAgain: (() => void) | null = null;
@@ -32,7 +41,9 @@ export class ResultsScreen {
   private readonly focus: FocusRing;
   private visible = false;
   private recordsButton!: HTMLButtonElement;
+  private againButton!: HTMLButtonElement;
   private readonly winnerShot: HTMLImageElement;
+  private readonly cupBox: HTMLElement;
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
@@ -45,9 +56,12 @@ export class ResultsScreen {
     this.subheading = new TextField(el('div', 'results-sub', '', this.panel));
     this.rankBanner = new TextField(el('div', 'results-rank hidden', '', this.panel));
     this.table = el('div', 'standings', undefined, this.panel);
+    // Cup table: only filled during a Grand Prix, where the race result is half the story.
+    this.cupBox = el('div', 'cup-standings hidden', undefined, this.panel);
     const actions = el('div', 'actions', undefined, this.panel);
     this.focus = new FocusRing((i) => this.activate(i));
     const again = button(t('results.again'), 'primary', () => this.activate(0));
+    this.againButton = again;
     const change = button(t('results.changeTrack'), '', () => this.activate(1));
     const menu = button(t('results.mainMenu'), 'ghost', () => this.activate(2));
     const records = button(t('lb.button'), 'ghost', () => this.activate(3));
@@ -59,13 +73,18 @@ export class ResultsScreen {
     this.focus.add(records);
   }
 
-  show(standings: readonly RaceStanding[], mode: RaceMode = 'solo', online = false): void {
+  /**
+   * Grand Prix view for a finished race: the running table, which race this was, and whether the
+   * cup ends here. Absent for a one-off race.
+   */
+  show(standings: readonly RaceStanding[], mode: RaceMode = 'solo', online = false, cup?: CupView): void {
     this.recordsButton.hidden = online;
     this.table.replaceChildren();
     this.confetti.replaceChildren();
     const player = standings.find((s) => s.isPlayer);
     const place = player ? player.place : standings.length;
     this.showWinnerKart(standings[0]);
+    this.renderCup(cup);
     const winnerTime = standings.length > 0 ? standings[0].finishTime : 0;
     const teamMode = isTeamMode(mode);
     const teamResult = teamMode ? computeTeamResult(standings, mode) : null;
@@ -179,6 +198,27 @@ export class ResultsScreen {
     else if (i === 1) this.onChangeTrack?.();
     else if (i === 3) this.onRecords?.();
     else this.onMainMenu?.();
+  }
+
+  private renderCup(cup: CupView | undefined): void {
+    this.cupBox.replaceChildren();
+    this.cupBox.classList.toggle('hidden', !cup);
+    // The primary action carries the cup through: another race, or the final tally.
+    this.againButton.textContent = cup ? (cup.isFinal ? t('cup.finish') : t('cup.next')) : t('results.again');
+    if (!cup) return;
+    const head = el('div', 'cup-standings-head', undefined, this.cupBox);
+    el('span', 'cup-standings-title', t('cup.standings'), head);
+    el('span', 'cup-standings-round', t('cup.race', { i: String(cup.raceIndex + 1), n: String(cup.raceCount) }), head);
+    for (let i = 0; i < cup.table.length; i++) {
+      const e = cup.table[i];
+      const row = el('div', 'cup-standing' + (e.isPlayer ? ' you' : ''), undefined, this.cupBox);
+      el('span', 'cup-standing-place', String(i + 1), row);
+      const name = el('span', 'cup-standing-name', undefined, row);
+      const badge = badgeElement(unpackCosmetics(e.cos).badge);
+      if (badge) name.appendChild(badge);
+      name.appendChild(document.createTextNode(e.name));
+      el('span', 'cup-standing-points', t('cup.points', { n: String(e.points) }), row);
+    }
   }
 
   /** Shows the winner's kart when they were wearing something; hidden for a bare default look. */

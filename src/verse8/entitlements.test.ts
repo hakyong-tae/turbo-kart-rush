@@ -49,11 +49,11 @@ describe('entitlements (mock store rules)', () => {
   it('applyEntitlements notifies subscribers and marks loaded', () => {
     let seen = 0;
     const off = onEntitlementsChange(() => seen++);
-    applyEntitlements({ premium: true, premiumRaces: 2, nickname: 'X', cos: '' });
+    applyEntitlements({ premium: true, premiumRaces: 2, nickname: 'X', cos: '', cups: { rookie: 2 } });
     expect(seen).toBe(1);
-    expect(getEntitlements()).toEqual({ premium: true, premiumRaces: 2, nickname: 'X', cos: '', loaded: true });
+    expect(getEntitlements()).toEqual({ premium: true, premiumRaces: 2, nickname: 'X', cos: '', cups: { rookie: 2 }, loaded: true });
     off();
-    applyEntitlements({ premium: false, premiumRaces: 0, nickname: '', cos: '' });
+    applyEntitlements({ premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {} });
     expect(seen).toBe(1);
   });
 });

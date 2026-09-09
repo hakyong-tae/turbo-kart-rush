@@ -292,3 +292,82 @@
   align-items: center;
   min-width: 0;
 }
+
+/* Grand Prix: the cup chips in track select, and the running table on the results screen. */
+.cup-row .cup-seg {
+  flex-wrap: wrap;
+}
+.cup-chip.locked {
+  opacity: 0.55;
+}
+.cup-chip.locked::after {
+  content: '🔒';
+  margin-left: 5px;
+  font-size: 0.85em;
+}
+.cup-chip[data-best]:not([data-best='']):not(.locked)::after {
+  content: '★';
+  margin-left: 5px;
+  color: var(--gold);
+}
+.cup-hint {
+  min-height: 1.2em;
+}
+
+.cup-standings {
+  margin: 8px auto 0;
+  width: min(420px, 92%);
+  border-top: 1px solid var(--glass-border);
+  padding-top: 8px;
+}
+.cup-standings-head {
+  display: flex;
+  justify-content: space-between;
+  font: 700 10px/1 var(--body);
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+.cup-standing {
+  display: grid;
+  grid-template-columns: 1.6em 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.cup-standing.you {
+  background: rgba(55, 168, 255, 0.16);
+  font-weight: 700;
+}
+.cup-standing-place {
+  color: var(--ink-faint);
+  text-align: right;
+}
+.cup-standing-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cup-standing-points {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Landscape phone: race standings plus a cup table is a lot of rows for 400 px of height. */
+@media (max-height: 480px) {
+  .cup-standings {
+    max-height: 34vh;
+    overflow-y: auto;
+    margin-top: 6px;
+    padding-top: 6px;
+  }
+  .cup-standing {
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+}

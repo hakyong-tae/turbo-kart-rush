@@ -130,6 +130,8 @@ export interface Entitlements {
   nickname: string;
   /** Packed cosmetics string, opaque here; unpacked by src/core/cosmetics.ts. */
   cos: string;
+  /** Best Grand Prix placing per cup id. */
+  cups: Record<string, number>;
 }
 
 export function submitTime(
@@ -158,4 +160,7 @@ export function serverSetNickname(name: string): Promise<{ nickname: string } | 
 }
 export function serverSetCosmetics(packed: string): Promise<{ cos: string } | null> {
   return callServer<{ cos: string } | null>('setCosmetics', [packed], null);
+}
+export function serverSetCupProgress(progress: Record<string, number>): Promise<{ cups: Record<string, number> } | null> {
+  return callServer<{ cups: Record<string, number> } | null>('setCupProgress', [progress], null);
 }

@@ -12,6 +12,7 @@
 //   consumePremiumRace(characterId)                      — -1 when starting a race with a premium kart
 //   setNickname(name)                                    — stored on user state, renames my rows
 //   setCosmetics(packed)                                 — garage look, stored on user state + my rows
+//   setCupProgress({cupId: place})                       — best Grand Prix placing per cup
 //   $onItemPurchased({productId})                        — VXShop "premium-garage" → premium
 //
 // All purchase / ticket state lives in $global user state (server-authoritative).
@@ -32,6 +33,10 @@ const GRANTS_PER_DAY = 10;
  */
 const COS_MAX = 160;
 const COS_RE = /^[a-z0-9:,]*$/;
+
+/** Grand Prix cups (mirror of src/core/cups.ts) and the placing range a cup result may claim. */
+const CUPS = new Set(['rookie', 'pro', 'championship']);
+const MAX_PLACE = 8;
 
 const ROOMS_ID = 'tkr_rooms';
 const ROOM_CAP = 8;
@@ -77,6 +82,19 @@ class Server {
   _cos(state) {
     const c = state && typeof state.cos === 'string' ? state.cos : '';
     return c.length <= COS_MAX && COS_RE.test(c) ? c : '';
+  }
+
+  /** Best placing per cup, kept clean of unknown ids and impossible places. */
+  _cups(state) {
+    const raw = state && state.cups;
+    const out = {};
+    if (raw && typeof raw === 'object') {
+      for (const id of CUPS) {
+        const v = raw[id];
+        if (Number.isFinite(v) && v >= 1 && v <= MAX_PLACE) out[id] = Math.floor(v);
+      }
+    }
+    return out;
   }
 
   /** Both names are read: `adsRemoved` is what the retired remove-ads product wrote. */
@@ -198,6 +216,26 @@ class Server {
     return { cos };
   }
 
+  /**
+   * Records Grand Prix results. Merged rather than replaced, and only ever improved: a client
+   * replaying an old cup cannot wipe a better placing it already earned.
+   */
+  async setCupProgress(progress) {
+    const s = await this._state();
+    const cur = this._cups(s);
+    const next = { ...cur };
+    if (progress && typeof progress === 'object') {
+      for (const id of CUPS) {
+        const v = progress[id];
+        if (!Number.isFinite(v) || v < 1 || v > MAX_PLACE) continue;
+        const place = Math.floor(v);
+        if (next[id] === undefined || place < next[id]) next[id] = place;
+      }
+    }
+    await $global.updateUserState($sender.account, { cups: next });
+    return { cups: next };
+  }
+
   async getMyEntitlements() {
     const s = await this._state();
     return {
@@ -205,6 +243,7 @@ class Server {
       premiumRaces: Number.isFinite(s.premiumRaces) ? Math.max(0, Math.floor(s.premiumRaces)) : 0,
       nickname: normalizeNickname(s.nickname),
       cos: this._cos(s),
+      cups: this._cups(s),
     };
   }
 

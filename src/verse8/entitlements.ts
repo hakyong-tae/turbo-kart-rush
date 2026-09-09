@@ -1,10 +1,11 @@
 /**
- * Server-authoritative entitlements cache: { premium, premiumRaces, nickname, cos }.
+ * Server-authoritative entitlements cache: { premium, premiumRaces, nickname, cos, cups }.
  * The gameserver user state is the single source of truth (root server.js); this module
  * only caches it and exposes subscriptions. Outside a Verse8 host (local dev) an in-memory
  * mock store applies the same rules so every UI path can be exercised.
  */
 import { packCosmetics, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
+import { CUPS, recordCupResult, type CupId, type CupProgress } from '../core/cups';
 import { CHARACTERS } from '../kart/roster';
 import { inVerse8Host } from './embed';
 import {
@@ -13,6 +14,7 @@ import {
   serverConsumePremiumRace,
   serverGrantPremiumRaces,
   serverSetCosmetics,
+  serverSetCupProgress,
   serverSetNickname,
   type Entitlements,
 } from './server';
@@ -23,7 +25,7 @@ const GRANT_CAP = 9;
 
 export type EntitlementState = Entitlements & { loaded: boolean };
 
-const EMPTY: EntitlementState = { premium: false, premiumRaces: 0, nickname: '', cos: '', loaded: false };
+const EMPTY: EntitlementState = { premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {}, loaded: false };
 let state: EntitlementState = EMPTY;
 const listeners = new Set<(e: EntitlementState) => void>();
 
@@ -107,6 +109,29 @@ export async function setNickname(name: string): Promise<string | null> {
   if (!r) return null;
   applyEntitlements({ ...state, nickname: r.nickname });
   return r.nickname;
+}
+
+/** Best placing per cup, filtered to ids this build knows about. */
+export function getCupProgress(): CupProgress {
+  const out: CupProgress = {};
+  for (const cup of CUPS) {
+    const v = state.cups?.[cup.id];
+    if (typeof v === 'number' && v >= 1) out[cup.id] = v;
+  }
+  return out;
+}
+
+/**
+ * Records a finished cup. Cached immediately so the next screen already shows the unlock, then
+ * pushed; the server keeps the better of the two, so a lost round trip costs nothing.
+ */
+export async function saveCupResult(id: CupId, place: number): Promise<void> {
+  const next = recordCupResult(getCupProgress(), id, place);
+  if (next === getCupProgress()) return;
+  applyEntitlements({ ...state, cups: { ...state.cups, ...next } as Record<string, number> });
+  if (!useServer()) return;
+  const r = await serverSetCupProgress(next as Record<string, number>);
+  if (r) applyEntitlements({ ...state, cups: r.cups });
 }
 
 export function serverReachable(): boolean {

@@ -163,8 +163,18 @@ describe('server.js', () => {
     await expect(me.setCosmetics('x'.repeat(200))).rejects.toThrow();
   });
 
+  it('setCupProgress merges, only ever improves, and ignores junk', async () => {
+    expect((await me.setCupProgress({ rookie: 4 })).cups).toEqual({ rookie: 4 });
+    expect((await me.setCupProgress({ pro: 2 })).cups).toEqual({ rookie: 4, pro: 2 });
+    // A worse replay of a cup already won must not overwrite the better placing.
+    expect((await me.setCupProgress({ rookie: 7 })).cups).toEqual({ rookie: 4, pro: 2 });
+    expect((await me.setCupProgress({ rookie: 1 })).cups).toEqual({ rookie: 1, pro: 2 });
+    expect((await me.setCupProgress({ nonsense: 1, championship: 0, pro: 99 })).cups).toEqual({ rookie: 1, pro: 2 });
+    expect((await me.getMyEntitlements()).cups).toEqual({ rookie: 1, pro: 2 });
+  });
+
   it('entitlements: grant +3 (cap 9, 10/day), consume, purchase', async () => {
-    expect(await me.getMyEntitlements()).toEqual({ premium: false, premiumRaces: 0, nickname: '', cos: '' });
+    expect(await me.getMyEntitlements()).toEqual({ premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {} });
     for (let i = 0; i < 3; i++) await me.grantPremiumRaces();
     expect((await me.getMyEntitlements()).premiumRaces).toBe(9);
     expect((await me.consumePremiumRace('zippy')).ok).toBe(true); // non-premium: free

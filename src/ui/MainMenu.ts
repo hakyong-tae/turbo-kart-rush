@@ -7,10 +7,15 @@ import { events } from '../core/events';
 import { GAME_TITLE, DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
 import { t, t as tt, tOr } from '../core/i18n';
-import { canRace, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
+import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
+import { canRace, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
 import type { StringKey } from '../core/i18n';
+
+/** Cup labels are keyed by id at runtime; the locale test covers the same ground. */
+type LocaleKey = Parameters<typeof t>[0];
+const tk = (key: string): string => t(key as LocaleKey);
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
 
@@ -36,6 +41,8 @@ const CHAR_COLUMNS = 4;
 
 export class MainMenu {
   onStart: ((settings: RaceSettings) => void) | null = null;
+  /** Grand Prix: the same race settings, plus the cup whose track list to run. */
+  onStartCup: ((cupId: CupId, settings: RaceSettings) => void) | null = null;
   onHighlight: ((characterId: string) => void) | null = null;
   onPanelChange: ((panel: MenuPanel) => void) | null = null;
   /** Player tried to continue with a premium kart they cannot race yet. */
@@ -67,7 +74,10 @@ export class MainMenu {
   private lobbyIndex = 0;
   private readonly lobbyButtons: HTMLButtonElement[] = [];
   private readonly modeButtons: HTMLButtonElement[] = [];
+  private readonly cupButtons: HTMLButtonElement[] = [];
+  private cupIndex = 0;
   private readonly diffBlurb: TextField;
+  private readonly cupHint: TextField;
   private readonly startButton: HTMLElement;
   /** 0 = track cards row, 1 = difficulty row, 2 = start button. */
   private trackRow = 0;
@@ -209,6 +219,29 @@ export class MainMenu {
       this.diffButtons.push(b);
     });
     this.diffBlurb = new TextField(el('div', 'difficulty-blurb', '', diffWrap));
+
+    // Grand Prix: three races on one ticket, points decide it. Locked cups stay visible with the
+    // requirement on the chip, the same rule the garage uses for paid rows.
+    const cupWrap = el('div', 'difficulty cup-row', undefined, trFoot);
+    el('div', 'difficulty-label', t('cup.label'), cupWrap);
+    const cupSeg = el('div', 'segmented cup-seg', undefined, cupWrap);
+    CUPS.forEach((cup, i) => {
+      const b = el('button', 'seg cup-chip', tk(`cup.${cup.id}`), cupSeg);
+      b.type = 'button';
+      b.addEventListener('pointerenter', () => {
+        this.trackRow = 3;
+        this.cupIndex = i;
+        this.refreshTrackFocus();
+      });
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.trackRow = 3;
+        this.cupIndex = i;
+        this.startCup();
+      });
+      this.cupButtons.push(b);
+    });
+    this.cupHint = new TextField(el('div', 'difficulty-blurb cup-hint', '', cupWrap));
     const trActions = el('div', 'actions', undefined, trFoot);
     trActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('characterSelect', true)));
     this.startButton = button(t('menu.startRace'), 'primary start', () => this.start());
@@ -289,11 +322,11 @@ export class MainMenu {
       }
       case 'trackSelect': {
         if (input.menuUp) {
-          this.trackRow = (this.trackRow + 3) % 4;
+          this.trackRow = (this.trackRow + 4) % 5;
           this.refreshTrackFocus();
           events.emit('ui:move', {});
         } else if (input.menuDown) {
-          this.trackRow = (this.trackRow + 1) % 4;
+          this.trackRow = (this.trackRow + 1) % 5;
           this.refreshTrackFocus();
           events.emit('ui:move', {});
         } else if (input.menuLeft || input.menuRight) {
@@ -305,12 +338,18 @@ export class MainMenu {
             this.setMode((this.modeIndex + dir + RACE_MODES.length) % RACE_MODES.length, true);
           } else if (this.trackRow === 2) {
             this.setDifficulty((this.difficultyIndex + dir + 3) % 3, true);
+          } else if (this.trackRow === 3) {
+            this.cupIndex = (this.cupIndex + dir + CUPS.length) % CUPS.length;
+            this.refreshTrackFocus();
+            events.emit('ui:move', {});
           } else {
             events.emit('ui:move', {});
           }
         }
-        if (input.confirm) this.start();
-        else if (input.back) this.goTo('characterSelect', true);
+        if (input.confirm) {
+          if (this.trackRow === 3) this.startCup();
+          else this.start();
+        } else if (input.back) this.goTo('characterSelect', true);
         break;
       }
     }
@@ -429,7 +468,52 @@ export class MainMenu {
     this.diffButtons.forEach((b, k) =>
       b.classList.toggle('focused', this.trackRow === 2 && k === this.difficultyIndex),
     );
-    this.startButton.classList.toggle('focused', this.trackRow === 3);
+    this.cupButtons.forEach((b, k) => b.classList.toggle('focused', this.trackRow === 3 && k === this.cupIndex));
+    this.startButton.classList.toggle('focused', this.trackRow === 4);
+    this.refreshCups();
+  }
+
+  /** Lock state and the hint under the cup row; cheap enough to run with focus changes. */
+  private refreshCups(): void {
+    const progress = getCupProgress();
+    CUPS.forEach((cup, i) => {
+      const unlocked = isCupUnlocked(cup.id, progress);
+      const b = this.cupButtons[i];
+      if (!b) return;
+      b.classList.toggle('locked', !unlocked);
+      const best = progress[cup.id];
+      b.dataset.best = best ? String(best) : '';
+    });
+    const current = CUPS[this.cupIndex];
+    if (!current) return;
+    const progressed = progress[current.id];
+    this.cupHint.set(
+      !isCupUnlocked(current.id, progress)
+        ? t('cup.locked', { cup: tk(`cup.${current.requires ?? 'rookie'}`) })
+        : progressed
+          ? t('cup.best', { place: String(progressed), n: String(current.trackIds.length) })
+          : t('cup.blurb', { n: String(current.trackIds.length) }),
+    );
+  }
+
+  private startCup(): void {
+    const cup = CUPS[this.cupIndex];
+    const character = this.characters[this.charIndex];
+    if (!cup || !character) return;
+    if (!isCupUnlocked(cup.id, getCupProgress())) {
+      events.emit('ui:back', {});
+      this.refreshCups();
+      return;
+    }
+    events.emit('ui:select', {});
+    const first = this.tracks.find((tr) => tr.id === cup.trackIds[0]) ?? this.tracks[0];
+    this.onStartCup?.(cup.id, {
+      characterId: character.id,
+      trackId: first.id,
+      difficulty: DIFFICULTIES[this.difficultyIndex],
+      mode: 'solo',
+      laps: first.laps > 0 ? first.laps : DEFAULT_LAPS,
+    });
   }
 
   private start(): void {

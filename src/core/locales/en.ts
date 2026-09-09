@@ -257,6 +257,24 @@ export const en = {
   'online.promoted': 'The host left — you are hosting now.',
   'online.migrating': 'Host lost, handing over…',
 
+  // grand prix
+  'cup.label': 'GRAND PRIX',
+  'cup.rookie': 'ROOKIE CUP',
+  'cup.pro': 'PRO CUP',
+  'cup.championship': 'CHAMPIONSHIP',
+  'cup.blurb': '{n} races, points decide it',
+  'cup.best': 'Best finish: {place} · {n} races',
+  'cup.locked': 'Finish top 3 in the {cup} to open this',
+  'cup.race': 'RACE {i} / {n}',
+  'cup.standings': 'CUP STANDINGS',
+  'cup.next': 'NEXT RACE',
+  'cup.finish': 'FINISH CUP',
+  'cup.quit': 'LEAVE CUP',
+  'cup.points': '{n} pts',
+  'cup.won': 'CUP WON',
+  'cup.placed': '{ord} IN THE CUP',
+  'cup.unlocked': '{cup} unlocked',
+
   // garage: chrome
   'lobby.garage': 'GARAGE',
   'garage.title': 'GARAGE',
