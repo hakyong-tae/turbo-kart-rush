@@ -146,6 +146,29 @@ export function fetchTopTimes(trackId: string, limit = 20): Promise<TopTimes | n
   // Records are often the first server call on a slow mobile network — give the connect more room.
   return callServer<TopTimes | null>('getTopTimes', [trackId, limit], null, 12000);
 }
+export interface DailyTop {
+  day: string;
+  /** Today's attempt already spent. */
+  used: boolean;
+  myTimeMs: number;
+  myRank: number | null;
+  entries: number;
+  rows: TimeRow[];
+}
+export interface DailyResult {
+  accepted: boolean;
+  day: string;
+  timeMs: number;
+  rank: number | null;
+}
+
+export function fetchDailyTop(limit = 20): Promise<DailyTop | null> {
+  return callServer<DailyTop | null>('getDailyTop', [limit], null, 12000);
+}
+export function submitDailyTime(timeMs: number, characterId: string): Promise<DailyResult | null> {
+  return callServer<DailyResult | null>('submitDaily', [Math.floor(timeMs), characterId], null);
+}
+
 export function fetchEntitlements(): Promise<Entitlements | null> {
   return callServer<Entitlements | null>('getMyEntitlements', [], null, 12000);
 }

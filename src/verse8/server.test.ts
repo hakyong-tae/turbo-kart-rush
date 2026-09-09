@@ -173,6 +173,34 @@ describe('server.js', () => {
     expect((await me.getMyEntitlements()).cups).toEqual({ rookie: 1, pro: 2 });
   });
 
+  it('daily: one attempt per day, ranked on its own board, stale days pruned', async () => {
+    const other = loadServer(g, { account: '0xBBBB2222' });
+    await me.setNickname('Speedy');
+    await me.setCosmetics('b:ff0000');
+    const first = await me.submitDaily(95000, 'zippy');
+    expect(first.accepted).toBe(true);
+    expect(first.rank).toBe(1);
+    // The attempt is spent: a second, faster run does not replace it.
+    const again = await me.submitDaily(80000, 'zippy');
+    expect(again.accepted).toBe(false);
+    expect(again.timeMs).toBe(95000);
+    await other.submitDaily(90000, 'max');
+    const top = await me.getDailyTop(10);
+    expect(top.rows.map((r: Row) => r.timeMs)).toEqual([90000, 95000]);
+    expect(top.myRank).toBe(2);
+    expect(top.used).toBe(true);
+    expect(top.entries).toBe(2);
+    // The board carries the look, like the records board.
+    expect(top.rows[1].cos).toBe('b:ff0000');
+    expect(top.rows[1].name).toBe('Speedy');
+    // Rows from a week ago are dropped on the next submit rather than read forever.
+    g.collections.tkr_daily.push({ __id: 'old', account: '0xCCCC', day: '2000-01-01', timeMs: 40000 });
+    await loadServer(g, { account: '0xDDDD4444' }).submitDaily(99000, 'kai');
+    expect(g.collections.tkr_daily.some((r: Row) => r.day === '2000-01-01')).toBe(false);
+    await expect(me.submitDaily(95000, 'nobody')).rejects.toThrow();
+    await expect(me.submitDaily(10, 'zippy')).rejects.toThrow();
+  });
+
   it('entitlements: grant +3 (cap 9, 10/day), consume, purchase', async () => {
     expect(await me.getMyEntitlements()).toEqual({ premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {} });
     for (let i = 0; i < 3; i++) await me.grantPremiumRaces();

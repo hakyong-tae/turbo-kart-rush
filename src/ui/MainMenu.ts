@@ -50,6 +50,7 @@ export class MainMenu {
   onRecords: (() => void) | null = null;
   onSettings: (() => void) | null = null;
   onGarage: (() => void) | null = null;
+  onDaily: (() => void) | null = null;
   onOnline: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
@@ -113,6 +114,7 @@ export class MainMenu {
     };
     lobbyEntry(t('lobby.single'), 'primary lobby-btn single-toggle', () => this.goTo('characterSelect', true));
     if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
+    lobbyEntry(t('lobby.daily'), 'lobby-btn daily-toggle', () => this.onDaily?.());
     lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', () => this.onGarage?.());
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
     lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', () => this.onRecords?.());

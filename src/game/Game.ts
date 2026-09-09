@@ -59,11 +59,14 @@ import { showToast } from '../ui/toast';
 import { createEmptyInput } from '../core/types';
 import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
 import { LeaderboardPanel, localBestKey, readLocalBest } from '../ui/LeaderboardPanel';
+import type { DailyChallenge } from '../core/daily';
+import { DailyPanel } from '../ui/DailyPanel';
 import { GaragePanel } from '../ui/GaragePanel';
 import type { CupView } from '../ui/ResultsScreen';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
 import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
+import { submitDailyTime } from '../verse8/server';
 import { buyPremium, initShop } from '../verse8/shop';
 import { inVerse8Host } from '../verse8/embed';
 import { submitTime, type SubmitResult } from '../verse8/server';
@@ -153,6 +156,9 @@ export class Game {
   private garageCharacterId = 'zippy';
   /** In-progress Grand Prix. Null outside a cup; cleared on quitting to the menu. */
   private cup: { id: CupId; index: number; table: CupEntry[]; settings: RaceSettings } | null = null;
+  /** Today's challenge, while a daily run is in progress. Null for every other race. */
+  private dailyRun: DailyChallenge | null = null;
+  private daily: DailyPanel;
   private lastSubmit: SubmitResult | null = null;
   private online: OnlineController | null = null;
   private onlinePanel: OnlinePanel;
@@ -254,6 +260,7 @@ export class Game {
     this.leaderboard = this.buildLeaderboard();
     this.settings = this.buildSettings();
     this.garage = this.buildGarage();
+    this.daily = this.buildDaily();
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
@@ -323,6 +330,7 @@ export class Game {
     this.leaderboard.dispose();
     this.settings.dispose();
     this.garage.dispose();
+    this.daily.dispose();
     this.onlinePanel.dispose();
     this.online?.dispose();
     this.input.dispose();
@@ -349,6 +357,7 @@ export class Game {
     menu.onRecords = () => this.leaderboard.show(TRACKS[0]?.id ?? 'sunny_circuit');
     menu.onSettings = () => this.settings.show();
     menu.onGarage = () => this.garage.show(this.garageCharacterId);
+    menu.onDaily = () => this.daily.show();
     menu.onStartCup = (cupId, settings) => {
       this.cup = { id: cupId, index: 0, table: [], settings };
       void this.startRaceGated(settings);
@@ -393,7 +402,10 @@ export class Game {
     results.onRaceAgain = () => {
       if (this.race?.online) this.returnToRoom();
       else if (this.cup) void this.advanceCup();
-      else if (this.race) void this.startRaceGated(this.race.settings);
+      else if (this.race) {
+        this.dailyRun = null;
+        void this.startRaceGated(this.race.settings);
+      }
     };
     results.onRecords = () => {
       if (this.race) this.leaderboard.show(this.race.trackDef.id, { submit: this.lastSubmit });
@@ -402,12 +414,14 @@ export class Game {
       if (this.race?.online) this.returnToRoom();
       else {
         this.cup = null;
+        this.dailyRun = null;
         this.returnToMenu('trackSelect');
       }
     };
     results.onMainMenu = () => {
       if (this.race?.online) void this.online?.leave();
       this.cup = null;
+      this.dailyRun = null;
       this.returnToMenu('title');
     };
     return results;
@@ -573,6 +587,24 @@ export class Game {
     return lb;
   }
 
+  private buildDaily(): DailyPanel {
+    const daily = new DailyPanel(this.uiRoot, TRACKS, CHARACTERS as readonly CharacterDef[]);
+    daily.onStart = (challenge, characterId) => {
+      daily.hide();
+      this.cup = null;
+      this.dailyRun = challenge;
+      // The challenge IS the settings: seeded circuit, seeded rule, seeded class.
+      void this.startRaceGated({
+        characterId,
+        trackId: challenge.trackId,
+        difficulty: challenge.rule.difficulty,
+        laps: challenge.laps,
+        mode: 'solo',
+      });
+    };
+    return daily;
+  }
+
   private buildGarage(): GaragePanel {
     const garage = new GaragePanel(this.uiRoot);
     garage.onUnlock = () => {
@@ -648,6 +680,15 @@ export class Game {
       /* storage unavailable */
     }
     if (!inVerse8Host()) return;
+    if (this.dailyRun) {
+      // Seeded rules make this time incomparable with a normal track record, so it never touches
+      // `tkr_times`; the server owns the one-attempt rule either way.
+      void submitDailyTime(timeMs, r.settings.characterId).then((res) => {
+        if (!res || this.race !== r) return;
+        showToast(res.accepted ? t('daily.submitted', { rank: String(res.rank ?? 0) }) : t('daily.spent'), 'info');
+      });
+      return;
+    }
     void submitTime(trackId, timeMs, r.settings.characterId, r.settings.difficulty).then((res) => {
       if (!res || this.race !== r) return;
       this.lastSubmit = res;
@@ -680,6 +721,10 @@ export class Game {
     this.garage.dispose();
     this.garage = this.buildGarage();
     if (garageWasOpen) this.garage.show(this.garageCharacterId);
+    const dailyWasOpen = this.daily.isVisible;
+    this.daily.dispose();
+    this.daily = this.buildDaily();
+    if (dailyWasOpen) this.daily.show();
     const onlineWasOpen = this.onlinePanel.isVisible;
     this.onlinePanel.dispose();
     this.onlinePanel = this.buildOnlinePanel();
@@ -721,12 +766,14 @@ export class Game {
     if (
       this.settings.isVisible ||
       this.garage.isVisible ||
+      this.daily.isVisible ||
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
       this.onlinePanel.isVisible
     ) {
       if (this.settings.isVisible) this.settings.handleInput(input);
       else if (this.garage.isVisible) this.garage.handleInput(input);
+      else if (this.daily.isVisible) this.daily.handleInput(input);
       else if (this.leaderboard.isVisible) this.leaderboard.handleInput(input);
       else if (this.lockSheet.isVisible) {
         if (input.back) this.lockSheet.hide();

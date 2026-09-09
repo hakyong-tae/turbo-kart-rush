@@ -257,6 +257,26 @@ export const en = {
   'online.promoted': 'The host left — you are hosting now.',
   'online.migrating': 'Host lost, handing over…',
 
+  // daily challenge
+  'lobby.daily': 'DAILY CHALLENGE',
+  'daily.title': 'DAILY CHALLENGE',
+  'daily.laps': '{n} laps',
+  'daily.rule.clean': 'Standard run',
+  'daily.rule.sprint': 'Sprint',
+  'daily.rule.endurance': 'Endurance',
+  'daily.rule.expert': 'Expert AI',
+  'daily.class.any': 'Any kart',
+  'daily.class.light': 'Light karts only',
+  'daily.class.medium': 'Medium karts only',
+  'daily.class.heavy': 'Heavy karts only',
+  'daily.loading': 'Loading today\u2019s board…',
+  'daily.ready': 'One attempt today · {n} racers so far',
+  'daily.done': 'Today\u2019s run: {time} · {rank} place',
+  'daily.offline': 'Board unavailable — the run still counts locally',
+  'daily.empty': 'No times yet today. Set the first one.',
+  'daily.submitted': 'Daily run filed · {rank} place',
+  'daily.spent': 'Today\u2019s attempt is already spent',
+
   // grand prix
   'cup.label': 'GRAND PRIX',
   'cup.rookie': 'ROOKIE CUP',

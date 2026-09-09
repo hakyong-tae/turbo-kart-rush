@@ -13,6 +13,8 @@
 //   setNickname(name)                                    — stored on user state, renames my rows
 //   setCosmetics(packed)                                 — garage look, stored on user state + my rows
 //   setCupProgress({cupId: place})                       — best Grand Prix placing per cup
+//   submitDaily(timeMs, characterId)                     — one attempt per UTC day, own board
+//   getDailyTop(limit)                                   — today's board + my attempt state
 //   $onItemPurchased({productId})                        — VXShop "premium-garage" → premium
 //
 // All purchase / ticket state lives in $global user state (server-authoritative).
@@ -37,6 +39,14 @@ const COS_RE = /^[a-z0-9:,]*$/;
 /** Grand Prix cups (mirror of src/core/cups.ts) and the placing range a cup result may claim. */
 const CUPS = new Set(['rookie', 'pro', 'championship']);
 const MAX_PLACE = 8;
+
+/**
+ * Daily challenge board. A separate collection from `tkr_times` on purpose: the daily runs a
+ * seeded rule set (lap count, difficulty, kart class) that a normal track record must not be
+ * compared against, and `submitTime` validates trackId against the fixed circuit list anyway.
+ */
+const DAILY_ID = 'tkr_daily';
+const DAILY_KEEP_DAYS = 3;
 
 const ROOMS_ID = 'tkr_rooms';
 const ROOM_CAP = 8;
@@ -266,6 +276,84 @@ class Server {
     if (current <= 0) return { ok: false, premiumRaces: 0 };
     await $global.updateUserState($sender.account, { premiumRaces: current - 1 });
     return { ok: true, premiumRaces: current - 1 };
+  }
+
+  // ── Daily challenge ──────────────────────────────────────────────────────
+
+  async _allDaily() {
+    const rows = await $global.getCollectionItems(DAILY_ID, { limit: 1000 }).catch(() => []);
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  /**
+   * Files today's attempt. One per account per UTC day, enforced here: the client's clock and its
+   * own "already played" flag are conveniences, not the rule.
+   */
+  async submitDaily(timeMs, characterId) {
+    if (!CHARACTERS.has(characterId)) throw new Error('Unknown character.');
+    if (typeof timeMs !== 'number' || !isFinite(timeMs) || timeMs < MIN_TIME_MS || timeMs > MAX_TIME_MS) {
+      throw new Error('Time out of range.');
+    }
+    const day = todayKey();
+    const state = await this._state();
+    const daily = state.daily && state.daily.day === day ? state.daily : { day, used: false, timeMs: 0 };
+    if (daily.used) {
+      return { accepted: false, day, timeMs: daily.timeMs, rank: await this._dailyRank(day, daily.timeMs) };
+    }
+    const row = {
+      account: $sender.account,
+      name: this._nickname(state),
+      day,
+      timeMs: Math.floor(timeMs),
+      characterId,
+      cos: this._cos(state),
+      createdAt: Date.now(),
+    };
+    await $global.addCollectionItem(DAILY_ID, row);
+    await $global.updateUserState($sender.account, { daily: { day, used: true, timeMs: row.timeMs } });
+    await this._pruneDaily(day);
+    return { accepted: true, day, timeMs: row.timeMs, rank: await this._dailyRank(day, row.timeMs) };
+  }
+
+  async _dailyRank(day, timeMs) {
+    if (!(timeMs > 0)) return null;
+    const rows = (await this._allDaily()).filter((r) => r.day === day && typeof r.timeMs === 'number');
+    let faster = 0;
+    for (const r of rows) if (r.timeMs < timeMs) faster++;
+    return faster + 1;
+  }
+
+  /** Old days are dead weight on a collection every query reads whole. */
+  async _pruneDaily(day) {
+    const cutoff = new Date(Date.parse(day + 'T00:00:00Z') - DAILY_KEEP_DAYS * 86400000).toISOString().slice(0, 10);
+    const stale = (await this._allDaily()).filter((r) => typeof r.day === 'string' && r.day < cutoff);
+    for (const r of stale) if (r.__id) await $global.deleteCollectionItem(DAILY_ID, r.__id).catch(() => {});
+  }
+
+  async getDailyTop(limit) {
+    const n = typeof limit === 'number' && limit > 0 ? Math.min(100, Math.floor(limit)) : 20;
+    const day = todayKey();
+    const state = await this._state();
+    const all = await this._allDaily();
+    const rows = all
+      .filter((r) => r.day === day && typeof r.timeMs === 'number')
+      .sort((a, b) => a.timeMs - b.timeMs);
+    const mine = rows.find((r) => r.account === $sender.account) || null;
+    const daily = state.daily && state.daily.day === day ? state.daily : { day, used: false, timeMs: 0 };
+    return {
+      day,
+      used: !!daily.used,
+      myTimeMs: mine ? mine.timeMs : 0,
+      myRank: mine ? rows.indexOf(mine) + 1 : null,
+      entries: rows.length,
+      rows: rows.slice(0, n).map((r) => ({
+        name: r.name,
+        timeMs: r.timeMs,
+        characterId: r.characterId,
+        cos: typeof r.cos === 'string' ? r.cos : '',
+        account: r.account,
+      })),
+    };
   }
 
   /**

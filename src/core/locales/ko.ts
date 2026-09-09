@@ -245,6 +245,26 @@ export const ko: Record<StringKey, string> = {
   'online.promoted': '방장이 나가서 이제 당신이 방장입니다.',
   'online.migrating': '방장 연결 끊김, 인수인계 중…',
 
+  // daily challenge
+  'lobby.daily': '오늘의 도전',
+  'daily.title': '오늘의 도전',
+  'daily.laps': '{n}바퀴',
+  'daily.rule.clean': '기본 주행',
+  'daily.rule.sprint': '스프린트',
+  'daily.rule.endurance': '인듀어런스',
+  'daily.rule.expert': '엑스퍼트 AI',
+  'daily.class.any': '카트 제한 없음',
+  'daily.class.light': '경량 카트 전용',
+  'daily.class.medium': '중형 카트 전용',
+  'daily.class.heavy': '중량 카트 전용',
+  'daily.loading': '오늘 순위 불러오는 중…',
+  'daily.ready': '오늘 1회 도전 · 현재 {n}명 기록',
+  'daily.done': '오늘 기록 {time} · {rank}위',
+  'daily.offline': '순위를 불러오지 못했습니다 — 주행은 그대로 진행됩니다',
+  'daily.empty': '오늘 기록이 아직 없습니다. 첫 기록을 세워보세요',
+  'daily.submitted': '오늘의 도전 기록 등록 · {rank}위',
+  'daily.spent': '오늘 도전 기회를 이미 사용했습니다',
+
   // grand prix
   'cup.label': '그랑프리',
   'cup.rookie': '루키 컵',
