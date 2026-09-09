@@ -1,0 +1,337 @@
+/**
+ * The garage: paint and dress the kart, then save the look to the account.
+ *
+ * Tier rule, enforced in one place (`sanitize`, on save and on every render): colours are free,
+ * liveries and effects need the garage pass. Locked entries are shown, not hidden — a player who
+ * cannot see what a purchase buys has no reason to make it — and tapping one auditions it on the
+ * live kart for three seconds before it snaps back.
+ *
+ * The draft look is local until SAVE. Nothing is written to the account while browsing, so
+ * backing out of the panel leaves the saved kart untouched.
+ */
+import {
+  ENGINE_PACKS,
+  FLAMES,
+  PATTERNS,
+  PRESETS,
+  SWATCHES,
+  TRAILS,
+  UNDERGLOWS,
+  WHEEL_FX,
+  sanitize,
+  usesPaid,
+  type CatalogueEntry,
+  type KartCosmetics,
+} from '../core/cosmetics';
+import { t } from '../core/i18n';
+import type { CharacterDef, InputState } from '../core/types';
+import { getCharacter } from '../kart/roster';
+import { getCosmetics, getEntitlements, saveCosmetics, serverReachable } from '../verse8/entitlements';
+import { button, el } from './dom';
+import { GaragePreview } from './garage/GaragePreview';
+import { showToast } from './toast';
+
+/** How long a locked entry stays on the kart before snapping back. */
+const AUDITION_MS = 3000;
+
+/**
+ * Catalogue keys are built from ids at runtime (`cos.trail.embers`), which the compile-time key
+ * union cannot express. The locale test covers the same ground: every catalogue id has a string.
+ */
+type LocaleKey = Parameters<typeof t>[0];
+const tk = (key: string): string => t(key as LocaleKey);
+
+type ColorField = 'body' | 'accent' | 'rim' | 'helmet' | 'patternColor' | 'underglowColor' | 'trailColor';
+type EnumField = 'pattern' | 'underglow' | 'trail' | 'flame' | 'wheelFx' | 'enginePack' | 'badge';
+type TabId = 'paint' | EnumField | 'preset';
+
+/** One tab: its catalogue (if any), the colour slot that belongs with it, and its i18n group. */
+interface TabDef {
+  id: TabId;
+  field?: EnumField;
+  list?: readonly CatalogueEntry<string>[];
+  color?: ColorField;
+}
+
+const TABS: readonly TabDef[] = [
+  { id: 'paint' },
+  { id: 'pattern', field: 'pattern', list: PATTERNS, color: 'patternColor' },
+  { id: 'underglow', field: 'underglow', list: UNDERGLOWS, color: 'underglowColor' },
+  { id: 'trail', field: 'trail', list: TRAILS, color: 'trailColor' },
+  { id: 'flame', field: 'flame', list: FLAMES },
+  { id: 'wheelFx', field: 'wheelFx', list: WHEEL_FX },
+  { id: 'enginePack', field: 'enginePack', list: ENGINE_PACKS },
+  // Badges are catalogued and saved but have no renderer yet: they belong next to the player's
+  // name (standings, results, records), which lands with the showcase surfaces. Selling a tab
+  // that does nothing visible would be a lie, so it stays out until then.
+  { id: 'preset' },
+];
+
+const PAINT_SLOTS: readonly ColorField[] = ['body', 'accent', 'rim', 'helmet'];
+
+export class GaragePanel {
+  onClose: (() => void) | null = null;
+  /** Opens the VXShop dialog. Wired by Game so this panel never imports the shop. */
+  onUnlock: (() => void) | null = null;
+
+  private readonly rootNode: HTMLElement;
+  private readonly tabsBar: HTMLElement;
+  private readonly rows: HTMLElement;
+  private readonly stateChip: HTMLElement;
+  private readonly unlockBtn: HTMLButtonElement;
+  private readonly preview: GaragePreview;
+  private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
+
+  private draft: KartCosmetics = {};
+  private character: CharacterDef;
+  private tab: TabId = 'paint';
+  private visible = false;
+  /** Set while a locked entry is on the kart; holds the look to restore. */
+  private audition: { timer: number; restore: KartCosmetics } | null = null;
+
+  constructor(root: HTMLElement) {
+    this.character = getCharacter('zippy');
+    this.rootNode = el('div', 'screen garage hidden', undefined, root);
+    const panel = el('div', 'glass panel garage-panel', undefined, this.rootNode);
+
+    const head = el('div', 'garage-head', undefined, panel);
+    el('div', 'panel-kicker', t('garage.title'), head);
+    this.stateChip = el('span', 'garage-state', '', head);
+
+    const body = el('div', 'garage-body', undefined, panel);
+    const stage = el('div', 'garage-stage', undefined, body);
+    this.preview = new GaragePreview(stage);
+
+    const controls = el('div', 'garage-controls', undefined, body);
+    this.tabsBar = el('div', 'garage-tabs', undefined, controls);
+    for (const tab of TABS) {
+      const b = el('button', 'garage-tab', tk(`garage.tab.${tab.id}`), this.tabsBar);
+      b.type = 'button';
+      b.addEventListener('click', () => this.setTab(tab.id));
+      this.tabButtons.set(tab.id, b);
+    }
+    this.rows = el('div', 'garage-rows', undefined, controls);
+
+    const actions = el('div', 'actions garage-actions', undefined, panel);
+    this.unlockBtn = button(t('garage.unlock'), 'primary garage-unlock', () => this.onUnlock?.());
+    actions.appendChild(this.unlockBtn);
+    actions.appendChild(button(t('garage.reset'), 'garage-reset', () => this.reset()));
+    actions.appendChild(button(t('garage.save'), 'primary garage-save', () => void this.save()));
+    actions.appendChild(button(t('menu.back'), 'garage-close', () => this.close()));
+  }
+
+  get isVisible(): boolean {
+    return this.visible;
+  }
+
+  /** Opens on the character the player last picked, so the preview is the kart they will drive. */
+  show(characterId: string): void {
+    this.character = getCharacter(characterId);
+    this.draft = { ...getCosmetics() };
+    this.cancelAudition();
+    this.preview.setCharacter(this.character, this.draft);
+    this.preview.start();
+    this.syncChrome();
+    this.setTab(this.tab);
+    this.rootNode.classList.remove('hidden');
+    this.visible = true;
+  }
+
+  hide(): void {
+    this.cancelAudition();
+    this.preview.stop();
+    this.rootNode.classList.add('hidden');
+    this.visible = false;
+  }
+
+  handleInput(input: InputState): void {
+    if (!this.visible) return;
+    if (input.back) this.close();
+  }
+
+  dispose(): void {
+    this.cancelAudition();
+    this.preview.dispose();
+    this.rootNode.remove();
+  }
+
+  // -------------------------------------------------------------------------
+
+  private get premium(): boolean {
+    return getEntitlements().premium;
+  }
+
+  private close(): void {
+    this.hide();
+    this.onClose?.();
+  }
+
+  private syncChrome(): void {
+    const owned = this.premium;
+    this.stateChip.textContent = owned ? t('garage.owned') : t('garage.paidHint');
+    this.stateChip.classList.toggle('owned', owned);
+    this.unlockBtn.classList.toggle('hidden', owned);
+  }
+
+  private setTab(id: TabId): void {
+    this.tab = id;
+    for (const [tabId, b] of this.tabButtons) b.classList.toggle('selected', tabId === id);
+    this.rows.textContent = '';
+    if (id === 'paint') {
+      for (const slot of PAINT_SLOTS) this.colorRow(slot);
+      el('p', 'garage-hint', t('garage.freeHint'), this.rows);
+      return;
+    }
+    if (id === 'preset') {
+      this.presetRow();
+      return;
+    }
+    const tab = TABS.find((x) => x.id === id);
+    if (!tab?.list || !tab.field) return;
+    this.optionRow(tab.field, tab.list, id);
+    if (tab.color) this.colorRow(tab.color);
+  }
+
+  /** A labelled strip of swatches plus a "character default" chip. */
+  private colorRow(field: ColorField): void {
+    const row = el('div', 'garage-row', undefined, this.rows);
+    el('span', 'garage-row-label', tk(`garage.color.${field.replace('Color', '')}`), row);
+    const grid = el('div', 'garage-swatches', undefined, row);
+    const paint = (): void => {
+      for (const node of Array.from(grid.children)) {
+        const hex = (node as HTMLElement).dataset.hex;
+        const on = hex === undefined ? this.draft[field] === undefined : this.draft[field] === Number(hex);
+        node.classList.toggle('selected', on);
+      }
+    };
+    const def = el('button', 'garage-swatch garage-swatch-default', '—', grid);
+    def.type = 'button';
+    def.addEventListener('click', () => {
+      delete this.draft[field];
+      this.apply();
+      paint();
+    });
+    for (const hex of SWATCHES) {
+      const b = el('button', 'garage-swatch', undefined, grid);
+      b.type = 'button';
+      b.dataset.hex = String(hex);
+      b.style.background = `#${hex.toString(16).padStart(6, '0')}`;
+      b.addEventListener('click', () => {
+        this.draft[field] = hex;
+        this.apply();
+        paint();
+      });
+    }
+    paint();
+  }
+
+  private optionRow(field: EnumField, list: readonly CatalogueEntry<string>[], group: TabId): void {
+    const row = el('div', 'garage-row', undefined, this.rows);
+    const grid = el('div', 'garage-options', undefined, row);
+    const first = list[0].id;
+    const paint = (): void => {
+      for (const node of Array.from(grid.children)) {
+        const id = (node as HTMLElement).dataset.id;
+        node.classList.toggle('selected', id === (this.draft[field] ?? first));
+      }
+    };
+    for (const entry of list) {
+      const locked = !entry.free && !this.premium;
+      const b = el('button', `garage-option${locked ? ' locked' : ''}`, undefined, grid);
+      b.type = 'button';
+      b.dataset.id = entry.id;
+      el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
+      if (locked) el('span', 'garage-option-lock', t('garage.locked'), b);
+      b.addEventListener('click', () => {
+        if (locked) {
+          this.auditionValue(field, entry.id);
+          return;
+        }
+        if (entry.id === first) delete this.draft[field];
+        else (this.draft as Record<string, unknown>)[field] = entry.id;
+        this.apply();
+        paint();
+      });
+    }
+    paint();
+  }
+
+  private presetRow(): void {
+    const row = el('div', 'garage-row', undefined, this.rows);
+    const grid = el('div', 'garage-options garage-presets', undefined, row);
+    for (const preset of PRESETS) {
+      const locked = usesPaid(preset.cos) && !this.premium;
+      const b = el('button', `garage-option${locked ? ' locked' : ''}`, undefined, grid);
+      b.type = 'button';
+      el('span', 'garage-option-name', tk(`cos.preset.${preset.id}`), b);
+      if (locked) el('span', 'garage-option-lock', t('garage.locked'), b);
+      else if (preset.free) el('span', 'garage-option-free', t('garage.presetFree'), b);
+      b.addEventListener('click', () => {
+        if (locked) {
+          this.auditionLook({ ...preset.cos });
+          return;
+        }
+        this.draft = { ...preset.cos };
+        this.apply();
+        this.setTab('preset');
+      });
+    }
+  }
+
+  /** Three seconds of the real thing, then back to the saved draft. */
+  private auditionValue(field: EnumField, id: string): void {
+    const next = { ...this.draft } as Record<string, unknown>;
+    next[field] = id;
+    this.auditionLook(next as KartCosmetics);
+  }
+
+  private auditionLook(look: KartCosmetics): void {
+    const restore = this.audition ? this.audition.restore : { ...this.draft };
+    this.cancelAudition(false);
+    // Rendered with the gate open: the audition is the one moment a free player sees paid work.
+    this.preview.setCosmetics(sanitize(look, true));
+    this.stateChip.textContent = t('garage.preview');
+    this.stateChip.classList.add('auditioning');
+    this.audition = {
+      restore,
+      timer: window.setTimeout(() => {
+        this.audition = null;
+        this.draft = restore;
+        this.apply();
+        this.syncChrome();
+        this.stateChip.classList.remove('auditioning');
+      }, AUDITION_MS),
+    };
+  }
+
+  private cancelAudition(restore = true): void {
+    if (!this.audition) return;
+    clearTimeout(this.audition.timer);
+    if (restore) {
+      this.draft = this.audition.restore;
+      this.apply();
+    }
+    this.audition = null;
+    this.stateChip.classList.remove('auditioning');
+  }
+
+  private apply(): void {
+    this.preview.setCosmetics(sanitize(this.draft, this.premium));
+  }
+
+  private reset(): void {
+    this.cancelAudition(false);
+    this.draft = {};
+    this.apply();
+    this.setTab(this.tab);
+    this.syncChrome();
+  }
+
+  private async save(): Promise<void> {
+    this.cancelAudition();
+    const clean = sanitize(this.draft, this.premium);
+    this.draft = clean;
+    const ok = await saveCosmetics(clean);
+    showToast(ok && serverReachable() ? t('garage.saved') : t('garage.saveFailed'), ok ? 'info' : 'error');
+  }
+}

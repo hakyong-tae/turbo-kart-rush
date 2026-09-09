@@ -7,11 +7,12 @@
 // Endpoints:
 //   submitTime(trackId, timeMs, characterId, difficulty) — best per (account, track)
 //   getTopTimes(trackId, limit)                          — top N + caller rank/best
-//   getMyEntitlements()                                  — { adsRemoved, premiumRaces, nickname }
+//   getMyEntitlements()                                  — { premium, premiumRaces, nickname, cos }
 //   grantPremiumRaces()                                  — +3 (cap 9, 10 grants/day) after a rewarded ad
 //   consumePremiumRace(characterId)                      — -1 when starting a race with a premium kart
 //   setNickname(name)                                    — stored on user state, renames my rows
-//   $onItemPurchased({productId})                        — VXShop "remove-ads" → adsRemoved
+//   setCosmetics(packed)                                 — garage look, stored on user state + my rows
+//   $onItemPurchased({productId})                        — VXShop "premium-garage" → premium
 //
 // All purchase / ticket state lives in $global user state (server-authoritative).
 
@@ -25,6 +26,12 @@ const MAX_TIME_MS = 1200000;
 const GRANT_SIZE = 3;
 const GRANT_CAP = 9;
 const GRANTS_PER_DAY = 10;
+/**
+ * Packed cosmetics string (see src/core/cosmetics.ts). Stored opaque: the client sanitizes what
+ * it renders, so the only job here is to keep a hostile payload small and free of surprises.
+ */
+const COS_MAX = 160;
+const COS_RE = /^[a-z0-9:,]*$/;
 
 const ROOMS_ID = 'tkr_rooms';
 const ROOM_CAP = 8;
@@ -67,6 +74,16 @@ class Server {
     return s || {};
   }
 
+  _cos(state) {
+    const c = state && typeof state.cos === 'string' ? state.cos : '';
+    return c.length <= COS_MAX && COS_RE.test(c) ? c : '';
+  }
+
+  /** Both names are read: `adsRemoved` is what the retired remove-ads product wrote. */
+  _premium(state) {
+    return !!(state && (state.premium || state.adsRemoved));
+  }
+
   _nickname(state) {
     const n = normalizeNickname(state && state.nickname);
     return n || defaultNickname($sender.account);
@@ -106,6 +123,8 @@ class Server {
       timeMs: Math.floor(timeMs),
       characterId,
       difficulty,
+      // Snapshot of the look this time was set with, so a records row can show the kart.
+      cos: this._cos(state),
       createdAt: Date.now(),
     };
     const all = await this._allTimes();
@@ -143,6 +162,7 @@ class Server {
         timeMs: r.timeMs,
         characterId: r.characterId,
         difficulty: r.difficulty,
+        cos: typeof r.cos === 'string' ? r.cos : '',
         account: r.account,
       })),
       myRank,
@@ -163,12 +183,28 @@ class Server {
     return { nickname };
   }
 
+  /**
+   * Saves the garage look. Also stamped onto my existing ranking rows, the same best-effort
+   * rewrite setNickname does, so the records board shows the kart I drive today.
+   */
+  async setCosmetics(packed) {
+    const cos = typeof packed === 'string' ? packed : '';
+    if (cos.length > COS_MAX || !COS_RE.test(cos)) throw new Error('Invalid cosmetics.');
+    await $global.updateUserState($sender.account, { cos });
+    const mine = (await this._allTimes()).filter((r) => r.account === $sender.account);
+    for (const row of mine) {
+      if (row.__id) await $global.updateCollectionItem(RANKING_ID, { ...row, cos }).catch(() => {});
+    }
+    return { cos };
+  }
+
   async getMyEntitlements() {
     const s = await this._state();
     return {
-      adsRemoved: !!s.adsRemoved,
+      premium: this._premium(s),
       premiumRaces: Number.isFinite(s.premiumRaces) ? Math.max(0, Math.floor(s.premiumRaces)) : 0,
       nickname: normalizeNickname(s.nickname),
+      cos: this._cos(s),
     };
   }
 
@@ -187,16 +223,19 @@ class Server {
   async consumePremiumRace(characterId) {
     const s = await this._state();
     const current = Number.isFinite(s.premiumRaces) ? s.premiumRaces : 0;
-    if (!PREMIUM.has(characterId) || s.adsRemoved) return { ok: true, premiumRaces: current };
+    if (!PREMIUM.has(characterId) || this._premium(s)) return { ok: true, premiumRaces: current };
     if (current <= 0) return { ok: false, premiumRaces: 0 };
     await $global.updateUserState($sender.account, { premiumRaces: current - 1 });
     return { ok: true, premiumRaces: current - 1 };
   }
 
-  /** VXShop hook. "remove-ads" (100 VX, non-consumable) unlocks every kart permanently. */
+  /**
+   * VXShop hook. "premium-garage" (100 VX, non-consumable) opens the paid half of the garage and
+   * every kart permanently. "remove-ads" is the retired id, honoured in case an old order lands.
+   */
   async $onItemPurchased({ account, purchaseId, productId, quantity }) {
-    if (productId === 'remove-ads') {
-      await $global.updateUserState(account, { adsRemoved: true });
+    if (productId === 'premium-garage' || productId === 'remove-ads') {
+      await $global.updateUserState(account, { premium: true });
     }
     return { success: true };
   }

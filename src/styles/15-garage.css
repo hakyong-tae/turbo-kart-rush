@@ -1,0 +1,224 @@
+/* Garage: live kart preview beside a tabbed catalogue.
+   Two columns on a landscape screen, stage on top on a phone. The option lists scroll inside the
+   panel rather than growing it, because the panel must never be taller than a landscape phone. */
+
+.garage-panel {
+  width: min(1040px, 96vw);
+  max-height: 92vh;
+  padding: 16px 18px 14px;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.garage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.garage-state {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+}
+.garage-state.owned {
+  color: var(--green);
+}
+.garage-state.auditioning {
+  color: var(--gold);
+}
+
+.garage-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 42%) 1fr;
+  gap: 16px;
+  min-height: 0;
+}
+
+.garage-stage {
+  position: relative;
+  /* Fixed shape so the turntable never becomes a letterbox slot when the catalogue grows. */
+  align-self: start;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  background: radial-gradient(120% 90% at 50% 15%, rgba(55, 168, 255, 0.16), rgba(6, 7, 16, 0.9) 70%);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+  min-height: 240px;
+}
+
+.garage-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.garage-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.garage-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garage-tab {
+  font: 600 11px/1 var(--body);
+  letter-spacing: 0.06em;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.garage-tab:hover {
+  color: var(--ink);
+}
+.garage-tab.selected {
+  background: var(--accent-grad);
+  border-color: transparent;
+  color: #080a16;
+}
+
+.garage-rows {
+  overflow-y: auto;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.garage-row-label {
+  display: block;
+  font: 600 11px/1 var(--body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+
+.garage-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garage-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  padding: 0;
+}
+.garage-swatch.selected {
+  border-color: var(--ink);
+  transform: scale(1.08);
+}
+.garage-swatch-default {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink-dim);
+  font: 600 13px/1 var(--body);
+}
+
+.garage-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.garage-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font: 500 12px/1.15 var(--body);
+  text-align: left;
+  cursor: pointer;
+}
+.garage-option:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.garage-option.selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue) inset;
+}
+/* Locked entries stay readable: dimming them to nothing hides what the pass is for. */
+.garage-option.locked .garage-option-name {
+  color: var(--ink-dim);
+}
+.garage-option-lock,
+.garage-option-free {
+  font: 700 9px/1 var(--body);
+  letter-spacing: 0.06em;
+  padding: 3px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.garage-option-lock {
+  background: rgba(255, 210, 63, 0.16);
+  color: var(--gold);
+}
+.garage-option-free {
+  background: rgba(92, 255, 138, 0.14);
+  color: var(--green);
+}
+
+.garage-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.garage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.garage-actions .garage-unlock {
+  margin-right: auto;
+}
+
+/* Phone landscape: the stage shrinks rather than the list, which is what players actually use. */
+@media (max-height: 480px) {
+  .garage-panel {
+    max-height: 96vh;
+    padding: 10px 12px 8px;
+  }
+  .garage-body {
+    grid-template-columns: minmax(200px, 34%) 1fr;
+    gap: 10px;
+  }
+  .garage-stage {
+    min-height: 0;
+  }
+  .garage-options {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  }
+}
+
+/* Portrait / narrow: stack, and cap the stage so the catalogue stays reachable. */
+@media (max-width: 720px) and (orientation: portrait) {
+  .garage-body {
+    grid-template-columns: 1fr;
+  }
+  .garage-stage {
+    min-height: 180px;
+    max-height: 30vh;
+  }
+}

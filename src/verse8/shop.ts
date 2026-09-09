@@ -1,22 +1,26 @@
-// VXShop integration — "remove-ads" (100 VX, non-consumable) = every kart unlocked forever.
+// VXShop integration — "premium-garage" (100 VX, non-consumable): the paid half of the garage
+// (patterns, underglow, trails, flames, wheel effects, engine packs, badges) plus every kart,
+// forever. One product, no randomness, no second purchase.
 //
 // Flow (docs.verse8.io/ko/docs/vxshop/implementing-shop-vanilla):
-//   client:  VXShop.buyItem("remove-ads") opens the platform purchase dialog
-//   server:  $onItemPurchased sets adsRemoved on the buyer's user state
+//   client:  VXShop.buyItem("premium-garage") opens the platform purchase dialog
+//   server:  $onItemPurchased sets premium on the buyer's user state
 //   client:  onClose(purchased) → refreshEntitlements() re-reads the server truth
 //
 // The entitlement is SERVER-authoritative and only ever read back through the gameserver
 // (src/verse8/entitlements.ts). A device is never trusted as a source of purchase truth.
 //
 // Product must be registered in the Verse8 creator console:
-//   id "remove-ads", price 100 VX, non-consumable, lifetime limit 1.
+//   id "premium-garage", price 100 VX, non-consumable, lifetime limit 1.
+// The retired id "remove-ads" is still honoured server-side in case an old order arrives; it was
+// never purchased by anyone, which is why the rename was free to make.
 
 import { VXShop } from '@verse8/platform/vanilla';
 import { t } from '../core/i18n';
 import { inVerse8Host } from './embed';
 import { mockStore, refreshEntitlements } from './entitlements';
 
-export const PRODUCT_REMOVE_ADS = 'remove-ads';
+export const PRODUCT_PREMIUM = 'premium-garage';
 export const PRICE_LABEL = '100 VX';
 
 export function initShop(): void {
@@ -39,22 +43,22 @@ export type BuyResult = 'opened' | 'unregistered' | 'blocked';
  * 'unregistered' when the host has no product with this id (creator console step missing),
  * 'blocked' when the platform refuses it (limit reached / not purchasable / SDK error).
  */
-export function buyRemoveAds(): BuyResult {
+export function buyPremium(): BuyResult {
   if (!inVerse8Host()) {
     mockPurchase();
     return 'opened';
   }
   try {
-    const item = VXShop.getItem(PRODUCT_REMOVE_ADS);
+    const item = VXShop.getItem(PRODUCT_PREMIUM);
     if (!item) {
-      console.warn(`[v8] VXShop has no product "${PRODUCT_REMOVE_ADS}" — register it in the creator console (100 VX, non-consumable).`);
+      console.warn(`[v8] VXShop has no product "${PRODUCT_PREMIUM}" — register it in the creator console (100 VX, non-consumable).`);
       return 'unregistered';
     }
     if (!item.purchasable) {
-      console.warn('[v8] remove-ads not purchasable:', item.purchaseBlockReason ?? 'limit reached');
+      console.warn('[v8] premium-garage not purchasable:', item.purchaseBlockReason ?? 'limit reached');
       return 'blocked';
     }
-    VXShop.buyItem(PRODUCT_REMOVE_ADS);
+    VXShop.buyItem(PRODUCT_PREMIUM);
     return 'opened';
   } catch (err) {
     console.warn('[v8] VXShop.buyItem failed:', err);

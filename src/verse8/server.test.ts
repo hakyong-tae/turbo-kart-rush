@@ -150,8 +150,21 @@ describe('server.js', () => {
     await expect(me.setNickname('!!!')).rejects.toThrow();
   });
 
+  it('setCosmetics stores the look, stamps my rows, and rejects a hostile payload', async () => {
+    await me.submitTime('sunny_circuit', 90000, 'zippy', 'normal');
+    const r = await me.setCosmetics('b:101218,p:f,t:3');
+    expect(r.cos).toBe('b:101218,p:f,t:3');
+    expect(g.users['0xAAAA1111'].cos).toBe('b:101218,p:f,t:3');
+    expect(g.collections.tkr_times[0].cos).toBe('b:101218,p:f,t:3');
+    // A time set afterwards carries the look, and the board hands it back.
+    await me.submitTime('sunny_circuit', 80000, 'zippy', 'normal');
+    expect((await me.getTopTimes('sunny_circuit', 5)).rows[0].cos).toBe('b:101218,p:f,t:3');
+    await expect(me.setCosmetics('<script>')).rejects.toThrow();
+    await expect(me.setCosmetics('x'.repeat(200))).rejects.toThrow();
+  });
+
   it('entitlements: grant +3 (cap 9, 10/day), consume, purchase', async () => {
-    expect(await me.getMyEntitlements()).toEqual({ adsRemoved: false, premiumRaces: 0, nickname: '' });
+    expect(await me.getMyEntitlements()).toEqual({ premium: false, premiumRaces: 0, nickname: '', cos: '' });
     for (let i = 0; i < 3; i++) await me.grantPremiumRaces();
     expect((await me.getMyEntitlements()).premiumRaces).toBe(9);
     expect((await me.consumePremiumRace('zippy')).ok).toBe(true); // non-premium: free
@@ -159,8 +172,8 @@ describe('server.js', () => {
     expect(await me.consumePremiumRace('rosa')).toEqual({ ok: true, premiumRaces: 8 });
     for (let i = 0; i < 7; i++) await me.grantPremiumRaces();
     expect((await me.grantPremiumRaces()).granted).toBe(false); // 11th grant today
-    await me.$onItemPurchased({ account: '0xAAAA1111', productId: 'remove-ads', purchaseId: 'p', quantity: 1 });
-    expect((await me.getMyEntitlements()).adsRemoved).toBe(true);
+    await me.$onItemPurchased({ account: '0xAAAA1111', productId: 'premium-garage', purchaseId: 'p', quantity: 1 });
+    expect((await me.getMyEntitlements()).premium).toBe(true);
     const c = await me.consumePremiumRace('rosa');
     expect(c.ok).toBe(true);
     expect((await me.getMyEntitlements()).premiumRaces).toBe(9); // not consumed once purchased

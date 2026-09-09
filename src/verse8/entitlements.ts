@@ -1,9 +1,10 @@
 /**
- * Server-authoritative entitlements cache: { adsRemoved, premiumRaces, nickname }.
+ * Server-authoritative entitlements cache: { premium, premiumRaces, nickname, cos }.
  * The gameserver user state is the single source of truth (root server.js); this module
  * only caches it and exposes subscriptions. Outside a Verse8 host (local dev) an in-memory
  * mock store applies the same rules so every UI path can be exercised.
  */
+import { packCosmetics, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { CHARACTERS } from '../kart/roster';
 import { inVerse8Host } from './embed';
 import {
@@ -11,6 +12,7 @@ import {
   isConnected,
   serverConsumePremiumRace,
   serverGrantPremiumRaces,
+  serverSetCosmetics,
   serverSetNickname,
   type Entitlements,
 } from './server';
@@ -21,7 +23,8 @@ const GRANT_CAP = 9;
 
 export type EntitlementState = Entitlements & { loaded: boolean };
 
-let state: EntitlementState = { adsRemoved: false, premiumRaces: 0, nickname: '', loaded: false };
+const EMPTY: EntitlementState = { premium: false, premiumRaces: 0, nickname: '', cos: '', loaded: false };
+let state: EntitlementState = EMPTY;
 const listeners = new Set<(e: EntitlementState) => void>();
 
 export function isPremium(characterId: string): boolean {
@@ -42,7 +45,26 @@ export function applyEntitlements(next: Entitlements): void {
 }
 export function canRace(characterId: string): boolean {
   if (!isPremium(characterId)) return true;
-  return state.adsRemoved || state.premiumRaces > 0;
+  return state.premium || state.premiumRaces > 0;
+}
+
+/**
+ * The look to drive with, already gated: a free player's saved paid pattern stays on the server
+ * but is never rendered, so buying the tier brings it straight back.
+ */
+export function getCosmetics(): KartCosmetics {
+  return sanitize(unpackCosmetics(state.cos), state.premium);
+}
+
+/** Saves the garage look. Cached optimistically so the preview never waits on the network. */
+export async function saveCosmetics(cos: KartCosmetics): Promise<boolean> {
+  const packed = packCosmetics(cos);
+  applyEntitlements({ ...state, cos: packed });
+  if (!useServer()) return true;
+  const r = await serverSetCosmetics(packed);
+  if (!r) return false;
+  applyEntitlements({ ...state, cos: r.cos });
+  return true;
 }
 
 /** Inside the host the server is the truth; outside, the mock store rules apply. */
@@ -70,7 +92,7 @@ export async function consumePremiumRace(characterId: string): Promise<boolean> 
   if (!useServer()) return mockStore.consume(characterId).ok;
   const r = await serverConsumePremiumRace(characterId);
   // Server unreachable inside the host: only free karts (or a confirmed purchase) may start.
-  if (!r) return !isPremium(characterId) || state.adsRemoved;
+  if (!r) return !isPremium(characterId) || state.premium;
   applyEntitlements({ ...state, premiumRaces: r.premiumRaces });
   return r.ok;
 }
@@ -98,17 +120,17 @@ export const mockStore = {
     return true;
   },
   consume(characterId: string): { ok: boolean; premiumRaces: number } {
-    if (!isPremium(characterId) || state.adsRemoved) return { ok: true, premiumRaces: state.premiumRaces };
+    if (!isPremium(characterId) || state.premium) return { ok: true, premiumRaces: state.premiumRaces };
     if (state.premiumRaces <= 0) return { ok: false, premiumRaces: 0 };
     applyEntitlements({ ...state, premiumRaces: state.premiumRaces - 1 });
     return { ok: true, premiumRaces: state.premiumRaces };
   },
   purchase(): void {
-    applyEntitlements({ ...state, adsRemoved: true });
+    applyEntitlements({ ...state, premium: true });
   },
 };
 
 export function _resetForTests(): void {
-  state = { adsRemoved: false, premiumRaces: 0, nickname: '', loaded: false };
+  state = EMPTY;
   listeners.clear();
 }

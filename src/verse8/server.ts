@@ -109,6 +109,8 @@ export interface TimeRow {
   timeMs: number;
   characterId: string;
   difficulty: string;
+  /** The look the time was set with, packed. Empty for rows written before the garage. */
+  cos?: string;
   account?: string;
 }
 export interface TopTimes {
@@ -122,9 +124,12 @@ export interface SubmitResult {
   timeMs: number;
 }
 export interface Entitlements {
-  adsRemoved: boolean;
+  /** Paid tier: the garage's patterns and effects, and every kart, forever. */
+  premium: boolean;
   premiumRaces: number;
   nickname: string;
+  /** Packed cosmetics string, opaque here; unpacked by src/core/cosmetics.ts. */
+  cos: string;
 }
 
 export function submitTime(
@@ -150,4 +155,7 @@ export function serverConsumePremiumRace(characterId: string): Promise<{ ok: boo
 }
 export function serverSetNickname(name: string): Promise<{ nickname: string } | null> {
   return callServer<{ nickname: string } | null>('setNickname', [name], null);
+}
+export function serverSetCosmetics(packed: string): Promise<{ cos: string } | null> {
+  return callServer<{ cos: string } | null>('setCosmetics', [packed], null);
 }

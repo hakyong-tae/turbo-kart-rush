@@ -42,6 +42,7 @@ export class MainMenu {
   onLockedAttempt: ((character: CharacterDef) => void) | null = null;
   onRecords: (() => void) | null = null;
   onSettings: (() => void) | null = null;
+  onGarage: (() => void) | null = null;
   onOnline: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
@@ -102,6 +103,7 @@ export class MainMenu {
     };
     lobbyEntry(t('lobby.single'), 'primary lobby-btn single-toggle', () => this.goTo('characterSelect', true));
     if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
+    lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', () => this.onGarage?.());
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
     lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', () => this.onRecords?.());
     this.setLobby(0);
@@ -336,7 +338,7 @@ export class MainMenu {
       card.classList.toggle('locked', locked);
       const badge = this.lockBadges.get(def.id);
       if (!badge) return;
-      if (ent.adsRemoved) badge.classList.add('hidden');
+      if (ent.premium) badge.classList.add('hidden');
       else {
         badge.classList.remove('hidden');
         badge.textContent = ent.premiumRaces > 0 ? t('v8.ticketsLeft', { n: ent.premiumRaces }) : t('v8.locked');

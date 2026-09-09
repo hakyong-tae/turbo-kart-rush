@@ -59,10 +59,11 @@ import { showToast } from '../ui/toast';
 import { createEmptyInput } from '../core/types';
 import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
 import { LeaderboardPanel, localBestKey, readLocalBest } from '../ui/LeaderboardPanel';
+import { GaragePanel } from '../ui/GaragePanel';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
 import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
-import { buyRemoveAds, initShop } from '../verse8/shop';
+import { buyPremium, initShop } from '../verse8/shop';
 import { inVerse8Host } from '../verse8/embed';
 import { submitTime, type SubmitResult } from '../verse8/server';
 import { OnlineController, type OnlineMode } from '../net/online';
@@ -70,7 +71,7 @@ import { OnlinePanel } from '../ui/OnlinePanel';
 import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
-import { getEntitlements, refreshEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
+import { getCosmetics, getEntitlements, refreshEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
@@ -138,6 +139,9 @@ export class Game {
   private lockSheet: LockSheet;
   private leaderboard: LeaderboardPanel;
   private settings: SettingsPanel;
+  private garage: GaragePanel;
+  /** Last character the player picked; the garage previews the kart they will actually drive. */
+  private garageCharacterId = 'zippy';
   private lastSubmit: SubmitResult | null = null;
   private online: OnlineController | null = null;
   private onlinePanel: OnlinePanel;
@@ -238,6 +242,7 @@ export class Game {
     this.lockSheet = new LockSheet(this.uiRoot);
     this.leaderboard = this.buildLeaderboard();
     this.settings = this.buildSettings();
+    this.garage = this.buildGarage();
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
     this.touch = new TouchControls(this.uiRoot);
@@ -306,6 +311,7 @@ export class Game {
     this.lockSheet.dispose();
     this.leaderboard.dispose();
     this.settings.dispose();
+    this.garage.dispose();
     this.onlinePanel.dispose();
     this.online?.dispose();
     this.input.dispose();
@@ -322,12 +328,16 @@ export class Game {
 
   private buildMainMenu(): MainMenu {
     const menu = new MainMenu(this.uiRoot, CHARACTERS as readonly CharacterDef[], TRACKS as readonly TrackDefinition[]);
-    menu.onHighlight = (id) => this.backdrop.setCharacter(getCharacter(id));
+    menu.onHighlight = (id) => {
+      this.garageCharacterId = id;
+      this.backdrop.setCharacter(getCharacter(id));
+    };
     menu.onPanelChange = (panel) => this.onMenuPanel(panel);
     menu.onStart = (settings) => void this.startRaceGated(settings);
     menu.onLockedAttempt = (c) => this.lockSheet.show(c, this.lockSheetHandlers(c));
     menu.onRecords = () => this.leaderboard.show(TRACKS[0]?.id ?? 'sunny_circuit');
     menu.onSettings = () => this.settings.show();
+    menu.onGarage = () => this.garage.show(this.garageCharacterId);
     menu.onOnline = () => this.onlinePanel.show();
     return menu;
   }
@@ -511,6 +521,16 @@ export class Game {
     return lb;
   }
 
+  private buildGarage(): GaragePanel {
+    const garage = new GaragePanel(this.uiRoot);
+    garage.onUnlock = () => {
+      const result = buyPremium();
+      if (result === 'unregistered') showToast(t('v8.lock.unregistered'), 'error');
+      else if (result === 'blocked') showToast(t('v8.lock.buyFailed'), 'error');
+    };
+    return garage;
+  }
+
   private buildSettings(): SettingsPanel {
     return new SettingsPanel(this.uiRoot, {
       getVolumes: () => ({ music: this.audio.musicVolumeLevel, sfx: this.audio.sfxVolumeLevel }),
@@ -536,7 +556,7 @@ export class Game {
         this.mainMenu.proceedFromCharacter();
       },
       onBuy: () => {
-        const result = buyRemoveAds();
+        const result = buyPremium();
         if (result === 'unregistered') showToast(t('v8.lock.unregistered'), 'error');
         else if (result === 'blocked') showToast(t('v8.lock.buyFailed'), 'error');
         // A completed purchase lands via refreshEntitlements → badges update; the sheet stays
@@ -597,6 +617,7 @@ export class Game {
     this.pauseMenu.dispose();
     this.loading.dispose();
     const settingsWasOpen = this.settings.isVisible;
+    const garageWasOpen = this.garage.isVisible;
     this.lockSheet.dispose();
     this.leaderboard.dispose();
     this.settings.dispose();
@@ -604,6 +625,9 @@ export class Game {
     this.leaderboard = this.buildLeaderboard();
     this.settings = this.buildSettings();
     if (settingsWasOpen) this.settings.show();
+    this.garage.dispose();
+    this.garage = this.buildGarage();
+    if (garageWasOpen) this.garage.show(this.garageCharacterId);
     const onlineWasOpen = this.onlinePanel.isVisible;
     this.onlinePanel.dispose();
     this.onlinePanel = this.buildOnlinePanel();
@@ -642,8 +666,15 @@ export class Game {
 
   private frame(dt: number, input: InputState): void {
     // Modal overlays (settings / records / lock sheet) swallow menu input while open.
-    if (this.settings.isVisible || this.leaderboard.isVisible || this.lockSheet.isVisible || this.onlinePanel.isVisible) {
+    if (
+      this.settings.isVisible ||
+      this.garage.isVisible ||
+      this.leaderboard.isVisible ||
+      this.lockSheet.isVisible ||
+      this.onlinePanel.isVisible
+    ) {
       if (this.settings.isVisible) this.settings.handleInput(input);
+      else if (this.garage.isVisible) this.garage.handleInput(input);
       else if (this.leaderboard.isVisible) this.leaderboard.handleInput(input);
       else if (this.lockSheet.isVisible) {
         if (input.back) this.lockSheet.hide();
@@ -1015,7 +1046,10 @@ export class Game {
     const difficulty: Difficulty = settings.difficulty;
     if (settings.online) {
       const slots = assignSlotCharacters(settings.online.roster, CHARACTERS as readonly CharacterDef[]);
-      for (let id = 0; id < KART_COUNT; id++) karts.push(new Kart(id, slots[id], id === localKartId));
+      const mine = getCosmetics();
+      for (let id = 0; id < KART_COUNT; id++) {
+        karts.push(new Kart(id, slots[id], id === localKartId, id === localKartId ? mine : undefined));
+      }
       if (settings.online.role === 'host') {
         for (let id = 0; id < karts.length; id++) {
           if (settings.online.roster.some((e) => e.kartId === id)) continue;
@@ -1032,7 +1066,7 @@ export class Game {
         others[i] = others[j];
         others[j] = t;
       }
-      karts.push(new Kart(0, playerChar, true));
+      karts.push(new Kart(0, playerChar, true, getCosmetics()));
       for (let id = 1; id < KART_COUNT; id++) {
         const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;
         karts.push(new Kart(id, def, false));
