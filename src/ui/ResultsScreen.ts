@@ -27,6 +27,7 @@ export class ResultsScreen {
   private readonly confetti: HTMLElement;
   private readonly focus: FocusRing;
   private visible = false;
+  private recordsButton!: HTMLButtonElement;
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
@@ -43,6 +44,7 @@ export class ResultsScreen {
     const change = button(t('results.changeTrack'), '', () => this.activate(1));
     const menu = button(t('results.mainMenu'), 'ghost', () => this.activate(2));
     const records = button(t('lb.button'), 'ghost', () => this.activate(3));
+    this.recordsButton = records;
     actions.append(records, again, change, menu);
     this.focus.add(again);
     this.focus.add(change);
@@ -50,7 +52,8 @@ export class ResultsScreen {
     this.focus.add(records);
   }
 
-  show(standings: readonly RaceStanding[], mode: RaceMode = 'solo'): void {
+  show(standings: readonly RaceStanding[], mode: RaceMode = 'solo', online = false): void {
+    this.recordsButton.hidden = online;
     this.table.replaceChildren();
     this.confetti.replaceChildren();
     const player = standings.find((s) => s.isPlayer);

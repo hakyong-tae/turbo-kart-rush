@@ -73,7 +73,21 @@ export class OnlineController {
     }
     this.lobby = new Lobby(this.transport, me, defaults);
     this.transport.onMessage((event, payload, from) => this.onMessage(event, payload, from));
+    // Mobile: leaving to copy the code into a chat app and coming back must not desync the room.
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility);
+    if (typeof window !== 'undefined') window.addEventListener('pageshow', this.onVisibility);
   }
+
+  private resumeTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly onVisibility = (): void => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (!this.lobby.key || this.hostSession || this.clientSession) return; // in a race: nothing to re-join
+    if (this.resumeTimer) clearTimeout(this.resumeTimer);
+    this.resumeTimer = setTimeout(() => {
+      this.resumeTimer = null;
+      void this.lobby.resume();
+    }, 400);
+  };
 
   get isHost(): boolean {
     return this.lobby.view.isHost;
@@ -179,6 +193,8 @@ export class OnlineController {
   }
 
   dispose(): void {
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
+    if (typeof window !== 'undefined') window.removeEventListener('pageshow', this.onVisibility);
     this.teardownSessions();
     this.lobby.dispose();
     this.bot?.dispose();

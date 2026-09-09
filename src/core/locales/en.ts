@@ -206,6 +206,8 @@ export const en = {
   'settings.music': 'MUSIC',
   'settings.sfx': 'SOUND EFFECTS',
   'settings.save': 'SAVE',
+  'settings.account': 'Account …{id} (records are saved to this account)',
+  'settings.accountNone': 'Not connected to Verse8 — records stay on this device.',
   'settings.close': 'CLOSE',
   'settings.saved': 'Saved.',
   'settings.invalid': 'Nickname not allowed.',

@@ -4,8 +4,9 @@
 import type { InputState } from '../core/types';
 import { getLang, setLang, t, type Lang } from '../core/i18n';
 import { getEntitlements, serverReachable, setNickname } from '../verse8/entitlements';
+import { currentAccount } from '../verse8/server';
 import { normalizeNickname } from '../verse8/nickname';
-import { button, el } from './dom';
+import { button, el, TextField } from './dom';
 import { showToast } from './toast';
 
 export type VolumeKind = 'music' | 'sfx';
@@ -21,6 +22,7 @@ export class SettingsPanel {
 
   private readonly rootNode: HTMLElement;
   private readonly nickInput: HTMLInputElement;
+  private readonly accountHint: TextField;
   private readonly langButtons: HTMLButtonElement[] = [];
   private readonly sliders = new Map<VolumeKind, { input: HTMLInputElement; value: HTMLElement }>();
   private visible = false;
@@ -42,7 +44,14 @@ export class SettingsPanel {
     this.nickInput.autocomplete = 'off';
     // Game keys (WASD, space…) must not drive the menu while typing here.
     this.nickInput.addEventListener('keydown', (e) => e.stopPropagation());
+    // Soft keyboard (phones): pin the panel to the top and keep the field in view.
+    this.nickInput.addEventListener('focus', () => {
+      this.rootNode.classList.add('kb');
+      setTimeout(() => this.nickInput.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+    });
+    this.nickInput.addEventListener('blur', () => this.rootNode.classList.remove('kb'));
     el('span', 'settings-hint', t('settings.nicknameHint'), nickField);
+    this.accountHint = new TextField(el('span', 'settings-hint settings-account', '', nickField));
 
     const langField = el('div', 'settings-field', undefined, panel);
     el('span', 'settings-label', t('settings.language'), langField);
@@ -100,11 +109,13 @@ export class SettingsPanel {
 
   show(): void {
     this.nickInput.value = getEntitlements().nickname;
+    const acct = currentAccount();
+    this.accountHint.set(acct ? t('settings.account', { id: acct.slice(-6) }) : t('settings.accountNone'));
     this.langButtons.forEach((b) => b.classList.toggle('selected', b.textContent?.toLowerCase() === getLang()));
     this.syncSliders();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
-    this.nickInput.focus();
+    if (!window.matchMedia?.('(pointer: coarse)').matches) this.nickInput.focus();
   }
 
   hide(): void {

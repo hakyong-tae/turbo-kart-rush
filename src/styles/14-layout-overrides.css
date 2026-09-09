@@ -145,3 +145,76 @@
     /* keep the logo centred */
   }
 }
+
+/* ---- QA round (26-09-09): phone landscape fixes ---- */
+/* Records button stays on phones (smaller), instead of disappearing. */
+@media (max-height: 480px) {
+  .lobby-btn.small {
+    display: inline-block;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  /* LAP / timer sit clear of the item slot frame. */
+  .hud-topright {
+    top: calc(var(--hud-pad) + 104px);
+  }
+}
+/* Touch: ITEM button bottom-right under the timer (thumb), DRIFT to its left. */
+#ui.touch .touch-item {
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  width: 92px;
+  height: 92px;
+}
+#ui.touch .touch-drift {
+  right: calc(124px + env(safe-area-inset-right, 0px));
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+}
+/* Overlay panels never exceed the viewport: scroll inside instead of clipping top/bottom. */
+.settings-panel,
+.lb-panel,
+.lock-panel,
+.online-panel,
+.results-panel,
+.pause-panel {
+  max-height: calc(100dvh - 20px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.settings,
+.lb,
+.lock-sheet,
+.results,
+.pause {
+  padding: 10px;
+}
+@media (max-height: 480px) {
+  .results-panel {
+    padding: 14px 18px;
+  }
+  .results-title {
+    font-size: 36px;
+  }
+  /* Keep the action buttons on screen: the standings list scrolls inside the panel. */
+  .standings {
+    max-height: 36vh;
+    overflow-y: auto;
+  }
+  .results-sub {
+    display: none;
+  }
+  .settings-field {
+    margin: 8px 0;
+  }
+}
+/* Soft keyboard open: pin the settings panel to the top so the field and buttons stay visible. */
+.settings.kb {
+  align-items: flex-start;
+}
+.settings.kb .settings-panel {
+  max-height: calc(100dvh - 12px);
+}
+.settings-account {
+  color: var(--ink-faint);
+  font-size: 11px;
+}

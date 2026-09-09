@@ -195,6 +195,8 @@ export const ko: Record<StringKey, string> = {
   'settings.music': '배경음악',
   'settings.sfx': '효과음',
   'settings.save': '저장',
+  'settings.account': '계정 …{id} (기록은 이 계정에 저장됩니다)',
+  'settings.accountNone': 'Verse8 미접속 — 기록은 이 기기에만 남습니다.',
   'settings.close': '닫기',
   'settings.saved': '저장했어요.',
   'settings.invalid': '사용할 수 없는 닉네임이에요.',

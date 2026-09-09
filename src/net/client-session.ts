@@ -23,7 +23,11 @@ import {
 import { SNAPSHOT_EVERY } from './host-session';
 import type { Transport } from './types';
 
+/** Base render delay behind the newest snapshot; adapts upward with measured arrival jitter. */
 export const INTERP_DELAY_MS = 100;
+const INTERP_DELAY_MAX_MS = 260;
+/** How far a starved client keeps karts moving along their last heading before freezing. */
+const EXTRAPOLATE_MAX_MS = 320;
 export const HOST_TIMEOUT_MS = 8000;
 const BLEND_THRESHOLD_M = 0.6;
 const SNAP_THRESHOLD_M = 5;
@@ -54,6 +58,9 @@ export class ClientSession {
   private seq = 0;
   private useSeq = 0;
   private readonly buffer: Stamped[] = [];
+  /** Smoothed snapshot inter-arrival interval and its jitter (ms). */
+  private arrivalMean = 60;
+  private arrivalJitter = 10;
   private lastPhase: RacePhase = PHASE.grid;
   private lastSnapshotAt = 0;
   private lastLocal: NetKartPose | null = null;
@@ -256,7 +263,13 @@ export class ClientSession {
   private pushSnapshot(snap: Snapshot): void {
     const last = this.buffer[this.buffer.length - 1];
     if (last && snap.tick <= last.snap.tick) return; // out of order / duplicate
-    this.buffer.push({ at: this.now(), snap });
+    const now = this.now();
+    if (last) {
+      const gap = Math.min(1000, now - last.at);
+      this.arrivalJitter += (Math.abs(gap - this.arrivalMean) - this.arrivalJitter) * 0.15;
+      this.arrivalMean += (gap - this.arrivalMean) * 0.15;
+    }
+    this.buffer.push({ at: now, snap });
     if (this.buffer.length > BUFFER_MAX) this.buffer.splice(0, this.buffer.length - BUFFER_MAX);
     this.lastSnapshotAt = this.now();
 
@@ -331,7 +344,9 @@ export class ClientSession {
   private applyInterpolated(): void {
     const r = this.race;
     if (!r || this.buffer.length === 0) return;
-    const renderAt = this.now() - INTERP_DELAY_MS;
+    // Render delay tracks the real arrival cadence: ~1.5 intervals + jitter, clamped.
+    const delay = Math.min(INTERP_DELAY_MAX_MS, Math.max(INTERP_DELAY_MS, this.arrivalMean * 1.5 + this.arrivalJitter * 2));
+    const renderAt = this.now() - delay;
     let a = this.buffer[0];
     let b = this.buffer[0];
     for (let i = 0; i < this.buffer.length; i++) {
@@ -344,16 +359,26 @@ export class ClientSession {
     }
     const span = b.at - a.at;
     const alpha = span > 0 ? Math.min(1, Math.max(0, (renderAt - a.at) / span)) : 1;
+    // Starved (no snapshot newer than renderAt): dead-reckon along each kart's heading so the
+    // field keeps moving instead of freezing, up to EXTRAPOLATE_MAX_MS.
+    const starve = renderAt - b.at;
+    const extraS = starve > 0 ? Math.min(EXTRAPOLATE_MAX_MS, starve) / 1000 : 0;
     for (const pb of b.snap.karts) {
       if (pb.id === this.localKartId) continue;
       const k = r.karts[pb.id];
       if (!k || !k.applyNetState) continue;
       const pa = a.snap.karts.find((p) => p.id === pb.id) ?? pb;
+      let x = pa.x + (pb.x - pa.x) * alpha;
+      let z = pa.z + (pb.z - pa.z) * alpha;
+      if (extraS > 0 && !pb.isFrozen && !pb.finished) {
+        x += -Math.sin(pb.heading) * pb.speed * extraS;
+        z += -Math.cos(pb.heading) * pb.speed * extraS;
+      }
       k.applyNetState({
         ...pb,
-        x: pa.x + (pb.x - pa.x) * alpha,
+        x,
         y: pa.y + (pb.y - pa.y) * alpha,
-        z: pa.z + (pb.z - pa.z) * alpha,
+        z,
         heading: lerpAngle(pa.heading, pb.heading, alpha),
         speed: pa.speed + (pb.speed - pa.speed) * alpha,
       });

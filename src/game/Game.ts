@@ -496,7 +496,7 @@ export class Game {
       isPlayer: s.kartId === r.localKartId,
     }));
     r.hud.hide();
-    this.results.show(mapped, r.settings.mode ?? 'solo');
+    this.results.show(mapped, r.settings.mode ?? 'solo', true);
     this.setState('results');
     this.playMusic('results');
   }
@@ -1236,7 +1236,7 @@ export class Game {
     const r = this.race;
     if (!r || this.state === 'results') return;
     r.hud.hide();
-    this.results.show(r.raceManager.getStandings(), r.settings.mode ?? 'solo');
+    this.results.show(r.raceManager.getStandings(), r.settings.mode ?? 'solo', Boolean(r.online));
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
     }

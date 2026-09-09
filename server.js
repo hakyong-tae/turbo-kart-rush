@@ -72,13 +72,21 @@ class Server {
     return n || defaultNickname($sender.account);
   }
 
-  async _rankOf(trackId, timeMs) {
-    const faster = await $global.countCollectionItems(RANKING_ID, {
-      filters: [
-        { field: 'trackId', operator: '==', value: trackId },
-        { field: 'timeMs', operator: '<', value: timeMs },
-      ],
-    });
+  /**
+   * All ranking rows. The platform's getCollectionItems honours ONLY { limit } — filters /
+   * orderBy / countCollectionItems are silently ignored or throw — so every query below reads
+   * the collection and filters in JS. (With filters ignored, the old submitTime deleted every
+   * player's rows on each submit.)
+   */
+  async _allTimes() {
+    const rows = await $global.getCollectionItems(RANKING_ID, { limit: 1000 }).catch(() => []);
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  async _rankOf(trackId, timeMs, rows) {
+    const all = rows || (await this._allTimes());
+    let faster = 0;
+    for (const r of all) if (r.trackId === trackId && typeof r.timeMs === 'number' && r.timeMs < timeMs) faster++;
     return faster + 1;
   }
 
@@ -100,37 +108,30 @@ class Server {
       difficulty,
       createdAt: Date.now(),
     };
-    const mine = await $global.getCollectionItems(RANKING_ID, {
-      filters: [
-        { field: 'account', operator: '==', value: $sender.account },
-        { field: 'trackId', operator: '==', value: trackId },
-      ],
-    });
+    const all = await this._allTimes();
+    const mine = all.filter((r) => r.account === $sender.account && r.trackId === trackId);
     const best = mine.length > 0 ? mine.slice().sort((a, b) => a.timeMs - b.timeMs)[0] : null;
     if (best && candidate.timeMs >= best.timeMs) {
-      return { updated: false, rank: await this._rankOf(trackId, best.timeMs), timeMs: best.timeMs };
+      return { updated: false, rank: await this._rankOf(trackId, best.timeMs, all), timeMs: best.timeMs };
     }
-    for (const row of mine) await $global.deleteCollectionItem(RANKING_ID, row.__id);
+    for (const row of mine) if (row.__id) await $global.deleteCollectionItem(RANKING_ID, row.__id).catch(() => {});
     await $global.addCollectionItem(RANKING_ID, candidate);
-    return { updated: true, rank: await this._rankOf(trackId, candidate.timeMs), timeMs: candidate.timeMs };
+    const others = all.filter((r) => !(r.account === $sender.account && r.trackId === trackId));
+    others.push(candidate);
+    return { updated: true, rank: await this._rankOf(trackId, candidate.timeMs, others), timeMs: candidate.timeMs };
   }
 
   async getTopTimes(trackId, limit) {
     if (!TRACKS.has(trackId)) throw new Error('Unknown track.');
     const n = typeof limit === 'number' && limit > 0 ? Math.min(100, Math.floor(limit)) : 20;
-    const rows = await $global.getCollectionItems(RANKING_ID, {
-      filters: [{ field: 'trackId', operator: '==', value: trackId }],
-      orderBy: [{ field: 'timeMs', direction: 'asc' }],
-      limit: n,
-    });
+    const all = await this._allTimes();
+    const rows = all
+      .filter((r) => r.trackId === trackId && typeof r.timeMs === 'number')
+      .sort((a, b) => a.timeMs - b.timeMs)
+      .slice(0, n);
     let myRank = null;
     let myBest = null;
-    const mine = await $global.getCollectionItems(RANKING_ID, {
-      filters: [
-        { field: 'account', operator: '==', value: $sender.account },
-        { field: 'trackId', operator: '==', value: trackId },
-      ],
-    });
+    const mine = all.filter((r) => r.account === $sender.account && r.trackId === trackId);
     if (mine.length > 0) {
       const best = mine.slice().sort((a, b) => a.timeMs - b.timeMs)[0];
       myBest = best.timeMs;
@@ -153,11 +154,12 @@ class Server {
     const nickname = normalizeNickname(name);
     if (!nickname) throw new Error('Invalid nickname.');
     await $global.updateUserState($sender.account, { nickname });
-    const mine = await $global.getCollectionItems(RANKING_ID, {
-      filters: [{ field: 'account', operator: '==', value: $sender.account }],
-    });
+    // Rename existing records (best effort — the user state above is the source of truth).
+    const mine = (await this._allTimes()).filter((r) => r.account === $sender.account);
     // updateCollectionItem is (collectionId, item) — the item carries its own __id. A 3-arg call is a silent no-op.
-    for (const row of mine) await $global.updateCollectionItem(RANKING_ID, { ...row, name: nickname });
+    for (const row of mine) {
+      if (row.__id) await $global.updateCollectionItem(RANKING_ID, { ...row, name: nickname }).catch(() => {});
+    }
     return { nickname };
   }
 

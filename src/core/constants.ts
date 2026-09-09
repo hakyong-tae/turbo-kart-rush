@@ -8,6 +8,8 @@ export const GAME_TITLE = 'DRIFT DASH GP';
 
 /** Total karts on the grid (player + AI). */
 export const KART_COUNT = 8;
+/** Ship switch for online races: false hides the lobby button (single race + records still work). */
+export const ONLINE_ENABLED = true;
 
 /** Default number of laps per race (tracks may override via TrackDefinition.laps). */
 export const DEFAULT_LAPS = 3;

@@ -70,6 +70,22 @@ export class Lobby {
     return this.enter(await this.transport.createRoom());
   }
 
+  /**
+   * After the app was backgrounded (mobile tab switch) the relay membership may be gone while
+   * our local view still shows the room. Re-join the same key and re-publish our player entry;
+   * if the room moved on (new host), the fresh state simply wins.
+   */
+  async resume(): Promise<void> {
+    const key = this.roomKey;
+    if (!key) return;
+    try {
+      await this.transport.joinRoom(key);
+      await this.enter(key);
+    } catch (e) {
+      console.warn('[net] resume failed', e);
+    }
+  }
+
   async leave(): Promise<void> {
     this.stopHeartbeat();
     if (this.roomKey) await this.transport.leaveRoom();

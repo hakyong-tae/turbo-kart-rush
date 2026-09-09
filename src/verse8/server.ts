@@ -81,6 +81,16 @@ export function isConnected(): boolean {
   return connected;
 }
 
+/** Account id of the connected player ('' before the socket is up) — surfaced in Settings for support. */
+export function currentAccount(): string {
+  if (!connected) return '';
+  try {
+    return String(getGameServer().account ?? '');
+  } catch {
+    return '';
+  }
+}
+
 /** Call a server function, or return `fallback` when the platform is absent. */
 export async function callServer<T>(fn: string, args: unknown[] = [], fallback: T, budgetMs = CONNECT_BUDGET_MS): Promise<T> {
   if (!(await ensureConnected(budgetMs))) return fallback;

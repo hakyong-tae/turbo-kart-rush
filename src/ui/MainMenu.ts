@@ -4,7 +4,7 @@
  */
 import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinition, RaceMode } from '../core/types';
 import { events } from '../core/events';
-import { GAME_TITLE, DEFAULT_LAPS } from '../core/constants';
+import { GAME_TITLE, DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
 import { t, t as tt, tOr } from '../core/i18n';
 import { canRace, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
@@ -101,7 +101,7 @@ export class MainMenu {
       return b;
     };
     lobbyEntry(t('lobby.single'), 'primary lobby-btn single-toggle', () => this.goTo('characterSelect', true));
-    lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
+    if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
     lobbyEntry(t('lb.button'), 'ghost lobby-btn small records-toggle', () => this.onRecords?.());
     this.setLobby(0);

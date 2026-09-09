@@ -23,7 +23,9 @@ import {
 import { kartIdOf } from './roster';
 import type { Transport } from './types';
 
-export const SNAPSHOT_EVERY = 3; // ticks at 60 Hz → 50 ms, aligned to relayHot throttle 50
+/** Physics ticks between snapshots. FIXED_DT is 1/120 s, so 7 ticks ≈ 58 ms — safely above relayHot's 50 ms
+ *  throttle (sending every 25 ms made the relay drop every other packet → visible 1 s stalls). */
+export const SNAPSHOT_EVERY = 7;
 
 export interface HostRaceView {
   karts: readonly IKart[];
