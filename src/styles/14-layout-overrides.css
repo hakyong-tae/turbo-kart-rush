@@ -147,13 +147,7 @@
 }
 
 /* ---- QA round (26-09-09): phone landscape fixes ---- */
-/* Records button stays on phones (smaller), instead of disappearing. */
 @media (max-height: 480px) {
-  .lobby-btn.small {
-    display: inline-block;
-    padding: 6px 12px;
-    font-size: 12px;
-  }
   /* LAP / timer sit clear of the item slot frame. */
   .hud-topright {
     top: calc(var(--hud-pad) + 104px);

@@ -103,7 +103,7 @@ export class MainMenu {
     lobbyEntry(t('lobby.single'), 'primary lobby-btn single-toggle', () => this.goTo('characterSelect', true));
     if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
-    lobbyEntry(t('lb.button'), 'ghost lobby-btn small records-toggle', () => this.onRecords?.());
+    lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', () => this.onRecords?.());
     this.setLobby(0);
     const legend = el('div', 'controls-legend glass', undefined, title);
     const keys: [string, string][] = [

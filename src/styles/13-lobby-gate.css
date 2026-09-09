@@ -18,11 +18,6 @@
   padding: 14px 22px;
   letter-spacing: 0.12em;
 }
-.lobby-btn.small {
-  font-size: 13px;
-  padding: 9px 16px;
-  align-self: center;
-}
 .lobby-btn.focused {
   outline: 2px solid rgba(255, 255, 255, 0.85);
   outline-offset: 3px;
@@ -36,9 +31,6 @@
   .lobby-btn {
     padding: 9px 16px;
     font-size: 15px;
-  }
-  .lobby-btn.small {
-    display: none;
   }
 }
 

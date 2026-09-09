@@ -1,5 +1,6 @@
 /**
- * Character roster - 8 original racers. Stats are 0..1 and every free racer has one
+ * Character roster - 8 original racers. Taglines are spec lines (no prose, no full stops):
+ * the strongest stat, the weakest stat, and how the kart is meant to be driven. Stats are 0..1 and every free racer has one
  * clear speciality paid for by a clear weakness (stat total ≈ 2.6). The three premium
  * racers (rewarded ad / 100 VX) keep their class feel but drop the class penalty, so
  * they are simply better cars (stat total ≈ 3.4).
@@ -25,7 +26,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0xf7f9ff,
     weightClass: 'light',
     stats: { speed: 0.3, acceleration: 1.0, handling: 0.7, weight: 0.15, miniTurbo: 0.45 },
-    tagline: 'Blink and she is already two corners ahead.',
+    tagline: 'Top acceleration · low top speed · best off the line',
   },
   {
     id: 'pixel',
@@ -35,7 +36,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0xfff1a8,
     weightClass: 'light',
     stats: { speed: 0.12, acceleration: 0.65, handling: 1.0, weight: 0.1, miniTurbo: 0.8 },
-    tagline: 'Sugar-rush handling. Corners are her candy.',
+    tagline: 'Top cornering · lowest top speed · tight sequences',
   },
   {
     id: 'fennec',
@@ -46,7 +47,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0x2b1b12,
     weightClass: 'light',
     stats: { speed: 0.6, acceleration: 0.9, handling: 0.85, weight: 0.25, miniTurbo: 1.0 },
-    tagline: 'Big ears, bigger mini-turbos.',
+    tagline: 'Top mini-turbo · fastest light kart · no weak stat',
   },
   // --- medium --------------------------------------------------------------
   {
@@ -57,7 +58,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0xffffff,
     weightClass: 'medium',
     stats: { speed: 0.55, acceleration: 0.55, handling: 0.55, weight: 0.5, miniTurbo: 0.55 },
-    tagline: 'The all-rounder. Every lap is a highlight reel.',
+    tagline: 'Balanced across all stats · reference kart · any track',
   },
   {
     id: 'juno',
@@ -67,7 +68,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0x161326,
     weightClass: 'medium',
     stats: { speed: 0.45, acceleration: 0.4, handling: 0.35, weight: 0.6, miniTurbo: 1.0 },
-    tagline: 'Charges every drift like a thunderstorm.',
+    tagline: 'Top mini-turbo · weak steering · hold the drift',
   },
   {
     id: 'kai',
@@ -77,7 +78,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0xdff6ff,
     weightClass: 'medium',
     stats: { speed: 0.75, acceleration: 0.5, handling: 0.6, weight: 0.4, miniTurbo: 0.25 },
-    tagline: 'Cool as the deep end, smooth as a swell.',
+    tagline: 'Fastest medium · lowest mini-turbo · straight-line kart',
   },
   // --- heavy ---------------------------------------------------------------
   {
@@ -89,7 +90,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0x5a3b21,
     weightClass: 'heavy',
     stats: { speed: 0.9, acceleration: 0.5, handling: 0.5, weight: 1.0, miniTurbo: 0.55 },
-    tagline: 'Slow to wake up. Impossible to shove.',
+    tagline: 'Heaviest chassis · wins contact · keeps its acceleration',
   },
   {
     id: 'rosa',
@@ -100,7 +101,7 @@ export const CHARACTERS: CharacterDef[] = [
     driverColor: 0x2a2a34,
     weightClass: 'heavy',
     stats: { speed: 1.0, acceleration: 0.35, handling: 0.4, weight: 0.95, miniTurbo: 0.75 },
-    tagline: 'Eighteen wheels of attitude in a four-wheel kart.',
+    tagline: 'Highest top speed · slowest launch · strongest at speed',
   },
 ];
 
