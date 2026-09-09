@@ -146,3 +146,34 @@ they serve a core audience, and this build targets casual players.
 Unit tests for cup scoring and unlock gating, cosmetics serialisation round-trip, and daily seed
 determinism across dates. A garage screenshot tool in the style of `tools/kart-lineup.mjs` to
 eyeball every pattern and effect on every body.
+
+## Status (2026-09-09, all sections shipped)
+
+Built in five commits. The order in section 6 was not followed: the garage went in before the
+cups, because the colour layer and the cosmetics catalogue were already open on the bench and
+splitting them across the cup work would have meant touching `KartModel` twice.
+
+| Section | Where it landed |
+|---|---|
+| 1. Colour layer, relative team labels | `core/teams.ts` `sideOf`/`sideColor`, rewired through minimap, standings, markers, HUD, tally, results |
+| 2. Catalogue and effects | `core/cosmetics.ts` (33 patterns, ~70 paid entries), `kart/patternShader.ts`, `kart/underglow.ts`, trails and tyre marks in `fx/ParticleSystem.ts`, engine packs in `audio/engine.ts`, badges in `ui/badges.ts` |
+| 3. Storage and showcase | `setCosmetics` + `cos` on `tkr_times` rows, `RoomPlayer.cos` → roster → remote karts, records rows, results winner, lobby list |
+| 4. Product | `premium-garage` at 100 VX, entitlement `premium`, docs updated |
+| 5. Grand Prix cups | `core/cups.ts`, Grand Prix row in track select, cup table on the results screen, `setCupProgress` |
+| 5. Daily challenge | `core/daily.ts`, `tkr_daily` collection with a one-attempt-per-UTC-day rule, `ui/DailyPanel.ts` |
+
+Deviations worth knowing about:
+
+- **Free patterns.** Section 2 says ship at least ten patterns so the store page is not thin. It
+  ships 33, all paid except `none`, per the locked decision that patterns are a paid tier.
+- **Badges** were added to the catalogue and the product description. They render beside the
+  player's name rather than on the kart, so a badge reads at HUD size and in a records row.
+- **Cup progress and the daily attempt** live in server user state (`cups`, `daily`) rather than
+  a collection: they are per-account facts, not a ranked list.
+
+Not built, still out of scope: gacha, paid track packs, season passes, ranked ladder, ghost
+replays, time trial.
+
+Verification: 123 unit tests, plus browser runs for the garage (audition and purchase flow), a
+full Rookie cup, the daily panel, and a landscape-phone pass over the new panels. Contact sheets
+in `marketing/.audit/`: `livery-sheet.png`, `underglow-sheet.png`, `trail-sheet.png`.
