@@ -54,17 +54,17 @@ EN: Title screen → gear icon (top right) → Settings → "Language" KO/EN tog
 
 ## 4. 계정 저장 / Account-saved progress
 
-KO: 닉네임, 프리미엄 카트 이용권(광고 보상 잔여 횟수), 전 차량 해금 구매 여부, 트랙별 최고 기록이 모두 Verse8 서버(유저 스테이트 + `tkr_times` 컬렉션)에 계정 단위로 저장됩니다. 다른 기기에서 같은 계정으로 접속하면 기록 화면(🏆 기록 → 트랙 탭)과 레이스 결과 화면의 "내 기록 · N위" 배너에 동일한 최고 기록이 표시됩니다.
+KO: 닉네임, 프리미엄 카트 이용권(광고 보상 잔여 횟수), 차고 해금 구매 여부, 차고에서 저장한 카트 외형, 트랙별 최고 기록이 모두 Verse8 서버(유저 스테이트 + `tkr_times` 컬렉션)에 계정 단위로 저장됩니다. 다른 기기에서 같은 계정으로 접속하면 기록 화면(🏆 기록 → 트랙 탭)과 레이스 결과 화면의 "내 기록 · N위" 배너에 동일한 최고 기록이 표시됩니다.
 EN: Nickname, remaining premium-kart passes (rewarded-ad grants), the all-karts unlock purchase and per-track best times are stored per account on the Verse8 server (user state + the `tkr_times` collection). Signing in on another device shows the same personal best in the Records panel (🏆 → track tab) and in the "your best · rank" banner on the results screen.
 
-근거: `server.js` `submitTime/getTopTimes`(계정당 트랙별 1건, 더 빠를 때만 갱신), `getMyEntitlements()` → `{adsRemoved, premiumRaces, nickname}`; 클라 `src/verse8/entitlements.ts`는 캐시일 뿐 서버가 진실.
+근거: `server.js` `submitTime/getTopTimes`(계정당 트랙별 1건, 더 빠를 때만 갱신), `getMyEntitlements()` → `{premium, premiumRaces, nickname, cos}`, `setCosmetics(packed)`(차고 외형); 클라 `src/verse8/entitlements.ts`는 캐시일 뿐 서버가 진실.
 
 ## 5. 수익화 / Monetization
 
 **구성 (What is monetized)**
 - 전면 광고(interstitial): **없음** — 의도적 결정. ※ 폼이 "인게임 광고 필수"를 요구한다면 리워드 광고가 이를 충족하는지 원스토어/Verse8 담당자에게 확인 필요. 필요 시 결과 화면 진입 시 전면 광고 1회(`@verse8/ads showInterstitial`)를 추가하는 옵션은 열려 있음.
 - 리워드 광고(opt-in): placement **`rewarded_premium_kart`**. 잠긴 프리미엄 카트(Fennec Flash · Boulder Bram · Big Rig Rosa) 카드 → 잠금 시트 → "광고 보고 3회 이용".
-- VX 결제: 상품 **`remove-ads`**, **100 VX**, 비소모(non-consumable), Lifetime Limit 1 → 프리미엄 카트 3종 영구 해금(게임 내 표기 "전 차량 해금 · 100 VX").
+- VX 결제: 상품 **`premium-garage`**, **100 VX**, 비소모(non-consumable), Lifetime Limit 1 → 차고의 유료 꾸미기 항목(라이버리 32종·언더글로우 6종·트레일 10종·배기 화염 8종·휠 4종·엔진음 5종)과 프리미엄 카트 3종 영구 해금(게임 내 표기 "차고 해금 · 100 VX"). 도색(색상)은 무료.
 
 KO: 강제 전면 광고 없음. 프리미엄 카트 3종은 (1) 선택형 리워드 광고 시청 시 3레이스 이용권, 또는 (2) 100 VX 1회 구매로 영구 해금. 그 외 모든 콘텐츠(레이서 5종·서킷 6개·온라인·리더보드)는 무료.
 EN: No forced interstitials. Three premium karts are unlocked either by (1) an opt-in rewarded ad granting 3 races, or (2) a one-time 100 VX purchase for permanent access. Everything else (5 karts, 6 circuits, online, leaderboards) is free.
@@ -76,13 +76,13 @@ EN: Each completed rewarded ad grants +3 premium-kart races (up to 9 unused, max
 **광고 타임아웃 120초 (120 s ad timeout)** — 적용됨: `src/verse8/ads.ts` `showRewarded({ placementId, timeoutMs: 120_000 })`.
 
 **VX 결제 동작·계정 저장 (VX checkout works and is saved to the account)**
-KO: 잠금 시트의 "전 차량 해금 · 100 VX" → VXShop 결제창 → 결제 완료 시 서버 `$onItemPurchased('remove-ads')`가 유저 스테이트 `adsRemoved=true`를 기록하고 클라이언트가 즉시 권한을 갱신해 잠금 배지가 사라집니다. 재접속·다른 기기에서도 서버 값으로 복원됩니다.
-EN: "Unlock all karts · 100 VX" in the lock sheet opens VXShop checkout; on success the server hook `$onItemPurchased('remove-ads')` writes `adsRemoved=true` to the user state and the client refreshes entitlements immediately. The unlock is restored from the server on any device.
+KO: 잠금 시트나 차고의 "차고 해금 · 100 VX" → VXShop 결제창 → 결제 완료 시 서버 `$onItemPurchased('premium-garage')`가 유저 스테이트 `premium=true`를 기록하고 클라이언트가 즉시 권한을 갱신해 잠금 배지가 사라집니다. 재접속·다른 기기에서도 서버 값으로 복원됩니다.
+EN: "Unlock garage · 100 VX" in the lock sheet or the garage opens VXShop checkout; on success the server hook `$onItemPurchased('premium-garage')` writes `premium=true` to the user state and the client refreshes entitlements immediately. The unlock is restored from the server on any device.
 
 ## 6. 확률형 아이템 / Probability items
 
-KO: **없음.** 레이스 중 아이템 박스에서 나오는 아이템(바나나·등껍질·번개·자석 등 14종)은 순위에 따라 결정되는 플레이 요소로, 유료 재화·광고와 무관하며 소지·거래·구매가 불가능합니다. 유료 상품은 확률 요소가 없는 단일 해금 상품(remove-ads) 1종만 존재합니다.
-EN: **None.** Items from race item boxes (14 kinds, e.g. banana, shells, lightning) are gameplay elements weighted by race position; they cannot be bought, owned or traded and are unrelated to VX or ads. The only paid product is a single non-random unlock (remove-ads).
+KO: **없음.** 레이스 중 아이템 박스에서 나오는 아이템(바나나·등껍질·번개·자석 등 14종)은 순위에 따라 결정되는 플레이 요소로, 유료 재화·광고와 무관하며 소지·거래·구매가 불가능합니다. 유료 상품은 확률 요소가 없는 단일 해금 상품(premium-garage) 1종만 존재하며, 구매 시 해금되는 꾸미기 항목 목록이 상점 표기와 게임 내 차고에 그대로 고정 공개됩니다(뽑기·랜덤 지급 없음).
+EN: **None.** Items from race item boxes (14 kinds, e.g. banana, shells, lightning) are gameplay elements weighted by race position; they cannot be bought, owned or traded and are unrelated to VX or ads. The only paid product is a single non-random unlock (premium-garage): it opens a fixed, fully disclosed list of cosmetic options, with no draws and no randomised rewards.
 
 ## 7. 자진신고 / Self-declaration
 
@@ -100,7 +100,7 @@ EN: A fully procedural 3D kart racer with zero downloaded assets (bundle ~1.1 MB
 ## 제출 전 체크리스트 / Pre-submission checklist
 
 - [ ] Verse8 게시 URL 확정 후 §1 기입, 공개 상태 Public 확인
-- [ ] 크리에이터 콘솔에 `remove-ads`(100 VX, non-consumable, limit 1)와 `rewarded_premium_kart` 등록·활성
+- [ ] 크리에이터 콘솔에 `premium-garage`(100 VX, non-consumable, limit 1)와 `rewarded_premium_kart` 등록·활성 (구 `remove-ads`는 비활성화)
 - [ ] 호스트 안에서 실 광고 1회 → 이용권 +3 표시, 실 결제 1회 → 잠금 배지 해제 확인 (다른 기기 재로그인 포함)
 - [ ] 실기기(Android 1 + iOS 1) 30분 터치 플레이 후 기기명 §2 기입
 - [ ] 전면 광고 요건이 필수인지 담당자 확인 (필수면 결과 화면 진입 시 1회 추가)

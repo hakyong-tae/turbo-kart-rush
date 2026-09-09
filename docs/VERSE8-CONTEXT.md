@@ -11,7 +11,7 @@
 2. `@verse8/ads`는 **정적 import** 유지, `package.json` deps에서 빼지 말 것(동적 import는 번들에서 트리셰이킹된 사례 있음).
 3. `src/verse8/server.ts`의 `@agent8/gameserver/dist/src/store/useGameServerStore` 딥임포트는 **리터럴 문자열**로만. `GameServer.connect()` 직접 호출 금지(스토어 경유) — 어기면 창 전환마다 재접속 폭풍.
 4. `src/verse8/embed.ts`의 GAME_SIZE 핸드셰이크 제거 금지(iframe 뷰포트 0 방지).
-5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `adsRemoved` / `premiumRaces` / `nickname` / `grants`. **광고권·구매 상태는 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
+5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환). **광고권·구매 상태는 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
 6. `src/core/**`는 프로즌 계약(추가만, 값 변경 금지). 튠 값은 `src/core/balance.ts`.
 7. 닉네임 규칙은 `src/verse8/nickname.ts`와 `server.js` 두 곳에 복제 — 함께 수정.
 
@@ -24,7 +24,7 @@ npm run build       # dist/ ; grep -c '"@agent8/gameserver' dist/assets/*.js →
 ```
 
 ## 4. 크리에이터 콘솔 체크리스트
-- VXShop 상품: id **`remove-ads`**, 100 VX, 비소모(non-consumable), Lifetime Limit 1. 게임 내 표기 "전 차량 해금".
+- VXShop 상품: id **`premium-garage`**, 100 VX, 비소모(non-consumable), Lifetime Limit 1. 게임 내 표기 "차고 해금 · 100 VX" — 차고의 유료 항목(라이버리·언더글로우·트레일·배기 화염·휠·엔진음)과 프리미엄 카트 3종 영구 해금. 구 id `remove-ads`는 폐기(구매자 0명)이나 서버는 계속 인정.
 - 광고 placement: **`rewarded_premium_kart`** (리워드). 전면 광고 없음.
 - 서버 함수 배포 확인: `ping`, `submitTime`, `getTopTimes`, `getMyEntitlements`, `grantPremiumRaces`, `consumePremiumRace`, `setNickname`, `$onItemPurchased`.
 
