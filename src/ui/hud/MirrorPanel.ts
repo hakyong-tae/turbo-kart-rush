@@ -2,6 +2,10 @@
  * Rear-view mirror frame (bottom-left PiP). Scans behind the player for closing karts and
  * incoming shells, shows the frame + a one-line label, and exposes the view rectangle the
  * game renders the rear camera into (`src/fx/RearView.ts`).
+ *
+ * The label names the threat and nothing else. A distance in metres is a number to read at the
+ * exact moment the player should be looking at the road, and the frame's own colour and pulse
+ * already say how close it is.
  */
 import type { HazardInfo, IKart, ItemType } from '../../core/types';
 import { t } from '../../core/i18n';
@@ -78,7 +82,7 @@ export class MirrorPanel {
         bestHazard = dist;
         icon = h.type;
         level = h.type === 'blue_shell' ? 'blue' : 'danger';
-        text = h.type === 'blue_shell' ? t('hud.mirror.blue') : t('hud.mirror.shell', { d: Math.round(dist) });
+        text = h.type === 'blue_shell' ? t('hud.mirror.blue') : t('hud.mirror.shell');
       }
     }
     if (!icon) {
@@ -98,7 +102,7 @@ export class MirrorPanel {
           bestKart = dist;
           icon = 'kart';
           level = dist < 5 ? 'warn-near' : 'warn';
-          text = t('hud.mirror.kart', { d: Math.round(dist) });
+          text = t('hud.mirror.kart');
         }
       }
     }

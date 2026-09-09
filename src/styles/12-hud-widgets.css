@@ -1,5 +1,5 @@
 /* HUD widgets: rear mirror PiP, slipstream meter, start charge, team tally/results */
-/* Rear-view mirror warning (top-right, under the timer) */
+/* Rear-view mirror — appearance only; the PiP block further down owns where it sits. */
 .hud-mirror {
   display: none;
   align-items: center;
@@ -193,6 +193,8 @@
   border-radius: 14px;
   overflow: hidden;
   background: rgba(8, 10, 22, 0.35);
+  /* The left thumb stick lives in this corner; the mirror must never swallow a touch. */
+  pointer-events: none;
 }
 .hud-mirror-view {
   width: 100%;
@@ -204,16 +206,20 @@
   align-items: center;
   gap: 8px;
   padding: 4px 10px 5px 8px;
+  min-width: 0;
   background: rgba(8, 10, 22, 0.78);
   font-size: 13px;
 }
 .hud-mirror.rumble {
   animation: mirror-rumble 0.35s linear, mirror-pulse 0.32s ease-in-out infinite;
 }
+/* Touch layout used to move the mirror to the TOP-left, where it sat on the standings board and
+   read as a second mirror. It belongs in the same corner as everywhere else: bottom-left, above
+   the place numeral. Kept narrow because a phone has little room to spare. */
 #ui.touch .hud-mirror {
   left: var(--hud-pad);
-  top: calc(var(--hud-pad) + 66px + env(safe-area-inset-top, 0px));
-  bottom: auto;
+  top: auto;
+  bottom: calc(var(--hud-pad) + 90px + env(safe-area-inset-bottom, 0px));
   width: 150px;
 }
 @media (max-height: 480px) {

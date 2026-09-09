@@ -3,8 +3,8 @@
  *
  * Tier rule, enforced in one place (`sanitize`, on save and on every render): colours are free,
  * liveries and effects need the garage pass. Locked entries are shown, not hidden — a player who
- * cannot see what a purchase buys has no reason to make it — and tapping one auditions it on the
- * live kart for three seconds before it snaps back.
+ * cannot see what a purchase buys has no reason to make it — and tapping one puts it on the live
+ * kart briefly while the header says the garage pass is what unlocks it.
  *
  * The draft look is local until SAVE. Nothing is written to the account while browsing, so
  * backing out of the panel leaves the saved kart untouched.
@@ -340,8 +340,10 @@ export class GaragePanel {
     const restore = this.audition ? this.audition.restore : { ...this.draft };
     this.cancelAudition(false);
     // Rendered with the gate open: the audition is the one moment a free player sees paid work.
+    // The label states the requirement rather than counting the seconds down — what the player
+    // needs to know is that this costs the garage pass, not that the peek is about to end.
     this.preview.setCosmetics(sanitize(look, true));
-    this.stateChip.textContent = t('garage.preview');
+    this.stateChip.textContent = t('garage.needsPass');
     this.stateChip.classList.add('auditioning');
     this.audition = {
       restore,

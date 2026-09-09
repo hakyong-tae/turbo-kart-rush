@@ -73,12 +73,17 @@ export class RearView {
     renderer.shadowMap.autoUpdate = prevShadowAuto;
 
     // Pass 2: mirrored quad into the HUD frame's rectangle on the default framebuffer.
+    //
+    // These are CSS pixels, NOT device pixels: setViewport/setScissor multiply by the renderer's
+    // pixel ratio themselves. Pre-multiplying here drew the mirror at twice its size and twice its
+    // offset on any screen with dpr > 1 — on a phone that threw the image up into the top-left
+    // corner while the HUD frame stayed at the bottom, so the game appeared to have two mirrors.
+    // Only the y axis is converted, because GL counts from the bottom of the framebuffer.
     renderer.setRenderTarget(prevTarget);
-    const dpr = renderer.getPixelRatio();
-    const px = Math.round(rect.x * dpr);
-    const py = Math.round((canvasCssHeight - rect.y - rect.h) * dpr);
-    const pw = Math.max(1, Math.round(rect.w * dpr));
-    const ph = Math.max(1, Math.round(rect.h * dpr));
+    const px = Math.round(rect.x);
+    const py = Math.round(canvasCssHeight - rect.y - rect.h);
+    const pw = Math.max(1, Math.round(rect.w));
+    const ph = Math.max(1, Math.round(rect.h));
     renderer.autoClear = false;
     renderer.setScissorTest(true);
     renderer.setViewport(px, py, pw, ph);
