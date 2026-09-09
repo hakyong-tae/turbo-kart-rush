@@ -71,6 +71,7 @@ import { OnlinePanel } from '../ui/OnlinePanel';
 import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
+import { sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { getCosmetics, getEntitlements, refreshEntitlements, consumePremiumRace as consumeTicket } from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
@@ -419,7 +420,8 @@ export class Game {
     const nick = ent.nickname || 'RACER';
     const c = new OnlineController(
       mode,
-      { nick, characterId: this.mainMenu.highlightedCharacter.id },
+      // The look travels with the identity: everyone in the room paints this kart the same way.
+      { nick, characterId: this.mainMenu.highlightedCharacter.id, cos: ent.cos },
       { trackId: TRACKS[0]?.id ?? 'sunny_circuit', difficulty: 'normal', laps: DEFAULT_LAPS },
     );
     c.onRaceStart = (settings) => {
@@ -1046,9 +1048,15 @@ export class Game {
     const difficulty: Difficulty = settings.difficulty;
     if (settings.online) {
       const slots = assignSlotCharacters(settings.online.roster, CHARACTERS as readonly CharacterDef[]);
-      const mine = getCosmetics();
+      // Remote looks come off the frozen roster. They were sanitized against their owner's
+      // entitlement when saved, so the gate here only rejects unknown ids and stray colours.
+      const looks = new Map<number, KartCosmetics>();
+      for (const entry of settings.online.roster) {
+        if (entry.cos) looks.set(entry.kartId, sanitize(unpackCosmetics(entry.cos), true));
+      }
+      looks.set(localKartId, getCosmetics());
       for (let id = 0; id < KART_COUNT; id++) {
-        karts.push(new Kart(id, slots[id], id === localKartId, id === localKartId ? mine : undefined));
+        karts.push(new Kart(id, slots[id], id === localKartId, looks.get(id)));
       }
       if (settings.online.role === 'host') {
         for (let id = 0; id < karts.length; id++) {

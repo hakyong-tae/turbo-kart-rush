@@ -222,3 +222,73 @@
     max-height: 30vh;
   }
 }
+
+/* Showcase: the saved look turns up wherever other players see you. */
+.lb-cell.lb-kart {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.lb-kart-thumb {
+  width: 42px;
+  height: 27px;
+  object-fit: contain;
+  flex: none;
+}
+.lb-kart-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The row gains a thumbnail column ahead of the name (base grid lives in 10-verse8-panels). */
+.online-player {
+  grid-template-columns: auto 1fr 8em 7em;
+}
+.online-player-thumb {
+  width: 44px;
+  height: 28px;
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.online-player-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.results-winner {
+  display: block;
+  width: 176px;
+  max-width: 44%;
+  margin: 2px auto -6px;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.5));
+}
+
+/* Badge glyphs inherit the row's colour, so friend-or-foe tinting carries through. */
+.badge-glyph {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 5px;
+  flex: none;
+  opacity: 0.92;
+}
+.garage-option-badge {
+  width: 15px;
+  height: 15px;
+  margin-right: 2px;
+}
+.garage-option-name {
+  flex: 1;
+  min-width: 0;
+}
+.standing-name,
+.lb-cell.lb-name,
+.online-player-nick {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}

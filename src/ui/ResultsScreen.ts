@@ -7,6 +7,10 @@ import { SIDE_COLORS, computeTeamResult, isTeamMode, pointsFor, teamOf } from '.
 import { events } from '../core/events';
 import { formatRaceTime } from '../core/math';
 import { localOrdinal, t } from '../core/i18n';
+import { unpackCosmetics } from '../core/cosmetics';
+import { badgeElement } from './badges';
+import { CHARACTERS } from '../kart/roster';
+import { getLookThumbnail } from './kartThumbnails';
 import { button, cssHex, el, FocusRing, TextField } from './dom';
 
 const CONFETTI_COUNT = 56;
@@ -28,12 +32,15 @@ export class ResultsScreen {
   private readonly focus: FocusRing;
   private visible = false;
   private recordsButton!: HTMLButtonElement;
+  private readonly winnerShot: HTMLImageElement;
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
     this.confetti = el('div', 'confetti', undefined, this.rootNode);
     this.panel = el('div', 'glass panel results-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('results.kicker'), this.panel);
+    // The winner's actual kart, garage look and all — the reward for building one is being seen.
+    this.winnerShot = el('img', 'results-winner hidden', undefined, this.panel);
     this.heading = new TextField(el('h2', 'panel-title results-title', '', this.panel));
     this.subheading = new TextField(el('div', 'results-sub', '', this.panel));
     this.rankBanner = new TextField(el('div', 'results-rank hidden', '', this.panel));
@@ -58,6 +65,7 @@ export class ResultsScreen {
     this.confetti.replaceChildren();
     const player = standings.find((s) => s.isPlayer);
     const place = player ? player.place : standings.length;
+    this.showWinnerKart(standings[0]);
     const winnerTime = standings.length > 0 ? standings[0].finishTime : 0;
     const teamMode = isTeamMode(mode);
     const teamResult = teamMode ? computeTeamResult(standings, mode) : null;
@@ -110,7 +118,10 @@ export class ResultsScreen {
       el('span', 'standing-place', localOrdinal(s.place), row);
       const chip = el('span', 'standing-chip', undefined, row);
       chip.style.background = cssHex(teamMode ? SIDE_COLORS[ally ? 'ally' : 'rival'] : s.color);
-      el('span', 'standing-name', s.name + (s.isPlayer ? `  ${t('results.you')}` : ''), row);
+      const nameCell = el('span', 'standing-name', undefined, row);
+      const badge = badgeElement(unpackCosmetics(s.cos).badge);
+      if (badge) nameCell.appendChild(badge);
+      nameCell.appendChild(document.createTextNode(s.name + (s.isPlayer ? `  ${t('results.you')}` : '')));
       const time = s.finishTime;
       const label =
         !isFinite(time) || time <= 0
@@ -168,6 +179,15 @@ export class ResultsScreen {
     else if (i === 1) this.onChangeTrack?.();
     else if (i === 3) this.onRecords?.();
     else this.onMainMenu?.();
+  }
+
+  /** Shows the winner's kart when they were wearing something; hidden for a bare default look. */
+  private showWinnerKart(winner: RaceStanding | undefined): void {
+    const url = winner?.characterId
+      ? getLookThumbnail(winner.characterId, winner.cos, CHARACTERS.find((c) => c.id === winner.characterId))
+      : undefined;
+    this.winnerShot.classList.toggle('hidden', !url);
+    if (url) this.winnerShot.src = url;
   }
 
   private spawnConfetti(): void {

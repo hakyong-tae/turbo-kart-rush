@@ -10,6 +10,7 @@
  * backing out of the panel leaves the saved kart untouched.
  */
 import {
+  BADGES,
   ENGINE_PACKS,
   FLAMES,
   PATTERNS,
@@ -20,6 +21,7 @@ import {
   WHEEL_FX,
   sanitize,
   usesPaid,
+  type BadgeId,
   type CatalogueEntry,
   type KartCosmetics,
 } from '../core/cosmetics';
@@ -27,6 +29,7 @@ import { t } from '../core/i18n';
 import type { CharacterDef, InputState } from '../core/types';
 import { getCharacter } from '../kart/roster';
 import { getCosmetics, getEntitlements, saveCosmetics, serverReachable } from '../verse8/entitlements';
+import { badgeElement } from './badges';
 import { button, el } from './dom';
 import { GaragePreview } from './garage/GaragePreview';
 import { showToast } from './toast';
@@ -61,9 +64,9 @@ const TABS: readonly TabDef[] = [
   { id: 'flame', field: 'flame', list: FLAMES },
   { id: 'wheelFx', field: 'wheelFx', list: WHEEL_FX },
   { id: 'enginePack', field: 'enginePack', list: ENGINE_PACKS },
-  // Badges are catalogued and saved but have no renderer yet: they belong next to the player's
-  // name (standings, results, records), which lands with the showcase surfaces. Selling a tab
-  // that does nothing visible would be a lie, so it stays out until then.
+  // A badge is a name-tag thing: it shows beside the player's name in the results, the records
+  // board and the lobby rather than on the kart, so the preview here is the label, not the model.
+  { id: 'badge', field: 'badge', list: BADGES },
   { id: 'preset' },
 ];
 
@@ -240,6 +243,10 @@ export class GaragePanel {
       const b = el('button', `garage-option${locked ? ' locked' : ''}`, undefined, grid);
       b.type = 'button';
       b.dataset.id = entry.id;
+      if (group === 'badge') {
+        const glyph = badgeElement(entry.id as BadgeId, 'badge-glyph garage-option-badge');
+        if (glyph) b.appendChild(glyph);
+      }
       el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
       if (locked) el('span', 'garage-option-lock', t('garage.locked'), b);
       b.addEventListener('click', () => {

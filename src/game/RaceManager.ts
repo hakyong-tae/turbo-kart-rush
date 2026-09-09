@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { Difficulty, IKart, ITrack, RaceSettings, RaceStanding, TrackSample } from '../core/types';
 import { BALANCE } from '../core/balance';
 import { events } from '../core/events';
+import { packCosmetics } from '../core/cosmetics';
 import { teamOf } from '../core/teams';
 import { CHECKPOINT_COUNT, COUNTDOWN_STEP_SECONDS, VOID_Y } from '../core/constants';
 import { seededRandom, trackDelta, wrap01 } from '../core/math';
@@ -218,6 +219,8 @@ export class RaceManager {
         finishTime: s.finished ? s.finishTime : -1,
         isPlayer: s.isPlayer,
         team: teamOf(s.id),
+        characterId: s.character.id,
+        cos: packCosmetics(tr.kart.cosmetics ?? {}) || undefined,
       });
     }
     out.sort((a, b) => a.place - b.place);

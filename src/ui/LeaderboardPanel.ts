@@ -9,6 +9,9 @@ import { formatRaceTime } from '../core/math';
 import { getEntitlements } from '../verse8/entitlements';
 import { inVerse8Host } from '../verse8/embed';
 import { fetchTopTimes, type SubmitResult } from '../verse8/server';
+import { unpackCosmetics } from '../core/cosmetics';
+import { badgeElement } from './badges';
+import { getLookThumbnail } from './kartThumbnails';
 import { button, el, TextField } from './dom';
 
 const ROWS = 10;
@@ -134,10 +137,23 @@ export class LeaderboardPanel {
       const isMe = top.myRank === i + 1 && (myName === '' || row.name === myName || row.timeMs === top.myBest);
       if (isMe) line.classList.add('you');
       el('span', 'lb-cell lb-rank', String(i + 1), line);
-      el('span', 'lb-cell lb-name', row.name, line);
+      const nameCell = el('span', 'lb-cell lb-name', undefined, line);
+      const badge = badgeElement(unpackCosmetics(row.cos).badge);
+      if (badge) nameCell.appendChild(badge);
+      nameCell.appendChild(document.createTextNode(row.name));
       el('span', 'lb-cell lb-time', formatRaceTime(row.timeMs / 1000), line);
       const kart = this.characters.find((c) => c.id === row.characterId);
-      el('span', 'lb-cell lb-kart', kart ? kart.name : row.characterId, line);
+      const kartCell = el('span', 'lb-cell lb-kart', undefined, line);
+      // The kart this time was actually set with, garage look and all: the record board is the
+      // one place a stranger sees what you built.
+      const look = getLookThumbnail(row.characterId, row.cos, kart);
+      if (look) {
+        const img = el('img', 'lb-kart-thumb', undefined, kartCell);
+        img.src = look;
+        img.alt = kart ? kart.name : row.characterId;
+        img.loading = 'lazy';
+      }
+      el('span', 'lb-kart-name', kart ? kart.name : row.characterId, kartCell);
       el('span', 'lb-cell lb-diff', t(`diff.${row.difficulty}` as StringKey), line);
     });
     if (submit?.updated && submit.rank) {

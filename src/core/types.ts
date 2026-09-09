@@ -6,6 +6,7 @@
  * Adding new *optional* members is allowed if your subsystem needs them, but
  * prefer keeping subsystem-private data inside your own folder.
  */
+import type { KartCosmetics } from './cosmetics';
 import type * as THREE from 'three';
 
 // ---------------------------------------------------------------------------
@@ -395,6 +396,8 @@ export interface IKart {
   readonly object: THREE.Group;
   /** Latest input applied to this kart. */
   readonly input: InputState;
+  /** Contract addition (garage): the look this kart wears. Empty = the character's own colours. */
+  readonly cosmetics?: KartCosmetics;
 
   setInput(input: InputState): void;
   /** Advance physics by dt (fixed step). Handles ground, walls, drift, boost, hop, kart-kart bumps. */
@@ -571,7 +574,7 @@ export interface RaceSettings {
 /** Contract addition (online multiplayer). Kart slots come from the roster; the rest are AI. */
 export interface OnlineRaceConfig {
   role: 'host' | 'client';
-  roster: readonly { account: string; nick: string; characterId: string; kartId: number }[];
+  roster: readonly { account: string; nick: string; characterId: string; kartId: number; cos?: string }[];
   localKartId: number;
   /** Items on (host simulates, clients mirror). */
   items: boolean;
@@ -636,4 +639,7 @@ export interface RaceStanding {
   isPlayer: boolean;
   /** Contract addition (gameplay-4): team colour in team modes (derived from kart id when absent). */
   team?: Team;
+  /** Contract addition (garage): who drove, and the packed look they drove in. */
+  characterId?: string;
+  cos?: string;
 }

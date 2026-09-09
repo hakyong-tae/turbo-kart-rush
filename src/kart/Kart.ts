@@ -72,6 +72,8 @@ function approachZero(v: number, step: number): number {
 export class Kart implements IKart {
   readonly state: KartState;
   readonly object: THREE.Group;
+  /** The look currently worn. Read by the results screen; empty means the character's default. */
+  cosmetics: KartCosmetics = {};
   readonly input: InputState = createEmptyInput();
 
   private readonly parts: KartModelPartsEx;
@@ -192,7 +194,8 @@ export class Kart implements IKart {
     this.object.add(this.parts.underglow.mesh);
     // Announced even when empty: the FX and audio caches key on kart id, and a fresh kart in that
     // slot must clear whatever the last race's owner was wearing.
-    events.emit('kart:cosmetics', { kartId: id, cos: cosmetics ?? {} });
+    this.cosmetics = cosmetics ?? {};
+    events.emit('kart:cosmetics', { kartId: id, cos: this.cosmetics });
   }
 
   // ===========================================================================
@@ -452,6 +455,7 @@ export class Kart implements IKart {
 
   /** Repaint / re-livery this kart. Used by the garage preview and by net cosmetics. */
   applyCosmetics(cos: KartCosmetics): void {
+    this.cosmetics = cos;
     this.parts.applyCosmetics(cos);
     events.emit('kart:cosmetics', { kartId: this.state.id, cos });
   }

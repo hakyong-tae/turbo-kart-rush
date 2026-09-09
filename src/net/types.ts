@@ -11,6 +11,8 @@ export interface RoomPlayer {
   ready: boolean;
   joinedAt: number;
   ping?: number;
+  /** Packed garage look (src/core/cosmetics.ts). Absent for a player who never opened the garage. */
+  cos?: string;
 }
 
 /** Whole room state (agent8 roomState — flat keys: scalars + `p_{account}`). */

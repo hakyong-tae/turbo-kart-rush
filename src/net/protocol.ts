@@ -265,6 +265,8 @@ export interface RosterEntry {
   nick: string;
   characterId: string;
   kartId: number;
+  /** Packed garage look, so every client paints this player's kart the same way. */
+  cos?: string;
 }
 
 export interface StartMsg {

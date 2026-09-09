@@ -9,6 +9,8 @@ export interface LobbyPlayerView {
   account: string;
   nick: string;
   characterId: string;
+  /** Packed garage look, shown in the lobby list and carried into the race roster. */
+  cos?: string;
   ready: boolean;
   isHost: boolean;
   isMe: boolean;
@@ -41,7 +43,7 @@ export class Lobby {
 
   constructor(
     private readonly transport: Transport,
-    private readonly me: { nick: string; characterId: string },
+    private readonly me: { nick: string; characterId: string; cos?: string },
     private readonly defaults: { trackId: string; difficulty: Difficulty; laps: number },
   ) {
     transport.onRoomState((s) => {
@@ -155,6 +157,7 @@ export class Lobby {
       characterId: this.me.characterId,
       ready: false,
       joinedAt: Date.now(),
+      cos: this.me.cos,
     };
     patch['p_' + this.transport.account] = mine;
     await this.transport.updateRoomState(patch);
@@ -166,7 +169,8 @@ export class Lobby {
 
   private async patchMe(patch: Partial<RoomPlayer>): Promise<void> {
     const cur = this.state['p_' + this.transport.account] as RoomPlayer | undefined;
-    const base: RoomPlayer = cur ?? { nick: this.me.nick, characterId: this.me.characterId, ready: false, joinedAt: Date.now() };
+    const base: RoomPlayer =
+      cur ?? { nick: this.me.nick, characterId: this.me.characterId, ready: false, joinedAt: Date.now(), cos: this.me.cos };
     await this.transport.updateRoomState({ ['p_' + this.transport.account]: { ...base, ...patch } });
   }
 
@@ -193,6 +197,7 @@ export class Lobby {
         account,
         nick: player.nick,
         characterId: player.characterId,
+        cos: typeof player.cos === 'string' ? player.cos : undefined,
         ready: !!player.ready,
         isHost: account === hostAccount,
         isMe: account === this.transport.account,

@@ -62,7 +62,7 @@ export class OnlineController {
 
   constructor(
     readonly mode: OnlineMode,
-    private readonly me: { nick: string; characterId: string },
+    private readonly me: { nick: string; characterId: string; cos?: string },
     defaults: { trackId: string; difficulty: Difficulty; laps: number },
   ) {
     if (mode === 'loopback') {
@@ -116,7 +116,13 @@ export class OnlineController {
     if (!v.isHost) return;
     this.hostEpoch++;
     const roster = buildRoster(
-      v.players.map((p) => ({ account: p.account, nick: p.nick, characterId: p.characterId, joinedAt: p.joinedAt })),
+      v.players.map((p) => ({
+        account: p.account,
+        nick: p.nick,
+        characterId: p.characterId,
+        joinedAt: p.joinedAt,
+        cos: p.cos,
+      })),
       v.hostAccount,
     );
     const msg: StartMsg = { trackId: v.trackId, difficulty: v.difficulty, laps: v.laps, roster, hostEpoch: this.hostEpoch, items: v.items };

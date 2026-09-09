@@ -10,6 +10,9 @@ import type { LobbyView } from '../net/lobby';
 import type { OnlineController } from '../net/online';
 import type { RoomListing } from '../net/types';
 import { canRace } from '../verse8/entitlements';
+import { unpackCosmetics } from '../core/cosmetics';
+import { badgeElement } from './badges';
+import { getLookThumbnail } from './kartThumbnails';
 import { button, el, TextField } from './dom';
 import { showToast } from './toast';
 
@@ -296,8 +299,20 @@ export class OnlinePanel {
     this.playersBox.replaceChildren();
     for (const p of v.players) {
       const row = el('div', 'online-player' + (p.isMe ? ' me' : ''), undefined, this.playersBox);
-      el('span', 'online-player-nick', p.nick + (p.isHost ? ` · ${t('online.host')}` : ''), row);
-      el('span', 'online-player-kart', this.characters.find((ch) => ch.id === p.characterId)?.name ?? p.characterId, row);
+      const character = this.characters.find((ch) => ch.id === p.characterId);
+      // Everyone's garage look, side by side, before anyone turns a wheel.
+      const look = getLookThumbnail(p.characterId, p.cos, character);
+      const thumb = el('span', 'online-player-thumb', undefined, row);
+      if (look) {
+        const img = el('img', undefined, undefined, thumb);
+        img.src = look;
+        img.alt = character?.name ?? p.characterId;
+      }
+      const nickCell = el('span', 'online-player-nick', undefined, row);
+      const badge = badgeElement(unpackCosmetics(p.cos).badge);
+      if (badge) nickCell.appendChild(badge);
+      nickCell.appendChild(document.createTextNode(p.nick + (p.isHost ? ` · ${t('online.host')}` : '')));
+      el('span', 'online-player-kart', character?.name ?? p.characterId, row);
       el('span', 'online-player-ready ' + (p.ready || p.isHost ? 'on' : ''), p.isHost ? t('online.host') : p.ready ? t('online.ready') : t('online.notReady'), row);
     }
     const me = v.players.find((p) => p.isMe);

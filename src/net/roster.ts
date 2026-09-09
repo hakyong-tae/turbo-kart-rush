@@ -11,6 +11,7 @@ export interface RosterInput {
   nick: string;
   characterId: string;
   joinedAt: number;
+  cos?: string;
 }
 
 /** Host first, then by joinedAt (ties broken by account), capped at KART_COUNT humans. */
@@ -24,7 +25,7 @@ export function buildRoster(players: readonly RosterInput[], hostAccount: string
       return a.account < b.account ? -1 : a.account > b.account ? 1 : 0;
     })
     .slice(0, KART_COUNT);
-  return sorted.map((p, i) => ({ account: p.account, nick: p.nick, characterId: p.characterId, kartId: i }));
+  return sorted.map((p, i) => ({ account: p.account, nick: p.nick, characterId: p.characterId, kartId: i, cos: p.cos }));
 }
 
 /**
