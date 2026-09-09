@@ -44,6 +44,9 @@ export const coralCoast: TrackDefinition = {
   wallHalfWidthFactor: 1.7,
   itemBoxRows: [0.1, 0.36, 0.56, 0.8],
   boostPads: [0.27, 0.5, 0.9],
+  // The pier: planks over open water, so the barriers stop at the ramp and start again at the
+  // stadium turn. Straight and wide — you only go in if somebody puts you there.
+  voidRanges: [[0.455, 0.555]],
   environment: {
     skyTop: 0x1f7fd6,
     skyHorizon: 0xa8e4ff,

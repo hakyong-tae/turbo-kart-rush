@@ -10,7 +10,7 @@ import { events } from '../core/events';
 import { packCosmetics } from '../core/cosmetics';
 import { teamOf } from '../core/teams';
 import { CHECKPOINT_COUNT, COUNTDOWN_STEP_SECONDS, VOID_Y } from '../core/constants';
-import { seededRandom, trackDelta, wrap01 } from '../core/math';
+import { clamp, lerp, seededRandom, smoothstep, trackDelta, wrap01 } from '../core/math';
 
 export type RacePhase = 'grid' | 'countdown' | 'racing' | 'complete';
 
@@ -22,6 +22,22 @@ const WRONG_WAY_SPEED = -1;
 const VOID_SECONDS = 1.5;
 const STUCK_SPEED = 0.5;
 const RESPAWN_FREEZE_SECONDS = 0.6;
+/**
+ * Rescue beats: winch up, fly back, set down. Kept brisk — being fished out is a moment, and a
+ * long one is just a penalty the player watches.
+ */
+const RESCUE_LIFT = 0.5;
+const RESCUE_DROP = 0.35;
+/**
+ * The carry is paced by distance, not a fixed beat: checkpoints sit about 96 m apart, and flying
+ * that in a fixed second reads as a slingshot rather than a drone. Clamped at both ends so a
+ * short hop still has weight and the long way back never becomes a penalty you watch.
+ */
+const RESCUE_CARRY_SPEED = 55;
+const RESCUE_CARRY_MIN = 0.4;
+const RESCUE_CARRY_MAX = 1.6;
+/** Carry altitude above the higher of the two ends. */
+const RESCUE_HEIGHT = 6;
 const PLACE_DEBOUNCE_SECONDS = 0.3;
 /** A checkpoint counts as reached while the kart is within this many sectors past it. */
 const CHECKPOINT_WINDOW_SECTORS = 1.9;
@@ -41,6 +57,22 @@ interface Tracker {
   throttleStreak: number;
   aiStartBoost: boolean;
   respawnCount: number;
+  /** Set while a drone is carrying this kart back to the track. */
+  rescue: Rescue | null;
+}
+
+/**
+ * A rescue in flight. The kart is frozen for the whole of it and its position is driven from
+ * here, so what the drone appears to carry and what the physics believes are the same thing.
+ */
+interface Rescue {
+  t: number;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  quat: THREE.Quaternion;
+  heading: number;
+  cruiseY: number;
+  carry: number;
 }
 
 function makeSampleScratch(): TrackSample {
@@ -111,6 +143,7 @@ export class RaceManager {
         throttleStreak: 0,
         aiStartBoost: !kart.state.isPlayer && rng() < aiBoostChance,
         respawnCount: 0,
+        rescue: null,
       };
       this.trackers.push(tr);
       this.order.push(tr);
@@ -342,6 +375,12 @@ export class RaceManager {
     const kart = tr.kart;
     const s = kart.state;
 
+    // A rescue owns the kart completely: no checkpoints, no void or stuck checks, no physics.
+    if (tr.rescue) {
+      this.updateRescue(tr, dt);
+      return;
+    }
+
     // Respawn freeze.
     if (tr.respawnFreeze > 0) {
       tr.respawnFreeze -= dt;
@@ -538,6 +577,10 @@ export class RaceManager {
     }
   }
 
+  /**
+   * Calls a drone. The kart freezes where it is and is flown back to the last checkpoint; the
+   * placement itself happens in `landRescue` when the drone sets it down.
+   */
   private respawn(tr: Tracker): void {
     const kart = tr.kart;
     const s = kart.state;
@@ -556,7 +599,68 @@ export class RaceManager {
     this.tmpPos.y += 0.35;
     this.tmpEuler.set(0, heading, 0);
     this.tmpQuat.setFromEuler(this.tmpEuler);
-    kart.resetTo(this.tmpPos, this.tmpQuat);
+
+    tr.voidTimer = 0;
+    tr.stuckTimer = 0;
+    tr.wrongWayTimer = 0;
+    s.wrongWay = false;
+    kart.setFrozen(true);
+    tr.rescue = {
+      t: 0,
+      from: s.position.clone(),
+      to: this.tmpPos.clone(),
+      quat: this.tmpQuat.clone(),
+      heading,
+      cruiseY: Math.max(s.position.y, this.tmpPos.y) + RESCUE_HEIGHT,
+      carry: clamp(
+        Math.hypot(this.tmpPos.x - s.position.x, this.tmpPos.z - s.position.z) / RESCUE_CARRY_SPEED,
+        RESCUE_CARRY_MIN,
+        RESCUE_CARRY_MAX,
+      ),
+      // The checkpoint index is re-read on landing, so a rescue that outlives a lap still lands right.
+    };
+    events.emit('kart:rescueStart', { kartId: s.id });
+  }
+
+  /** Winch, carry, set down. The kart is frozen throughout, so driving its position is safe. */
+  private updateRescue(tr: Tracker, dt: number): void {
+    const r = tr.rescue;
+    if (!r) return;
+    const s = tr.kart.state;
+    r.t += dt;
+    const carryStart = RESCUE_LIFT;
+    const dropStart = carryStart + r.carry;
+    const done = dropStart + RESCUE_DROP;
+    if (r.t >= done) {
+      this.landRescue(tr, r);
+      return;
+    }
+    if (r.t < carryStart) {
+      const k = smoothstep(0, 1, r.t / RESCUE_LIFT);
+      s.position.set(r.from.x, lerp(r.from.y, r.cruiseY, k), r.from.z);
+    } else if (r.t < dropStart) {
+      const k = smoothstep(0, 1, (r.t - carryStart) / r.carry);
+      // A shallow arc over the middle: it reads as flying rather than sliding through the air.
+      s.position.set(
+        lerp(r.from.x, r.to.x, k),
+        r.cruiseY + Math.sin(k * Math.PI) * 0.8,
+        lerp(r.from.z, r.to.z, k),
+      );
+    } else {
+      const k = smoothstep(0, 1, (r.t - dropStart) / RESCUE_DROP);
+      s.position.set(r.to.x, lerp(r.cruiseY, r.to.y, k), r.to.z);
+    }
+    // Swing round to face the right way while hanging, so it lands ready to drive.
+    s.quaternion.slerp(r.quat, 1 - Math.exp(-5 * dt));
+  }
+
+  private landRescue(tr: Tracker, r: Rescue): void {
+    const kart = tr.kart;
+    const s = kart.state;
+    const n = this.checkpointT.length;
+    const idx = (tr.nextCheckpoint - 1 + n) % n;
+    tr.rescue = null;
+    kart.resetTo(r.to, r.quat);
     s.trackT = this.checkpointT[idx];
     s.wrongWay = false;
     tr.wrongWayTimer = 0;
@@ -565,6 +669,7 @@ export class RaceManager {
     tr.respawnCount++;
     kart.setFrozen(true);
     tr.respawnFreeze = RESPAWN_FREEZE_SECONDS;
-    events.emit('kart:respawn', { kartId: s.id, position: this.tmpPos.clone() });
+    events.emit('kart:rescueEnd', { kartId: s.id });
+    events.emit('kart:respawn', { kartId: s.id, position: r.to.clone() });
   }
 }

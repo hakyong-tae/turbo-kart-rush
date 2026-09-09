@@ -43,6 +43,10 @@ export const duneDrift: TrackDefinition = {
   halfWidths: [9, 9, 8.5, 8.5, 8.5, 8.5, 8.5, 9, 9, 9, 8.5, 8.5, 8, 7.5, 7.5, 9, 9, 9, 8.5, 8.5, 8.5, 8.5, 9, 9],
   wallHalfWidthFactor: 1.3,
   itemBoxRows: [0.12, 0.42, 0.62, 0.86],
+  // The banked shelf above the canyon: the road runs at y 5-6 here while the desert floor sits
+  // near zero, so the outside of the corner is a real drop rather than a kerb. Further down the
+  // descent the road meets the sand again and a gap there would read as nothing.
+  voidRanges: [[0.445, 0.525]],
   boostPads: [0.255, 0.55, 0.88],
   environment: {
     skyTop: 0x2b3a80,

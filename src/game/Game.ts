@@ -61,6 +61,7 @@ import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
 import { LeaderboardPanel, localBestKey, readLocalBest } from '../ui/LeaderboardPanel';
 import type { DailyChallenge } from '../core/daily';
 import { DailyPanel } from '../ui/DailyPanel';
+import { RescueDrones } from '../fx/RescueDrones';
 import { GaragePanel } from '../ui/GaragePanel';
 import type { CupView } from '../ui/ResultsScreen';
 import { SettingsPanel } from '../ui/SettingsPanel';
@@ -167,6 +168,7 @@ export class Game {
   private readonly audio: IAudioEngine;
   private readonly particles: IParticleSystem;
   private readonly rearView: RearView;
+  private readonly rescueDrones = new RescueDrones();
   private readonly orientationGate: OrientationGate;
   private readonly postfx: IPostFX;
   private postfxOk = true;
@@ -241,6 +243,7 @@ export class Game {
     this.audio.setSfxVolume(readVolume(VOLUME_KEY_SFX, 1));
     this.particles = new ParticleSystem();
     this.scene.add(this.particles.object);
+    this.scene.add(this.rescueDrones.object);
     this.postfx = new PostFX();
     this.rearView = new RearView();
     try {
@@ -338,6 +341,7 @@ export class Game {
     this.safe(() => this.particles.dispose());
     this.safe(() => this.postfx.dispose());
     this.safe(() => this.rearView.dispose());
+    this.safe(() => this.rescueDrones.dispose());
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.uiRoot.remove();
@@ -973,6 +977,7 @@ export class Game {
     r.followCamera.update(dt, player, lookBack);
     this.updateSun(r, player);
     this.particles.update(dt, r.karts, this.camera);
+    this.rescueDrones.update(dt, r.karts);
     this.audio.update(dt, r.karts, player.state.id, this.camera);
     const raceTime = r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime;
     r.hud.update(dt, player, r.karts, raceTime, r.raceManager.totalLaps, r.items.getHazards());
@@ -1087,6 +1092,7 @@ export class Game {
     this.results.hide();
     this.pauseMenu.hide();
     this.safe(() => this.particles.reset());
+    this.safe(() => this.rescueDrones.reset());
 
     let trackDef: TrackDefinition;
     try {
@@ -1450,6 +1456,7 @@ export class Game {
     r.followCamera.dispose();
     r.hud.dispose();
     this.safe(() => this.particles.reset());
+    this.safe(() => this.rescueDrones.reset());
     if (this.postfxOk) {
       this.safe(() => {
         this.postfx.setSpeedEffect(0);

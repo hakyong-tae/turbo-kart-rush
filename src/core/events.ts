@@ -44,6 +44,12 @@ export interface GameEvents {
   'kart:surfaceChange': { kartId: number; from: SurfaceType; to: SurfaceType };
   'kart:respawn': { kartId: number; position: THREE.Vector3 };
   /**
+   * A rescue drone has hold of this kart: it is frozen and being flown back to the last
+   * checkpoint. `kart:respawn` still fires at the end, when the kart is set down.
+   */
+  'kart:rescueStart': { kartId: number };
+  'kart:rescueEnd': { kartId: number };
+  /**
    * A kart's look was set or changed. Pushed rather than polled: the FX and audio layers cache
    * what they need from it, so nothing reads a cosmetics object per frame. Always sanitized.
    */
