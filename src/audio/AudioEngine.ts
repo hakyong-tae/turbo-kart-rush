@@ -42,6 +42,7 @@ export class AudioEngine implements IAudioEngine {
   private musicDuck: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private enginesBus: GainNode | null = null;
+  private enginesMuted = false;
   private enginesClip: WaveShaperNode | null = null;
   private uiBus: GainNode | null = null;
 
@@ -185,7 +186,7 @@ export class AudioEngine implements IAudioEngine {
     enginesClip.curve = softClipCurve(1.6, 2048);
     enginesClip.oversample = 'none';
     enginesClip.connect(master);
-    const enginesBus = bus(ENGINES_BUS_GAIN * this.sfxVolume, enginesClip);
+    const enginesBus = bus(this.enginesMuted ? 0 : ENGINES_BUS_GAIN * this.sfxVolume, enginesClip);
     const uiBus = bus(UI_BUS_GAIN * this.sfxVolume, master);
 
     this.master = master;
@@ -435,8 +436,25 @@ export class AudioEngine implements IAudioEngine {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     this.sfxBus?.gain.setTargetAtTime(this.sfxVolume, now, 0.05);
-    this.enginesBus?.gain.setTargetAtTime(ENGINES_BUS_GAIN * this.sfxVolume, now, 0.05);
+    this.applyEnginesGain(0.05);
     this.uiBus?.gain.setTargetAtTime(UI_BUS_GAIN * this.sfxVolume, now, 0.05);
+  }
+
+  /**
+   * Cuts every engine while the race is paused. The voices are oscillators that keep running on
+   * their own — nothing stops them just because the simulation did — so a paused game used to sit
+   * there droning. Fast ramp rather than an instant cut, which would click.
+   */
+  setEnginesMuted(muted: boolean): void {
+    if (this.enginesMuted === muted) return;
+    this.enginesMuted = muted;
+    this.applyEnginesGain(0.02);
+  }
+
+  private applyEnginesGain(ramp: number): void {
+    if (!this.ctx) return;
+    const target = this.enginesMuted ? 0 : ENGINES_BUS_GAIN * this.sfxVolume;
+    this.enginesBus?.gain.setTargetAtTime(target, this.ctx.currentTime, ramp);
   }
 
   setMuted(muted: boolean): void {

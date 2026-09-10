@@ -1411,6 +1411,7 @@ export class Game {
     this.prePauseState = this.state;
     this.setState('paused');
     this.pauseMenu.show();
+    this.safe(() => this.audio.setEnginesMuted(true));
     events.emit('game:pause', {});
   }
 
@@ -1420,6 +1421,7 @@ export class Game {
     this.accumulator = 0;
     this.pendingUseItem = false;
     this.setState(this.prePauseState);
+    this.safe(() => this.audio.setEnginesMuted(false));
     events.emit('game:resume', {});
   }
 
@@ -1427,7 +1429,9 @@ export class Game {
   private leavePause(): void {
     this.pauseMenu.hide();
     if (this.state === 'paused') {
-      // Other systems may have ducked audio / frozen timers on game:pause.
+      // Other systems may have ducked audio / frozen timers on game:pause. Restarting or quitting
+      // leaves the pause without resuming, so the engines have to be let back in here too.
+      this.safe(() => this.audio.setEnginesMuted(false));
       events.emit('game:resume', {});
     }
   }

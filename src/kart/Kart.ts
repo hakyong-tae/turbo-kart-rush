@@ -1057,11 +1057,16 @@ export class Kart implements IKart {
       }
       const pen = minDist - dist;
       const wB = 0.7 + 0.6 * o.character.stats.weight;
-      // A star kart is immovable: the other kart takes all of the separation and impulse.
+      // Two ways to become immovable in a contact, and they read the same way to a player: the
+      // kart that should not be pushed takes none of the separation or the impulse, and the other
+      // one takes all of it. A star kart is immovable, and so is a full-size kart against one the
+      // lightning shrank — running over something that small must not cost you anything.
       const aStar = s.isInvincible && !o.isInvincible;
       const bStar = o.isInvincible && !s.isInvincible;
-      const invA = aStar ? 0 : invA0;
-      const invB = bStar ? 0 : 1 / wB;
+      const aBig = o.isShrunk && !s.isShrunk;
+      const bBig = s.isShrunk && !o.isShrunk;
+      const invA = aStar || aBig ? 0 : invA0;
+      const invB = bStar || bBig ? 0 : 1 / wB;
       const invSum = invA + invB;
 
       // Positional separation weighted by inverse weight: heavy shoves light.

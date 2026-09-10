@@ -53,21 +53,28 @@ interface VoicePack {
   /** Level scales for the turbo whistle and the sub layer. */
   turbo: number;
   sub: number;
+  /**
+   * Combustion roar: filtered noise tracking the revs. This is what separates an engine from a
+   * synth — a piston engine is explosions plus turbulent intake and exhaust, and without the
+   * turbulence a stack of oscillators reads as an electric motor no matter how it is tuned.
+   */
+  roar: number;
 }
 
 const VOICE_PACKS: Readonly<Record<EnginePackId, VoicePack>> = {
-  // Stock: high-revving F1 scream.
-  scream: { pitch: 1, span: 1, oscA: 'sawtooth', oscB: 'sawtooth', oscBRatio: 2, oscBGain: 1, cutoff0: 700, cutoff1: 7700, q: 1.7, formant0: 1500, formant1: 4100, formantGain: 1, clip: 3.2, turbo: 1, sub: 1 },
+  // Stock: high-revving F1 scream. Deliberately light on pure tones — the octave saw and the sine
+  // sub are what made players hear an electric motor — and heavy on turbulence instead.
+  scream: { pitch: 1, span: 1, oscA: 'sawtooth', oscB: 'sawtooth', oscBRatio: 2, oscBGain: 0.72, cutoff0: 700, cutoff1: 7700, q: 1.7, formant0: 1400, formant1: 3400, formantGain: 0.72, clip: 3.2, turbo: 1, sub: 0.7, roar: 1.15 },
   // American V8: an octave down, fat and lazy, resonance low in the chest.
-  rumble: { pitch: 0.6, span: 0.72, oscA: 'sawtooth', oscB: 'square', oscBRatio: 1.5, oscBGain: 0.8, cutoff0: 300, cutoff1: 3200, q: 3.0, formant0: 620, formant1: 1500, formantGain: 1.5, clip: 5.0, turbo: 0.5, sub: 1.9 },
+  rumble: { pitch: 0.6, span: 0.72, oscA: 'sawtooth', oscB: 'square', oscBRatio: 1.5, oscBGain: 0.8, cutoff0: 300, cutoff1: 3200, q: 3.0, formant0: 620, formant1: 1500, formantGain: 1.5, clip: 5.0, turbo: 0.5, sub: 1.9, roar: 0.9 },
   // EV: no combustion, just inverter whine climbing with speed.
-  electric: { pitch: 1.75, span: 1.4, oscA: 'triangle', oscB: 'sine', oscBRatio: 3, oscBGain: 0.9, cutoff0: 1800, cutoff1: 12000, q: 1.0, formant0: 2600, formant1: 6200, formantGain: 0.9, clip: 1.3, turbo: 1.5, sub: 0.3 },
+  electric: { pitch: 1.75, span: 1.4, oscA: 'triangle', oscB: 'sine', oscBRatio: 3, oscBGain: 0.9, cutoff0: 1800, cutoff1: 12000, q: 1.0, formant0: 2600, formant1: 6200, formantGain: 0.9, clip: 1.3, turbo: 1.5, sub: 0.3, roar: 0.05 },
   // Diesel: slow, clattery, almost no top end.
-  diesel: { pitch: 0.48, span: 0.55, oscA: 'square', oscB: 'sawtooth', oscBRatio: 1.01, oscBGain: 0.7, cutoff0: 240, cutoff1: 1700, q: 4.0, formant0: 480, formant1: 1100, formantGain: 1.7, clip: 6.0, turbo: 0.8, sub: 2.1 },
+  diesel: { pitch: 0.48, span: 0.55, oscA: 'square', oscB: 'sawtooth', oscBRatio: 1.01, oscBGain: 0.7, cutoff0: 240, cutoff1: 1700, q: 4.0, formant0: 480, formant1: 1100, formantGain: 1.7, clip: 6.0, turbo: 0.8, sub: 2.1, roar: 1.05 },
   // Turbine: gas turbine, wide sweep, whistle-forward.
-  turbine: { pitch: 1.3, span: 1.55, oscA: 'sawtooth', oscB: 'triangle', oscBRatio: 2.5, oscBGain: 1.15, cutoff0: 1200, cutoff1: 14000, q: 0.8, formant0: 3000, formant1: 7000, formantGain: 1.4, clip: 2.0, turbo: 2.3, sub: 0.6 },
+  turbine: { pitch: 1.3, span: 1.55, oscA: 'sawtooth', oscB: 'triangle', oscBRatio: 2.5, oscBGain: 1.15, cutoff0: 1200, cutoff1: 14000, q: 0.8, formant0: 3000, formant1: 7000, formantGain: 1.4, clip: 2.0, turbo: 2.3, sub: 0.6, roar: 0.95 },
   // Chiptune: two square waves and no shame.
-  chiptune: { pitch: 1.2, span: 1.05, oscA: 'square', oscB: 'square', oscBRatio: 2, oscBGain: 1, cutoff0: 2600, cutoff1: 9000, q: 0.7, formant0: 1800, formant1: 3000, formantGain: 0.4, clip: 1.0, turbo: 1, sub: 0.5 },
+  chiptune: { pitch: 1.2, span: 1.05, oscA: 'square', oscB: 'square', oscBRatio: 2, oscBGain: 1, cutoff0: 2600, cutoff1: 9000, q: 0.7, formant0: 1800, formant1: 3000, formantGain: 0.4, clip: 1.0, turbo: 1, sub: 0.5, roar: 0 },
 };
 
 /** Clip curves are shared per drive amount; six packs mean at most six tables for the whole grid. */
@@ -108,6 +115,12 @@ export class EngineVoice {
   private readonly turboNoise: AudioBufferSourceNode;
   private readonly turboFilter: BiquadFilterNode;
   private readonly turboGain: GainNode;
+
+  private readonly roarSrc: AudioBufferSourceNode;
+  private readonly roarFilter: BiquadFilterNode;
+  private readonly roarGain: GainNode;
+  private readonly firingOsc: OscillatorNode;
+  private readonly firingDepth: GainNode;
 
   private readonly skidSrc: AudioBufferSourceNode;
   private readonly skidFilter: BiquadFilterNode;
@@ -225,6 +238,37 @@ export class EngineVoice {
     this.turboNoise.connect(turboNoiseGain);
     turboNoiseGain.connect(this.turboFilter);
     this.turboNoise.start(0, Math.random());
+
+    // --- combustion roar ------------------------------------------------------
+    // Joins after the shaper, not before it. The clip's gain reduction is driven by the
+    // oscillators, so noise fed into it is simply squashed by them — measured: raising the roar
+    // three-fold ahead of the clip moved the output peak not at all.
+    this.roarFilter = ctx.createBiquadFilter();
+    this.roarFilter.type = 'bandpass';
+    this.roarFilter.Q.value = 1.15;
+    this.roarFilter.frequency.value = 320;
+    this.roarGain = ctx.createGain();
+    this.roarGain.gain.value = 0;
+    this.roarSrc = ctx.createBufferSource();
+    this.roarSrc.buffer = noiseBuffer(ctx, 'pink');
+    this.roarSrc.loop = true;
+    this.roarSrc.connect(this.roarFilter);
+    this.roarFilter.connect(this.roarGain);
+    this.roarGain.connect(this.engineGain);
+    this.roarSrc.start(0, Math.random());
+
+    // Chop the roar at the firing rate. This is the difference the complaint was about: an
+    // electric motor is a steady whine, a piston engine is a burst per firing stroke, and a
+    // constant-amplitude tone stack sounds like the former however it is voiced. Modulating the
+    // noise at the fundamental gives the bursts, and the tones keep carrying the pitch.
+    this.firingOsc = ctx.createOscillator();
+    this.firingOsc.type = 'sawtooth';
+    this.firingOsc.frequency.value = this.baseFreq;
+    this.firingDepth = ctx.createGain();
+    this.firingDepth.gain.value = 0;
+    this.firingOsc.connect(this.firingDepth);
+    this.firingDepth.connect(this.roarGain.gain);
+    this.firingOsc.start();
 
     // --- skid loop ------------------------------------------------------------
     this.skidSrc = ctx.createBufferSource();
@@ -378,6 +422,15 @@ export class EngineVoice {
     glide(this.formant.frequency, pack.formant0 + rpm * (pack.formant1 - pack.formant0), now, 0.05);
     glide(this.formantGain.gain, (0.2 + 0.3 * rpm) * pack.formantGain, now, 0.08);
 
+    // Roar tracks the firing frequency and opens up with load: off-throttle it drops back to a
+    // murmur, which is what makes lifting for a corner audible.
+    const roarLevel = pack.roar * (0.18 + 0.82 * clamp01(throttle)) * (0.35 + 0.65 * rpm);
+    glide(this.roarFilter.frequency, Math.min(6000, freq * 1.7 + 120), now, 0.05);
+    // Two thirds of the roar rides the firing pulses, one third sits under them as steady rush.
+    glide(this.roarGain.gain, roarLevel * 0.34, now, 0.06);
+    glide(this.firingDepth.gain, roarLevel * 0.66, now, 0.06);
+    glide(this.firingOsc.frequency, freq, now, 0.025);
+
     const load = 0.5 + 0.5 * clamp01(throttle);
     const base = this.isPlayer ? 0.26 : 0.22;
     const vol = base * load * (0.6 + 0.4 * Math.min(1, rpm));
@@ -418,6 +471,8 @@ export class EngineVoice {
       this.saw2.stop(stopAt);
       this.turboOsc.stop(stopAt);
       this.turboNoise.stop(stopAt);
+      this.roarSrc.stop(stopAt);
+      this.firingOsc.stop(stopAt);
       this.skidSrc.stop(stopAt);
     } catch {
       // already stopped

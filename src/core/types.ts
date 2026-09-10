@@ -490,6 +490,11 @@ export interface IAudioEngine {
   setSfxVolume(v: number): void;
   readonly musicVolumeLevel: number;
   readonly sfxVolumeLevel: number;
+  /**
+   * Contract addition (pause): silences every engine voice. The voices are free-running
+   * oscillators, so a paused simulation does not stop them on its own.
+   */
+  setEnginesMuted(muted: boolean): void;
   dispose(): void;
 }
 
