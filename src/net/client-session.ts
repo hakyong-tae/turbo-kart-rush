@@ -11,12 +11,14 @@ import {
   MSG,
   PHASE,
   decodeSnapshot,
-  encodeInput,
+  encodeInputBatch,
+  INPUT_BATCH_MAX,
   type NetFx,
   type NetKartPose,
   type RacePhase,
   type ResultsMsg,
   type RosterEntry,
+  type NetInputSample,
   type Snapshot,
   type StandingMsg,
 } from './protocol';
@@ -29,9 +31,10 @@ const INTERP_DELAY_MAX_MS = 260;
 /** How far a starved client keeps karts moving along their last heading before freezing. */
 const EXTRAPOLATE_MAX_MS = 320;
 export const HOST_TIMEOUT_MS = 8000;
-const BLEND_THRESHOLD_M = 0.6;
+const BLEND_THRESHOLD_M = 2.5;
 const SNAP_THRESHOLD_M = 5;
-const BLEND_PER_TICK = 0.15;
+const BLEND_PER_TICK = 0.05;
+const RTT_PROBE_INTERVAL_MS = 2000;
 const BUFFER_MAX = 30;
 
 interface Stamped {
@@ -60,10 +63,18 @@ export class ClientSession {
   private readonly buffer: Stamped[] = [];
   /** Smoothed snapshot inter-arrival interval and its jitter (ms). */
   private arrivalMean = 60;
+  /** Measured round trip to the relay, refreshed a couple of times a second. 0 = not measured. */
+  private rttMs = 0;
+  private rttProbeAt = 0;
+  private rttProbeInFlight = false;
   private arrivalJitter = 10;
   private lastPhase: RacePhase = PHASE.grid;
   private lastSnapshotAt = 0;
+  /** Per-tick inputs since the last send. */
+  private readonly pending: NetInputSample[] = [];
   private lastLocal: NetKartPose | null = null;
+  /** Clock reading when `lastLocal` arrived, so its age can be compensated for. */
+  private lastLocalAt = 0;
   private hostLost = false;
   private hostEpoch = 0;
   private hostAccount = '';
@@ -135,29 +146,57 @@ export class ClientSession {
     if (!r) return;
     this.tick++;
     if (input.useItem) this.useSeq = (this.useSeq + 1) & 0xff;
-    if (this.tick % SNAPSHOT_EVERY === 0) {
+    // Every tick is recorded; the relay only lets us speak every 50 ms, so the ticks in between
+    // ride along in the next batch instead of being thrown away.
+    if (this.pending.length < INPUT_BATCH_MAX) {
+      this.pending.push({
+        steer: input.steer,
+        throttle: input.throttle,
+        brake: input.brake,
+        drift: input.drift,
+        useItemHeld: input.useItemHeld,
+        lookBack: input.lookBack,
+      });
+    }
+    if (this.tick % SNAPSHOT_EVERY === 0 && this.pending.length > 0) {
       this.seq = (this.seq + 1) & 0xffff;
       this.transport.send(
         MSG.INPUT,
-        encodeInput({
-          seq: this.seq,
-          steer: input.steer,
-          throttle: input.throttle,
-          brake: input.brake,
-          drift: input.drift,
-          useItemHeld: input.useItemHeld,
-          lookBack: input.lookBack,
-          useSeq: this.useSeq,
-        }),
+        encodeInputBatch({ seq: this.seq, useSeq: this.useSeq, samples: this.pending }),
         true,
       );
+      this.pending.length = 0;
     }
+    this.probeRtt();
     this.applyInterpolated();
     this.reconcileLocal();
     if (!this.hostLost && !this.resultsReceived && this.buffer.length > 0 && this.now() - this.lastSnapshotAt > HOST_TIMEOUT_MS) {
       this.hostLost = true;
       this.onHostLost?.(this.standingsFromLatest());
     }
+  }
+
+  /**
+   * Keeps a round-trip estimate alive. The reconciler needs to know how old the host's view of
+   * this kart is, and the transport is the only thing that can say.
+   */
+  private probeRtt(): void {
+    const t = this.now();
+    if (this.rttProbeInFlight || t - this.rttProbeAt < RTT_PROBE_INTERVAL_MS) return;
+    const ping = this.transport.ping;
+    if (!ping) return;
+    this.rttProbeAt = t;
+    this.rttProbeInFlight = true;
+    void Promise.resolve(ping.call(this.transport))
+      .then((ms) => {
+        if (typeof ms === 'number' && ms >= 0 && ms < 5000) {
+          this.rttMs = this.rttMs > 0 ? this.rttMs + (ms - this.rttMs) * 0.3 : ms;
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        this.rttProbeInFlight = false;
+      });
   }
 
   /** Standings derived from the newest snapshot (used when the host vanishes). */
@@ -280,6 +319,7 @@ export class ClientSession {
     const mine = snap.karts.find((k) => k.id === this.localKartId);
     if (mine) {
       this.lastLocal = mine;
+      this.lastLocalAt = this.now();
       this.mirrorLocalProgress(mine);
     }
     // Race bookkeeping for remote karts is applied directly (no interpolation needed).
@@ -393,6 +433,22 @@ export class ClientSession {
     }
   }
 
+  /**
+   * Pulls the locally predicted kart back toward the host's view of it.
+   *
+   * The host's view is old — it left one transit ago and describes a moment before that — so the
+   * error mostly measures the distance covered since, not real disagreement. Correcting it hard
+   * fights the prediction and shows up as the hitch clients reported: measured against a 250 ms
+   * link with jitter, the old settings (0.6 m / 15% a tick) threw the kart 0.36 m in a single
+   * tick, six times a normal step, and still ended up 7.3 m from the host. Letting prediction run
+   * and only trimming (2.5 m / 5%) leaves 0.12 m and 5.6 m. Both numbers improve because the
+   * correction is no longer adding energy of its own.
+   *
+   * Carrying the target forward by its age was tried and measured worse (0.57 m): a straight-line
+   * projection overshoots on a curve, and the projection distance jitters with the link. The real
+   * answer is rollback with input acknowledgements, which needs the client to re-simulate against
+   * the track and is a bigger change than a launch eve deserves.
+   */
   private reconcileLocal(): void {
     const r = this.race;
     const target = this.lastLocal;
@@ -400,12 +456,14 @@ export class ClientSession {
     const k = r.karts[this.localKartId];
     if (!k || !k.applyNetState) return;
     const s = k.state;
-    const dx = target.x - s.position.x;
+    const tx = target.x;
+    const tz = target.z;
+    const dx = tx - s.position.x;
     const dy = target.y - s.position.y;
-    const dz = target.z - s.position.z;
+    const dz = tz - s.position.z;
     const err = Math.hypot(dx, dy, dz);
     if (err > SNAP_THRESHOLD_M) {
-      k.applyNetState({ ...target, lap: s.lap, place: s.place, checkpointIndex: s.checkpointIndex });
+      k.applyNetState({ ...target, x: tx, z: tz, lap: s.lap, place: s.place, checkpointIndex: s.checkpointIndex });
       return;
     }
     if (err > BLEND_THRESHOLD_M) {

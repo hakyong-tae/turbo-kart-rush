@@ -35,6 +35,81 @@ export interface NetInput {
 
 export const INPUT_BYTES = 7;
 
+/**
+ * Per-tick samples carried in one INPUT message.
+ *
+ * The relay throttles the hot channel to one call per 50 ms, so a client can only speak about
+ * seventeen times a second while it simulates at 120 Hz. Sending just the newest sample meant the
+ * host held one steering value for a whole 58 ms window and integrated a different signal from
+ * the one the client predicted with — every corner produced a correction, which is what "the
+ * non-host player has tick delay" actually was. The samples in between now travel too, and the
+ * host replays them one per tick.
+ *
+ * Four bytes per sample, so a seven-sample batch is 4 + 28 = 32 bytes; the cap keeps a client that
+ * stalled and resumed from handing the host a long tail of stale input.
+ */
+export const INPUT_SAMPLE_BYTES = 4;
+export const INPUT_BATCH_MAX = 12;
+
+export interface NetInputSample {
+  steer: number;
+  throttle: number;
+  brake: number;
+  drift: boolean;
+  useItemHeld: boolean;
+  lookBack: boolean;
+}
+
+export interface NetInputBatch {
+  seq: number;
+  useSeq: number;
+  /** Oldest first; the host consumes one per tick. */
+  samples: NetInputSample[];
+}
+
+function packSample(v: DataView, at: number, s: NetInputSample): void {
+  v.setInt8(at, Math.round(clamp(s.steer, -1, 1) * 127));
+  v.setUint8(at + 1, Math.round(clamp(s.throttle, 0, 1) * 255));
+  v.setUint8(at + 2, Math.round(clamp(s.brake, 0, 1) * 255));
+  v.setUint8(at + 3, (s.drift ? 1 : 0) | (s.useItemHeld ? 2 : 0) | (s.lookBack ? 4 : 0));
+}
+
+function readSample(v: DataView, at: number): NetInputSample {
+  const flags = v.getUint8(at + 3);
+  return {
+    steer: v.getInt8(at) / 127,
+    throttle: v.getUint8(at + 1) / 255,
+    brake: v.getUint8(at + 2) / 255,
+    drift: (flags & 1) !== 0,
+    useItemHeld: (flags & 2) !== 0,
+    lookBack: (flags & 4) !== 0,
+  };
+}
+
+/** Header is seq (u16), sample count (u8), useSeq (u8), then the samples oldest first. */
+export const INPUT_BATCH_HEADER = 4;
+
+export function encodeInputBatch(b: NetInputBatch): ArrayBuffer {
+  const n = Math.min(b.samples.length, INPUT_BATCH_MAX);
+  const buf = new ArrayBuffer(INPUT_BATCH_HEADER + n * INPUT_SAMPLE_BYTES);
+  const v = new DataView(buf);
+  v.setUint16(0, b.seq & 0xffff);
+  v.setUint8(2, n);
+  v.setUint8(3, b.useSeq & 0xff);
+  for (let i = 0; i < n; i++) packSample(v, INPUT_BATCH_HEADER + i * INPUT_SAMPLE_BYTES, b.samples[i]);
+  return buf;
+}
+
+export function decodeInputBatch(buf: ArrayBuffer): NetInputBatch {
+  const v = new DataView(buf);
+  const n = Math.min(v.getUint8(2), INPUT_BATCH_MAX);
+  const samples: NetInputSample[] = [];
+  for (let i = 0; i < n && INPUT_BATCH_HEADER + (i + 1) * INPUT_SAMPLE_BYTES <= buf.byteLength; i++) {
+    samples.push(readSample(v, INPUT_BATCH_HEADER + i * INPUT_SAMPLE_BYTES));
+  }
+  return { seq: v.getUint16(0), useSeq: v.getUint8(3), samples };
+}
+
 export function encodeInput(i: NetInput): ArrayBuffer {
   const buf = new ArrayBuffer(INPUT_BYTES);
   const v = new DataView(buf);

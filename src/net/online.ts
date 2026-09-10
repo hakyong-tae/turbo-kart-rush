@@ -81,11 +81,15 @@ export class OnlineController {
   private resumeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly onVisibility = (): void => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    if (!this.lobby.key || this.hostSession || this.clientSession) return; // in a race: nothing to re-join
+    if (!this.lobby.key) return;
     if (this.resumeTimer) clearTimeout(this.resumeTimer);
     this.resumeTimer = setTimeout(() => {
       this.resumeTimer = null;
-      void this.lobby.resume();
+      // Mid-race the room must not be re-entered — that would republish a lobby entry over a
+      // running race — but the membership still has to be checked, because a race whose player
+      // has been dropped from the room stops receiving anything at all.
+      if (this.hostSession || this.clientSession) void this.lobby.repair();
+      else void this.lobby.resume();
     }, 400);
   };
 

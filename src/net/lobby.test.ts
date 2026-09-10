@@ -22,6 +22,33 @@ describe('Lobby', () => {
     b.dispose();
   });
 
+  it('repair puts a player back in a room that forgot them', async () => {
+    // What a phone does to a room: the app goes to the background, timers stop, the relay drops
+    // the membership, and the player comes back still believing they are in the room while the
+    // room no longer lists them. Nobody sees them and they see nothing.
+    const hub = createLoopbackHub();
+    const a = new Lobby(hub.endpoint('A'), { nick: 'Ay', characterId: 'zippy' }, defaults);
+    const b = new Lobby(hub.endpoint('B'), { nick: 'Bee', characterId: 'max' }, defaults);
+    await a.create();
+    await b.joinCode('LOOP');
+    expect(a.view.players).toHaveLength(2);
+
+    // Drop B from the room behind its back; B still thinks it is in.
+    await hub.endpoint('A').updateRoomState({ p_B: null });
+    expect(a.view.players.map((p) => p.account)).toEqual(['A']);
+    expect(b.key).toBe('LOOP');
+
+    await b.repair();
+    expect(a.view.players.map((p) => p.account)).toEqual(['A', 'B']);
+    expect(b.view.players).toHaveLength(2);
+    // A was never dropped, so its own repair is a no-op that leaves the host alone.
+    await a.repair();
+    expect(a.view.isHost).toBe(true);
+    expect(a.view.players).toHaveLength(2);
+    a.dispose();
+    b.dispose();
+  });
+
   it('canStart needs every non-host player ready; character change clears ready', async () => {
     const hub = createLoopbackHub();
     const a = new Lobby(hub.endpoint('A'), { nick: 'Ay', characterId: 'zippy' }, defaults);

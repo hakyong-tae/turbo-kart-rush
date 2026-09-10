@@ -10,9 +10,10 @@ import { events } from '../core/events';
 import {
   MSG,
   PHASE,
-  decodeInput,
+  decodeInputBatch,
   encodeSnapshot,
   type NetFx,
+  type NetInputSample,
   type NetKartPose,
   type RacePhase,
   type ResultsMsg,
@@ -25,6 +26,12 @@ import type { Transport } from './types';
 
 /** Physics ticks between snapshots. FIXED_DT is 1/120 s, so 7 ticks ≈ 58 ms — safely above relayHot's 50 ms
  *  throttle (sending every 25 ms made the relay drop every other packet → visible 1 s stalls). */
+/**
+ * Ceiling on a kart's queued input. Two batches' worth: enough to ride out a late packet,
+ * short enough that a client returning from a stall does not replay a second of old steering.
+ */
+const INPUT_QUEUE_MAX = 16;
+
 export const SNAPSHOT_EVERY = 7;
 
 export interface HostRaceView {
@@ -51,6 +58,10 @@ export class HostSession {
   private race: HostRaceView | null = null;
   private tick = 0;
   private readonly inputs = new Map<number, InputState>();
+  /** Per-tick samples waiting to be played, oldest first. */
+  private readonly inputQueue = new Map<number, NetInputSample[]>();
+  /** Host tick each kart's queue was last advanced on, so one tick consumes one sample. */
+  private readonly inputAdvanced = new Map<number, number>();
   private readonly lastSeq = new Map<number, number>();
   private readonly lastUseSeq = new Map<number, number>();
   private useRequests: UseRequest[] = [];
@@ -148,8 +159,32 @@ export class HostSession {
     }
   }
 
-  /** Latest input for a remote human's kart (undefined = none received yet). */
+  /**
+   * Input for a remote human's kart this tick (undefined = nothing received yet).
+   *
+   * Advances that kart's queue by exactly one sample per host tick, however many times it is
+   * called, so the kart is driven through the same sequence of inputs the client predicted with.
+   * An empty queue — a lost or late packet — holds the last sample, which is the old behaviour
+   * and the right way to coast through a gap.
+   */
   inputFor(kartId: number): InputState | undefined {
+    if (this.inputAdvanced.get(kartId) !== this.tick) {
+      this.inputAdvanced.set(kartId, this.tick);
+      const sample = this.inputQueue.get(kartId)?.shift();
+      if (sample) {
+        let s = this.inputs.get(kartId);
+        if (!s) {
+          s = createEmptyInput();
+          this.inputs.set(kartId, s);
+        }
+        s.steer = sample.steer;
+        s.throttle = sample.throttle;
+        s.brake = sample.brake;
+        s.drift = sample.drift;
+        s.useItemHeld = sample.useItemHeld;
+        s.lookBack = sample.lookBack;
+      }
+    }
     return this.inputs.get(kartId);
   }
 
@@ -167,6 +202,8 @@ export class HostSession {
     const id = kartIdOf(this.roster, account);
     if (id !== null) {
       this.inputs.delete(id);
+      this.inputQueue.delete(id);
+      this.inputAdvanced.delete(id);
       this.onHumanLeft?.(id);
     }
   }
@@ -189,25 +226,27 @@ export class HostSession {
         if (!(payload instanceof ArrayBuffer)) return;
         const id = kartIdOf(this.roster, from);
         if (id === null) return;
-        const inp = decodeInput(payload);
+        const inp = decodeInputBatch(payload);
         const prev = this.lastSeq.get(id);
         // Drop stale packets (wrap-safe 16-bit compare).
         if (prev !== undefined && ((inp.seq - prev) & 0xffff) > 0x8000) return;
         this.lastSeq.set(id, inp.seq);
-        let s = this.inputs.get(id);
-        if (!s) {
-          s = createEmptyInput();
-          this.inputs.set(id, s);
+        // Queue the samples and consume one per tick, so this kart is driven by the same signal
+        // the client predicted with rather than by whichever sample happened to arrive last.
+        let q = this.inputQueue.get(id);
+        if (!q) {
+          q = [];
+          this.inputQueue.set(id, q);
         }
-        s.steer = inp.steer;
-        s.throttle = inp.throttle;
-        s.brake = inp.brake;
-        s.drift = inp.drift;
-        s.useItemHeld = inp.useItemHeld;
-        s.lookBack = inp.lookBack;
+        for (const sample of inp.samples) q.push(sample);
+        // A client that stalled and came back must not hand us a long tail of stale steering.
+        if (q.length > INPUT_QUEUE_MAX) q.splice(0, q.length - INPUT_QUEUE_MAX);
         const prevUse = this.lastUseSeq.get(id);
         if (prevUse !== undefined && prevUse !== inp.useSeq) {
-          this.useRequests.push({ kartId: id, aimBack: inp.brake > 0.5 || inp.lookBack });
+          // Aim from the freshest sample in the batch: the press happened at its end.
+          const last = inp.samples[inp.samples.length - 1];
+          const aimBack = last ? last.brake > 0.5 || last.lookBack : false;
+          this.useRequests.push({ kartId: id, aimBack });
         }
         this.lastUseSeq.set(id, inp.useSeq);
         return;

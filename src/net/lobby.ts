@@ -176,12 +176,41 @@ export class Lobby {
 
   private startHeartbeat(): void {
     this.stopHeartbeat();
-    if (!this.transport.touchRoom) return;
     this.heartbeat = setInterval(() => {
+      if (!this.roomKey) return;
       const v = this.derive();
-      if (!v.isHost || !this.roomKey) return;
-      this.transport.touchRoom?.(this.roomKey, v.trackId, v.started).catch((e) => console.warn('[net] touchRoom failed', e));
+      if (v.isHost && this.transport.touchRoom) {
+        this.transport.touchRoom(this.roomKey, v.trackId, v.started).catch((e) => console.warn('[net] touchRoom failed', e));
+      }
+      void this.repair();
     }, HEARTBEAT_MS);
+  }
+
+  /**
+   * Puts us back in the room if it has forgotten us.
+   *
+   * A phone that goes to another app stops running timers and may lose the relay subscription;
+   * coming back, the local view still shows the room while the room no longer lists the player.
+   * Rather than trying to enumerate the ways that happens, this checks the one thing that
+   * matters — am I in the room state — and re-publishes the entry when I am not. Runs on the
+   * heartbeat and on every return to the foreground, and costs one state read when all is well.
+   */
+  async repair(): Promise<void> {
+    const key = this.roomKey;
+    if (!key) return;
+    try {
+      const state = await this.transport.getRoomState();
+      const mine = state['p_' + this.transport.account];
+      if (mine && typeof mine === 'object') {
+        this.state = state;
+        this.emit();
+        return;
+      }
+      await this.transport.joinRoom(key);
+      await this.enter(key);
+    } catch (e) {
+      console.warn('[net] room repair failed', e);
+    }
   }
 
   private stopHeartbeat(): void {

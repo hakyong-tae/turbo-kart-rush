@@ -99,6 +99,160 @@ describe('host ↔ client sessions over loopback', () => {
     expect(hostKarts[1].state.position.distanceTo(cliKarts[1].state.position)).toBeLessThan(2.0);
   });
 
+  it('latency does not steal the client\'s own progress', async () => {
+    // The reported "tick delay": on a real connection the pose a client reconciles against is
+    // RTT/2 + a snapshot period old, and the reconciler used to blend toward it without replaying
+    // the inputs applied since. The kart is therefore dragged backwards every tick while the
+    // player drives forwards. A zero-latency loopback cannot show this, so both directions are
+    // delayed here, and the measure is simply: the same inputs must move the networked kart as
+    // far as they move an offline one.
+    const DELAY_TICKS = 30; // 250 ms each way at 120 Hz
+    const JITTER_TICKS = 12; // relay jitter on a phone
+    const hub = createLoopbackHub();
+    const clock = { tick: 0 };
+    const delayed = (t: ReturnType<typeof hub.endpoint>) => {
+      const queue: { at: number; args: [string, unknown, boolean | undefined] }[] = [];
+      const wrapped = Object.create(t) as typeof t & { pump(): void };
+      wrapped.send = (event: string, payload: unknown, hot?: boolean) => {
+        const jitter = Math.floor(((Math.sin(clock.tick * 12.9898) * 43758.5453) % 1 + 1) / 2 * JITTER_TICKS);
+        queue.push({ at: clock.tick + DELAY_TICKS + jitter, args: [event, payload, hot] });
+      };
+      // The real transport can measure its round trip; the reconciler uses it to tell how old
+      // the host's view is. Model that here or the test is kinder than a phone.
+      wrapped.ping = () => Promise.resolve((DELAY_TICKS * 2 * 1000) / 120);
+      wrapped.pump = () => {
+        while (queue.length > 0 && queue[0].at <= clock.tick) {
+          const m = queue.shift()!;
+          t.send(...m.args);
+        }
+      };
+      return wrapped;
+    };
+
+    const hostT = delayed(hub.endpoint('H'));
+    const cliT = delayed(hub.endpoint('C'));
+    void hostT.joinRoom(null);
+    void cliT.joinRoom(null);
+
+    const track = new FakeTrack();
+    const hostKarts = makeKarts(0, track);
+    const cliKarts = makeKarts(1, track);
+    const host = new HostSession(hostT, roster);
+    host.attach({
+      karts: hostKarts,
+      phase: () => PHASE.racing,
+      countdown: () => 0,
+      raceTime: () => now / 1000,
+      standings: () => hostKarts.map((k, i) => ({ kartId: i, name: k.state.character.name, color: 0, place: i + 1, finishTime: -1 })),
+    });
+    const client = new ClientSession(cliT, roster, 1, () => now);
+    client.attach({ karts: cliKarts, totalLaps: 3 });
+
+    // Reference: the same kart, same inputs, no networking at all.
+    const refKarts = makeKarts(1, track);
+    const start = cliKarts[1].state.position.clone();
+    const steps: number[] = [];
+    let drift = 0;
+    let prev = cliKarts[1].state.position.clone();
+
+    for (let tick = 0; tick < 720; tick++) {
+      clock.tick = tick;
+      now += FIXED_DT * 1000;
+      hostT.pump();
+      cliT.pump();
+
+      hostKarts[0].setInput(fullThrottle);
+      const remoteIn = host.inputFor(1);
+      if (remoteIn) hostKarts[1].setInput(remoteIn);
+      for (const k of hostKarts) k.update(FIXED_DT, track, hostKarts);
+      host.tick60();
+
+      cliKarts[1].setInput(fullThrottle);
+      cliKarts[1].update(FIXED_DT, track, cliKarts);
+      client.tick60(fullThrottle);
+
+      refKarts[1].setInput(fullThrottle);
+      refKarts[1].update(FIXED_DT, track, refKarts);
+
+      if (tick > 180) {
+        steps.push(cliKarts[1].state.position.distanceTo(prev));
+        drift = Math.max(drift, cliKarts[1].state.position.distanceTo(hostKarts[1].state.position));
+      }
+      prev = cliKarts[1].state.position.clone();
+      // Let the transport's ping settle: in the game these ticks are spread across frames.
+      await Promise.resolve();
+    }
+
+    const travelled = cliKarts[1].state.position.distanceTo(start);
+    const reference = refKarts[1].state.position.distanceTo(start);
+    const hostCopy = hostKarts[1].state.position.distanceTo(start);
+    const sorted = steps.slice().sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1];
+    // How violently a single tick departs from a steady glide: this is what reads as stutter.
+    const worstStep = Math.max(...steps.map((d) => Math.abs(d - median)));
+    console.log(
+      `travelled=${travelled.toFixed(1)} reference=${reference.toFixed(1)} hostCopy=${hostCopy.toFixed(1)}` +
+        ` ratio=${(travelled / reference).toFixed(3)} medianStep=${median.toFixed(4)} worstJerk=${worstStep.toFixed(4)} (${(worstStep / median).toFixed(1)}x) drift=${drift.toFixed(2)}`,
+    );
+    expect(reference).toBeGreaterThan(20);
+    // Networking may cost a little, but not a slice of every second of driving.
+    expect(travelled).toBeGreaterThan(reference * 0.9);
+    // And it must not stutter: no single tick may jump far beyond a normal step. The settings
+    // this guards were measured — 6.1x before, 1.9x after.
+    expect(worstStep / median).toBeLessThan(3);
+    expect(drift).toBeLessThan(6.5);
+  });
+
+  it('a client that steers constantly stays with the host (batched per-tick input)', () => {
+    // The regression this guards: the relay only lets a client speak every 50 ms, and the host
+    // used to hold whichever sample arrived and apply it for the whole window. Steering that
+    // moved inside a window was invisible to the host, so its version of the kart drifted away
+    // from the one the player was driving and the reconciler dragged them back — the "tick delay"
+    // clients reported. With every tick's input carried in the batch, the two agree.
+    const hub = createLoopbackHub();
+    const hostT = hub.endpoint('H');
+    const cliT = hub.endpoint('C');
+    void hostT.joinRoom(null);
+    void cliT.joinRoom(null);
+
+    const track = new FakeTrack();
+    const hostKarts = makeKarts(0, track);
+    const cliKarts = makeKarts(1, track);
+    const host = new HostSession(hostT, roster);
+    host.attach({
+      karts: hostKarts,
+      phase: () => PHASE.racing,
+      countdown: () => 0,
+      raceTime: () => now / 1000,
+      standings: () => hostKarts.map((k, i) => ({ kartId: i, name: k.state.character.name, color: 0, place: i + 1, finishTime: -1 })),
+    });
+    const client = new ClientSession(cliT, roster, 1, () => now);
+    client.attach({ karts: cliKarts, totalLaps: 3 });
+
+    let worst = 0;
+    for (let tick = 0; tick < 600; tick++) {
+      now += FIXED_DT * 1000;
+      // Steering that reverses several times inside every 58 ms send window.
+      const steer = Math.sin(tick * 0.55);
+      const input = { ...createEmptyInput(), throttle: 1, steer };
+
+      hostKarts[0].setInput(fullThrottle);
+      const remoteIn = host.inputFor(1);
+      if (remoteIn) hostKarts[1].setInput(remoteIn);
+      for (const k of hostKarts) k.update(FIXED_DT, track, hostKarts);
+      host.tick60();
+
+      cliKarts[1].setInput(input);
+      cliKarts[1].update(FIXED_DT, track, cliKarts);
+      client.tick60(input);
+
+      if (tick > 120) worst = Math.max(worst, hostKarts[1].state.position.distanceTo(cliKarts[1].state.position));
+    }
+    // Both ends drove the same signal, so they end up in the same place rather than fighting.
+    expect(worst).toBeLessThan(1.5);
+    expect(hostKarts[1].state.position.length()).toBeGreaterThan(5);
+  });
+
   it('mirrors phase, lap, place and finish of the local kart as race events', () => {
     const hub = createLoopbackHub();
     const hostT = hub.endpoint('H');
