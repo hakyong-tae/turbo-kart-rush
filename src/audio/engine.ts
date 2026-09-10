@@ -61,6 +61,19 @@ interface VoicePack {
   roar: number;
 }
 
+/**
+ * What a kart sounds like before anyone buys an engine pack. The classes are different machines,
+ * not the same machine at different pitches: the heavies are big rough combustion units, the
+ * middleweights are the high-revving race engine, and the lightweights are hybrids — near-silent
+ * of combustion, all inverter whine and instant torque, which is also how they drive (the light
+ * roster carries the highest acceleration stats in the game).
+ */
+const CLASS_PACK: Readonly<Record<WeightClass, EnginePackId>> = {
+  light: 'electric',
+  medium: 'scream',
+  heavy: 'rumble',
+};
+
 const VOICE_PACKS: Readonly<Record<EnginePackId, VoicePack>> = {
   // Stock: high-revving F1 scream. Deliberately light on pure tones — the octave saw and the sine
   // sub are what made players hear an electric motor — and heavy on turbulence instead.
@@ -126,6 +139,7 @@ export class EngineVoice {
   private readonly skidFilter: BiquadFilterNode;
   private readonly skidGain: GainNode;
 
+  private readonly weightClass: WeightClass;
   private pack: VoicePack = VOICE_PACKS.scream;
   private rpm = IDLE_RPM;
   private gear = 0;
@@ -141,7 +155,9 @@ export class EngineVoice {
     this.ctx = ctx;
     this.kartId = kartId;
     this.isPlayer = isPlayer;
-    this.baseFreq = BASE_FREQ[weightClass] ?? BASE_FREQ.medium;
+    this.weightClass = BASE_FREQ[weightClass] ? weightClass : 'medium';
+    this.baseFreq = BASE_FREQ[this.weightClass];
+    this.pack = VOICE_PACKS[CLASS_PACK[this.weightClass]];
 
     this.out = ctx.createGain();
     this.out.gain.value = isPlayer ? 1 : 0.85;
@@ -285,6 +301,7 @@ export class EngineVoice {
     this.skidGain.connect(this.out);
     this.skidSrc.start(0, Math.random());
 
+    this.applyPack(this.pack);
     this.setRich(isPlayer);
   }
 
@@ -294,8 +311,19 @@ export class EngineVoice {
    */
   setPack(id: EnginePackId | undefined): void {
     if (this.disposed) return;
-    const pack = (id && VOICE_PACKS[id]) || VOICE_PACKS.scream;
+    // No pack bought (or an id this build does not know) falls back to the class voice, not to a
+    // single global default — a heavy kart should never come up sounding like the light one.
+    const pack = (id && VOICE_PACKS[id]) || VOICE_PACKS[CLASS_PACK[this.weightClass]];
     if (pack === this.pack) return;
+    this.applyPack(pack);
+  }
+
+  /**
+   * Writes a pack onto the running nodes. Also called once at build time, because the oscillators
+   * are created with fixed defaults — without this a fresh voice wore half of one pack and half
+   * of another.
+   */
+  private applyPack(pack: VoicePack): void {
     this.pack = pack;
     this.saw.type = pack.oscA;
     this.saw2.type = pack.oscB;

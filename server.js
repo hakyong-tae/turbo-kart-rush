@@ -20,7 +20,17 @@
 // All purchase / ticket state lives in $global user state (server-authoritative).
 
 const RANKING_ID = 'tkr_times';
-const TRACKS = new Set(['sunny_circuit', 'coral_coast', 'dune_drift', 'frostbite_falls', 'neon_nexus', 'magma_ridge']);
+// Mirror of src/track/tracks/index.ts. A track missing here has its times rejected on submit.
+const TRACKS = new Set([
+  'sunny_circuit',
+  'coral_coast',
+  'dune_drift',
+  'frostbite_falls',
+  'neon_nexus',
+  'magma_ridge',
+  'switchback_pass',
+  'prism_skyway',
+]);
 const CHARACTERS = new Set(['zippy', 'pixel', 'fennec', 'max', 'juno', 'kai', 'bram', 'rosa']);
 const PREMIUM = new Set(['fennec', 'bram', 'rosa']);
 const DIFFICULTIES = new Set(['easy', 'normal', 'hard']);

@@ -58,32 +58,36 @@ export function frameAtS(ctx: BuildContext, s: number): RoadFrame {
   };
 }
 
-/** Fictional sponsors per theme (name, background, text, accent). */
-function sponsorsFor(theme: string): { text: string; bg: number; fg: number; accent: number }[] {
+/**
+ * Fictional sponsors per theme (name, background, text, accent). The middle board carries the
+ * circuit's own name: it used to be hard-coded per theme, so a second snow track advertised
+ * Frostbite Falls at its own finish line.
+ */
+function sponsorsFor(theme: string, trackName: string): { text: string; bg: number; fg: number; accent: number }[] {
   switch (theme) {
     case 'desert':
     case 'volcano':
       return [
         { text: 'NITRO COLA', bg: 0x8a1f1f, fg: 0xfff2d0, accent: 0xffb347 },
-        { text: 'DUNE DRIFT GP', bg: 0x2b1a12, fg: 0xffd27a, accent: 0xc7502f },
+        { text: `${trackName.toUpperCase()} GP`, bg: 0x2b1a12, fg: 0xffd27a, accent: 0xc7502f },
         { text: 'SCORPION OIL', bg: 0x1c1c1c, fg: 0xffe27a, accent: 0xd9a15c },
       ];
     case 'snow':
       return [
         { text: 'GLACIER GRIP TYRES', bg: 0x123a66, fg: 0xffffff, accent: 0x9fd3ff },
-        { text: 'FROSTBITE FALLS', bg: 0xffffff, fg: 0x1f4f8a, accent: 0x2f6fb5 },
+        { text: trackName.toUpperCase(), bg: 0xffffff, fg: 0x1f4f8a, accent: 0x2f6fb5 },
         { text: 'POLAR PLUS ENERGY', bg: 0x0d2540, fg: 0xbfe6ff, accent: 0xffffff },
       ];
     case 'neon':
       return [
         { text: 'NEXUS NETWORKS', bg: 0x0b0418, fg: 0x00e5ff, accent: 0xff2fd6 },
-        { text: 'VOLT KART BATTERIES', bg: 0x120a22, fg: 0xff2fd6, accent: 0x00e5ff },
+        { text: `${trackName.toUpperCase()} GP`, bg: 0x120a22, fg: 0xff2fd6, accent: 0x00e5ff },
         { text: 'HOLO-DRIVE', bg: 0x061a22, fg: 0xffe83a, accent: 0x00e5ff },
       ];
     default:
       return [
         { text: 'TURBO TYRES', bg: 0x1c1c22, fg: 0xffffff, accent: 0xd8272b },
-        { text: 'KART FM 101', bg: 0x1f4fa8, fg: 0xffe14a, accent: 0xffffff },
+        { text: `${trackName.toUpperCase()} GP`, bg: 0x1f4fa8, fg: 0xffe14a, accent: 0xffffff },
         { text: 'NITRO COLA', bg: 0xc81e2b, fg: 0xfff2d0, accent: 0xffffff },
       ];
   }
@@ -205,7 +209,7 @@ export function buildGrandstands(ctx: BuildContext): THREE.Group {
 
   // Sponsor boards along the front wall (3 per side, fictional brands). One plane geometry, 3 materials.
   {
-    const sponsors = sponsorsFor(theme);
+    const sponsors = sponsorsFor(theme, ctx.def.name);
     const boardGeo = new THREE.PlaneGeometry(14, 1.05);
     ctx.disposables.push(boardGeo);
     for (let k = 0; k < sponsors.length; k++) {
@@ -431,7 +435,7 @@ export function buildSponsorBridges(ctx: BuildContext): THREE.Group {
   group.name = 'sponsorBridges';
   const theme = ctx.def.theme;
   const isNight = theme === 'neon';
-  const sponsors = sponsorsFor(theme);
+  const sponsors = sponsorsFor(theme, ctx.def.name);
   const L = ctx.cl.length;
   // One just after the grandstands, one on the far side of the lap (off the void on Frostbite).
   const spots = [92, L * (ctx.def.voidRanges && ctx.def.voidRanges.length ? 0.72 : 0.55)];

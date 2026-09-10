@@ -20,7 +20,8 @@ export interface CupDef {
 }
 
 /**
- * Rookie is the three gentler circuits, Pro the three that punish, Championship is all six.
+ * Rookie is the three gentler circuits, Pro the three that punish, Championship is every circuit
+ * in the game — it grows when a track is added, which is the point of it.
  * Track ids must exist in `src/track/tracks`; `cups.test.ts` checks that they do.
  */
 export const CUPS: readonly CupDef[] = [
@@ -28,7 +29,16 @@ export const CUPS: readonly CupDef[] = [
   { id: 'pro', trackIds: ['frostbite_falls', 'neon_nexus', 'magma_ridge'], requires: 'rookie' },
   {
     id: 'championship',
-    trackIds: ['sunny_circuit', 'coral_coast', 'dune_drift', 'frostbite_falls', 'neon_nexus', 'magma_ridge'],
+    trackIds: [
+      'sunny_circuit',
+      'coral_coast',
+      'dune_drift',
+      'frostbite_falls',
+      'neon_nexus',
+      'magma_ridge',
+      'switchback_pass',
+      'prism_skyway',
+    ],
     requires: 'pro',
   },
 ];

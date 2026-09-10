@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { TrackDefinition } from '../../core/types';
 import { coralCoast } from './coralCoast';
 import { magmaRidge } from './magmaRidge';
+import { prismSkyway } from './prismSkyway';
+import { switchbackPass } from './switchbackPass';
 import { validateTrackDefinition } from './validate';
 
 function lengthOf(def: TrackDefinition): number {
@@ -15,6 +17,8 @@ function lengthOf(def: TrackDefinition): number {
 describe.each([
   ['coral_coast', coralCoast, 'beach', 2],
   ['magma_ridge', magmaRidge, 'volcano', 3],
+  ['switchback_pass', switchbackPass, 'snow', 3],
+  ['prism_skyway', prismSkyway, 'neon', 3],
 ] as const)('%s', (id, def, theme, difficulty) => {
   it('has the expected identity', () => {
     expect(def.id).toBe(id);
