@@ -71,7 +71,9 @@ export class StandingsBoard {
       r.place.set(String(i + 1));
       r.chip.style.background = cssHex(sideColor(s.id, playerId, this.mode));
       r.row.classList.toggle('ally', sideOf(s.id, playerId, this.mode) === 'ally');
-      r.name.set(s.character.name.toUpperCase());
+      // Who is driving, not what they are driving: the kart name is already on the card in the
+      // menu, and in an online race the only thing that matters here is whose kart is ahead.
+      r.name.set((s.racerName || s.character.name).toUpperCase());
     }
     for (let i = sorted.length; i < this.rows.length; i++) this.rows[i].row.hidden = true;
   }

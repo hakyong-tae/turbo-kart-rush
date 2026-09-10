@@ -160,6 +160,9 @@ export class MainMenu {
     this.charTagline = new TextField(el('div', 'select-info-tagline', '', charInfo));
     const charActions = el('div', 'actions', undefined, charFoot);
     charActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('title', true)));
+    // Paint where the kart is chosen: picking a kart used to lead straight to the circuit list,
+    // so the only way to paint the kart you were about to drive was to back all the way out.
+    charActions.appendChild(button(t('menu.paint'), 'ghost paint-toggle', () => this.onGarage?.()));
     charActions.appendChild(button(t('menu.continue'), 'primary', () => this.tryProceed()));
 
     // ----------------------------------------------------------- track select

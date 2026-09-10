@@ -23,6 +23,13 @@
   outline-offset: 3px;
 }
 @media (max-height: 480px) {
+  /* Landscape phone: the logo is centred and the menu column is pinned right, and on a short
+     wide screen the two met in the middle — the buttons clipped the logo. Move the logo to its
+     own side instead of centring it across the whole frame. */
+  .panel-title-screen {
+    align-items: flex-start;
+    padding-left: clamp(20px, 6vw, 80px);
+  }
   .lobby {
     bottom: 16px;
     gap: 8px;

@@ -29,9 +29,17 @@
   background: conic-gradient(#ffd23f var(--od, 100%), rgba(255, 255, 255, 0.1) 0) border-box;
   box-shadow: 0 0 22px rgba(255, 200, 60, 0.7);
 }
+/* The pause button lives outside .hud, so it cannot see --hud-pad: the old rule here used it and
+   was therefore invalid, which left both left and right auto and dropped the button on its static
+   position — the top-left corner, on top of the standings board. Plain pixels only, and parked in
+   the gap between the standings (which end near 150px) and the centred minimap. */
 #ui.touch .touch-pause {
-  left: auto;
-  right: calc(var(--hud-pad) + 100px + env(safe-area-inset-right, 0px));
+  left: calc(172px + env(safe-area-inset-left, 0px));
+  right: auto;
+}
+/* Keeps that gap honest once the board shows nicknames instead of short kart names. */
+#ui.touch .hud-standings {
+  max-width: 148px;
 }
 #ui.touch .hud-minimap {
   left: 50%;

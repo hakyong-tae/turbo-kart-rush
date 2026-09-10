@@ -20,6 +20,7 @@ import {
   UNDERGLOWS,
   WHEEL_FX,
   sanitize,
+  unpackCosmetics,
   usesPaid,
   type BadgeId,
   type CatalogueEntry,
@@ -33,6 +34,7 @@ import {
   getCosmetics,
   getEntitlements,
   onEntitlementsChange,
+  refreshEntitlements,
   saveCosmetics,
   serverReachable,
 } from '../verse8/entitlements';
@@ -40,6 +42,17 @@ import { badgeElement } from './badges';
 import { button, el } from './dom';
 import { GaragePreview } from './garage/GaragePreview';
 import { showToast } from './toast';
+
+/** Everything the paid tier owns, lifted off a stored look so a save can carry it through. */
+function paidPartOf(cos: KartCosmetics): KartCosmetics {
+  const full = sanitize(cos, true);
+  const free = sanitize(cos, false);
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(full)) {
+    if (!(key in free)) out[key] = (full as Record<string, unknown>)[key];
+  }
+  return out as KartCosmetics;
+}
 
 /** How long a locked entry stays on the kart before snapping back. */
 const AUDITION_MS = 3000;
@@ -83,6 +96,8 @@ export class GaragePanel {
   onClose: (() => void) | null = null;
   /** Opens the VXShop dialog. Wired by Game so this panel never imports the shop. */
   onUnlock: (() => void) | null = null;
+  /** Fired after a successful save, so the title-screen showcase can repaint. */
+  onSaved: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly tabsBar: HTMLElement;
@@ -150,10 +165,12 @@ export class GaragePanel {
   private touched = false;
 
   /**
-   * Saving is what makes the load race dangerous: `sanitize` strips paid fields for a player the
-   * client currently believes is free, so a premium player who saves before their entitlement
-   * arrives would write their livery away. Inside the host the server is the truth, so the button
-   * waits for it. Offline and in local dev there is nothing to wait for.
+   * Whether the server has told us what this account owns. Inside the host it is the truth and it
+   * arrives asynchronously; offline there is nothing to wait for.
+   *
+   * This must never block saving. An earlier version disabled SAVE until the answer came, which
+   * on a phone that never got one left the garage permanently stuck on "checking" with paint that
+   * would not save. `save()` handles the unknown case by merging instead.
    */
   private get entitlementsKnown(): boolean {
     return !inVerse8Host() || getEntitlements().loaded;
@@ -168,6 +185,9 @@ export class GaragePanel {
     this.character = getCharacter(characterId);
     this.draft = { ...getCosmetics() };
     this.touched = false;
+    // Second chance at the entitlement read: the first one happens at boot, when a phone may
+    // still be negotiating the connection. Opening the garage is exactly when the answer matters.
+    if (!this.entitlementsKnown) void refreshEntitlements();
     this.cancelAudition();
     this.preview.setCharacter(this.character, this.draft);
     this.preview.start();
@@ -213,7 +233,6 @@ export class GaragePanel {
     this.stateChip.textContent = !known ? t('garage.loading') : owned ? t('garage.owned') : t('garage.paidHint');
     this.stateChip.classList.toggle('owned', known && owned);
     this.unlockBtn.classList.toggle('hidden', !known || owned);
-    this.saveBtn.disabled = !known;
   }
 
   private setTab(id: TabId): void {
@@ -381,12 +400,32 @@ export class GaragePanel {
     this.syncChrome();
   }
 
+  /**
+   * Saves the look. Colours are free and always go through; what happens to the paid half depends
+   * on whether we know the account yet.
+   *
+   * When we do, `sanitize` decides. When we do not — a phone that never got an answer — saving
+   * the sanitized draft would quietly delete a paying player's livery, so instead the paid fields
+   * already on the account are carried through untouched and only the colours are updated. A free
+   * player still cannot add paid work this way, and a premium player cannot lose any.
+   */
   private async save(): Promise<void> {
-    if (!this.entitlementsKnown) return;
     this.cancelAudition();
-    const clean = sanitize(this.draft, this.premium);
-    this.draft = clean;
-    const ok = await saveCosmetics(clean);
-    showToast(ok && serverReachable() ? t('garage.saved') : t('garage.saveFailed'), ok ? 'info' : 'error');
+    let next: KartCosmetics;
+    if (this.entitlementsKnown) {
+      next = sanitize(this.draft, this.premium);
+    } else {
+      const stored = unpackCosmetics(getEntitlements().cos);
+      next = { ...paidPartOf(stored), ...sanitize(this.draft, false) };
+    }
+    this.draft = next;
+    const ok = await saveCosmetics(next);
+    const message = !this.entitlementsKnown
+      ? t('garage.savedColours')
+      : ok && serverReachable()
+        ? t('garage.saved')
+        : t('garage.saveFailed');
+    showToast(message, ok ? 'info' : 'error');
+    if (ok) this.onSaved?.();
   }
 }

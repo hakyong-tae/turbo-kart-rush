@@ -246,7 +246,7 @@ export class RaceManager {
       const s = tr.kart.state;
       out.push({
         kartId: s.id,
-        name: s.character.name,
+        name: s.racerName || s.character.name,
         color: s.character.color,
         place: s.place,
         finishTime: s.finished ? s.finishTime : -1,

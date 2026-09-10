@@ -310,6 +310,11 @@ export interface KartState {
   id: number;
   isPlayer: boolean;
   character: CharacterDef;
+  /**
+   * Contract addition (nicknames): who is driving, as shown on the standings board — the local
+   * player's saved nickname, a remote player's, or a bot's. Absent falls back to the kart name.
+   */
+  racerName?: string;
 
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;

@@ -10,6 +10,8 @@ import type { CharacterDef, IKart } from '../core/types';
 import { LAYER_BLOOM } from '../core/constants';
 import { damp } from '../core/math';
 import { Kart } from '../kart/Kart';
+import type { KartCosmetics } from '../core/cosmetics';
+import { getCosmetics } from '../verse8/entitlements';
 
 export type MenuFraming = 'title' | 'characters' | 'tracks';
 
@@ -299,13 +301,16 @@ export class MenuBackdrop {
     this.focus.set(0, PODIUM_HEIGHT + KART_FOCUS_Y, 0);
   }
 
-  /** Swap the displayed kart to a character (no-op if unchanged). */
+  /**
+   * Swap the displayed kart to a character (no-op if unchanged), wearing the player's saved look.
+   * The showcase is the first thing anyone sees after painting, so it has to reflect the garage.
+   */
   setCharacter(def: CharacterDef): void {
     if (def.id === this.currentId) return;
     this.currentId = def.id;
     this.disposeKart();
     try {
-      const kart: IKart = new Kart(0, def, true);
+      const kart: IKart = new Kart(0, def, true, getCosmetics());
       kart.setFrozen(true);
       kart.resetTo(this.origin, this.identity);
       kart.object.traverse((o) => {
@@ -414,6 +419,11 @@ export class MenuBackdrop {
   }
 
   // ----------------------------------------------------------------- private
+
+  /** Repaints the showcase kart in place — called when the garage saves. */
+  applyCosmetics(cos: KartCosmetics): void {
+    this.kart?.applyCosmetics?.(cos);
+  }
 
   private disposeKart(): void {
     if (!this.kart) return;

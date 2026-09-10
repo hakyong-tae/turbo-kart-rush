@@ -110,6 +110,17 @@ export class OnlineController {
     if (this.bot && this.lobby.key) await this.bot.join(this.lobby.key);
   }
 
+  /**
+   * Renames me everywhere it shows. The identity is captured when the controller is built, which
+   * on a cold start can be before the account's nickname has arrived — that is how a room full of
+   * players all called RACER happens. Called again whenever the nickname changes.
+   */
+  setNick(nick: string): void {
+    if (!nick || nick === this.me.nick) return;
+    this.me.nick = nick;
+    void this.lobby.setNick(nick).catch(() => {});
+  }
+
   /** Host: freeze the roster, announce START, and start locally. */
   async startRaceAsHost(): Promise<void> {
     const v = this.lobby.view;

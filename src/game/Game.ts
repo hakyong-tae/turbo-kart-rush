@@ -78,6 +78,7 @@ import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
 import { sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { addRaceToCup, cupPlaceOf, getCup, type CupEntry, type CupId } from '../core/cups';
+import { botName, localRacerName } from '../core/racerNames';
 import {
   getCosmetics,
   getEntitlements,
@@ -450,6 +451,13 @@ export class Game {
     } catch {
       return;
     }
+    // A nickname that arrives (or changes) after the online controller was built has to reach the
+    // room, or the lobby keeps showing the placeholder to everyone else.
+    this.unsubs.push(
+      onEntitlementsChange((ent) => {
+        if (ent.nickname) this.online?.setNick(ent.nickname);
+      }),
+    );
     const off = onEntitlementsChange((ent) => {
       if (!ent.loaded) return;
       off();
@@ -606,6 +614,9 @@ export class Game {
 
   private buildGarage(): GaragePanel {
     const garage = new GaragePanel(this.uiRoot);
+    // The showcase kart on the title screen is the same kart the garage just painted. Wired here
+    // rather than next to the menu, because the menu is built before `this.garage` exists.
+    garage.onSaved = () => this.safe(() => this.backdrop.applyCosmetics(getCosmetics()));
     garage.onUnlock = () => {
       const result = buyPremium();
       if (result === 'unregistered') showToast(t('v8.lock.unregistered'), 'error');
@@ -1156,12 +1167,18 @@ export class Game {
       // Remote looks come off the frozen roster. They were sanitized against their owner's
       // entitlement when saved, so the gate here only rejects unknown ids and stray colours.
       const looks = new Map<number, KartCosmetics>();
+      const nicks = new Map<number, string>();
       for (const entry of settings.online.roster) {
         if (entry.cos) looks.set(entry.kartId, sanitize(unpackCosmetics(entry.cos), true));
+        if (entry.nick) nicks.set(entry.kartId, entry.nick);
       }
       looks.set(localKartId, getCosmetics());
       for (let id = 0; id < KART_COUNT; id++) {
-        karts.push(new Kart(id, slots[id], id === localKartId, looks.get(id)));
+        const kart = new Kart(id, slots[id], id === localKartId, looks.get(id));
+        // Humans by their nickname, the rest by a handle derived from the circuit and the slot,
+        // which every client computes identically.
+        kart.state.racerName = nicks.get(id) ?? botName(trackDef.id, id);
+        karts.push(kart);
       }
       if (settings.online.role === 'host') {
         for (let id = 0; id < karts.length; id++) {
@@ -1179,10 +1196,14 @@ export class Game {
         others[i] = others[j];
         others[j] = t;
       }
-      karts.push(new Kart(0, playerChar, true, getCosmetics()));
+      const player = new Kart(0, playerChar, true, getCosmetics());
+      player.state.racerName = localRacerName(getEntitlements().nickname, playerChar.name);
+      karts.push(player);
       for (let id = 1; id < KART_COUNT; id++) {
         const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;
-        karts.push(new Kart(id, def, false));
+        const bot = new Kart(id, def, false);
+        bot.state.racerName = botName(trackDef.id, id);
+        karts.push(bot);
       }
       for (let id = 1; id < karts.length; id++) {
         aiDrivers.push(new AIDriver(karts[id], difficulty, id));
