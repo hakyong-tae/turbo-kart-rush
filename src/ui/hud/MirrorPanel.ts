@@ -9,6 +9,7 @@
  * for enough attention.
  */
 import type { HazardInfo, IKart } from '../../core/types';
+import { events } from '../../core/events';
 import { el, restartAnimation } from '../dom';
 
 export interface ScreenRect {
@@ -20,16 +21,32 @@ export interface ScreenRect {
 
 const KART_RANGE = 14;
 const HAZARD_RANGE = 30;
+/** How long the mirror stays up after your own item lands, so the hit is actually seen. */
+const KILL_HOLD_MS = 1400;
 
 export class MirrorPanel {
   readonly root: HTMLElement;
   private readonly view: HTMLElement;
   private level = '';
   private readonly rect: ScreenRect = { x: 0, y: 0, w: 0, h: 0 };
+  private holdUntil = 0;
+  private playerId = -1;
+  private readonly unsubHit: () => void;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud-mirror', undefined, parent);
     this.view = el('div', 'hud-mirror-view', undefined, this.root);
+    // Your own shell landing on someone behind you is the one thing worth looking back for, and
+    // it is over before the mirror's own scan would notice: the hazard is destroyed by the hit.
+    // So the hit itself pins the mirror open for a moment.
+    this.unsubHit = events.on('item:hit', (e) => {
+      if (e.sourceKartId !== this.playerId || e.kartId === this.playerId) return;
+      this.holdUntil = performance.now() + KILL_HOLD_MS;
+    });
+  }
+
+  dispose(): void {
+    this.unsubHit();
   }
 
   /** Rectangle (CSS px) to draw the rear camera into, or null while hidden. Reuses one object. */
@@ -46,7 +63,9 @@ export class MirrorPanel {
 
   update(player: IKart, karts: readonly IKart[], hazards: readonly HazardInfo[]): void {
     const s = player.state;
+    this.playerId = s.id;
     if (s.isFrozen || s.finished) {
+      this.holdUntil = 0;
       this.set('');
       return;
     }
@@ -58,7 +77,6 @@ export class MirrorPanel {
     let bestHazard = Infinity;
     for (let i = 0; i < hazards.length; i++) {
       const h = hazards[i];
-      if (h.ownerId === s.id) continue;
       if (h.type !== 'red_shell' && h.type !== 'green_shell' && h.type !== 'blue_shell' && h.type !== 'bob_omb') continue;
       const dx = h.position.x - s.position.x;
       const dz = h.position.z - s.position.z;
@@ -68,6 +86,16 @@ export class MirrorPanel {
       const rvz = h.velocity.z - s.velocity.z;
       const closing = -(rvx * dx + rvz * dz) / Math.max(0.1, dist);
       const behind = dx * fx + dz * fz < 0;
+      if (h.ownerId === s.id) {
+        // Ours. Worth watching, not worth alarming about — the frame stays calm and the mirror
+        // opens only once the shell is actually behind us and going away to find someone.
+        if (behind && dist < bestHazard) {
+          bestHazard = dist;
+          hazardSeen = true;
+          level = 'mine';
+        }
+        continue;
+      }
       if (h.type === 'blue_shell' || (closing > 2 && (behind || h.type === 'red_shell'))) {
         bestHazard = dist;
         hazardSeen = true;
@@ -93,12 +121,15 @@ export class MirrorPanel {
         }
       }
     }
+    // A hit we caused keeps the mirror open even after the shell is gone, but never downgrades a
+    // real threat: being chased still outranks watching a replay.
+    if (!level && performance.now() < this.holdUntil) level = 'mine';
     this.set(level);
   }
 
   private set(level: string): void {
     if (level !== this.level) {
-      this.root.classList.remove('warn', 'warn-near', 'danger', 'blue', 'visible');
+      this.root.classList.remove('warn', 'warn-near', 'danger', 'blue', 'mine', 'visible');
       if (level) this.root.classList.add('visible', level);
       this.level = level;
       if (level === 'danger' || level === 'blue') restartAnimation(this.root, 'rumble');

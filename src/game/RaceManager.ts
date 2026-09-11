@@ -333,19 +333,23 @@ export class RaceManager {
     if (p) {
       // Mario Kart style charge: the longer the throttle is held before GO the bigger the
       // launch — until the engine stalls past startSpinoutHold.
+      //
+      // Both the window and the reward were cut to two thirds in QA. A perfect launch used to be
+      // worth more than a nitro and almost nobody missed it, which decided too many races before
+      // the first corner; it is now a useful start rather than a free lap.
       const held = p.throttleStreak;
       if (held >= B.race.startSpinoutHold) {
         p.kart.applyHit('collision', -1);
       } else if (held >= B.race.startChargePerfect) {
-        p.kart.applyBoost(0.5, 1.3, 'start');
+        p.kart.applyBoost(0.33, 0.87, 'start');
       } else if (held >= B.race.startChargeGood) {
-        p.kart.applyBoost(0.35, 1.0, 'start');
+        p.kart.applyBoost(0.23, 0.67, 'start');
       } else if (held > 0.15) {
-        p.kart.applyBoost(0.2, 0.6, 'start');
+        p.kart.applyBoost(0.13, 0.4, 'start');
       }
     }
     for (const tr of this.trackers) {
-      if (tr.aiStartBoost) tr.kart.applyBoost(0.3, 0.8, 'start');
+      if (tr.aiStartBoost) tr.kart.applyBoost(0.2, 0.53, 'start');
     }
   }
 

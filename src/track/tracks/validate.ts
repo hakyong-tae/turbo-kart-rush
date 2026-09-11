@@ -14,7 +14,10 @@ import type { TrackDefinition } from '../../core/types';
 export function validateTrackDefinition(def: TrackDefinition): string[] {
   const warnings: string[] = [];
   const n = def.controlPoints.length;
-  if (n < 14 || n > 26) warnings.push(`has ${n} control points (expected 14..26)`);
+  // The upper bound is a smell test, not an engine limit: a circuit wanting more than this many
+  // points is usually one somebody is drawing corner by corner rather than laying out. Raised to
+  // 48 for Prism Skyway, whose seven hairpins need four points each to hold their arc.
+  if (n < 14 || n > 48) warnings.push(`has ${n} control points (expected 14..48)`);
   if (def.halfWidths && def.halfWidths.length !== n) {
     warnings.push(`halfWidths length ${def.halfWidths.length} != controlPoints length ${n}`);
   }

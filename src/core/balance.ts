@@ -140,7 +140,15 @@ export interface Balance {
     boxSeekDistance: number;
   };
   race: {
-    /** Rocket start charge (seconds the throttle is held before GO): ≥ good = medium boost, ≥ perfect = big boost. */
+    /**
+     * Rocket start charge (seconds the throttle is held before GO): ≥ good = medium boost,
+     * ≥ perfect = big boost.
+     *
+     * Cut to two thirds of the original window in QA: at 2.6 s to overheat, every driver in the
+     * field was nailing it every time, so it had stopped being a skill and become a tax on anyone
+     * who did not know about it. Human timing error is measured in fixed hundredths, not in
+     * percentages, so shortening the whole ladder is what makes it a real gamble again.
+     */
     startChargeGood: number;
     startChargePerfect: number;
     /** Holding throttle this long before GO = spin out. */
@@ -252,7 +260,7 @@ export function createDefaultBalance(): Balance {
           brakeLatAccel: 34,
           easeThrottle: 0.6,
           usesMushrooms: false,
-          startThrottleBeforeGo: 0.55,
+          startThrottleBeforeGo: 0.37,
           rubber: { base: 0.86, amp: 0.06, scale: 120, min: 0.82, max: 0.96 },
         },
         normal: {
@@ -264,7 +272,7 @@ export function createDefaultBalance(): Balance {
           brakeLatAccel: 46,
           easeThrottle: 0.65,
           usesMushrooms: true,
-          startThrottleBeforeGo: 0.45,
+          startThrottleBeforeGo: 0.3,
           rubber: { base: 0.94, amp: 0.05, scale: 100, min: 0.9, max: 1.0 },
         },
         hard: {
@@ -276,7 +284,7 @@ export function createDefaultBalance(): Balance {
           brakeLatAccel: 62,
           easeThrottle: 0.75,
           usesMushrooms: true,
-          startThrottleBeforeGo: 0.3,
+          startThrottleBeforeGo: 0.2,
           rubber: { base: 0.985, amp: 0.02, scale: 150, min: 0.97, max: 1.0 },
         },
       },
@@ -288,9 +296,9 @@ export function createDefaultBalance(): Balance {
       boxSeekDistance: 60,
     },
     race: {
-      startChargeGood: 0.6,
-      startChargePerfect: 1.6,
-      startSpinoutHold: 2.6,
+      startChargeGood: 0.4,
+      startChargePerfect: 1.05,
+      startSpinoutHold: 1.75,
       wrongWaySeconds: 1.2,
       stuckSeconds: 6,
       retireSeconds: 10,

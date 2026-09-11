@@ -177,7 +177,7 @@ export const en = {
   'track.neon_nexus.desc': 'Three hairpins, a rooftop jump and a flat-out neon straight under a violet sky. Experts only.',
   'track.magma_ridge.desc': 'Climb the caldera, jump the ridge, then thread two lava bridges with nothing to stop you falling in.',
   'track.switchback_pass.desc': 'Three hairpins up a frozen pass and barely a straight between them. Leave the corner first or lose the place.',
-  'track.prism_skyway.desc': 'Eight corners, fourteen metres of climb, pylons on the road and no edges anywhere. The hardest lap on the card.',
+  'track.prism_skyway.desc': 'Seven hairpins hung over nothing. Miss one and there is no wall to stop you.',
   // verse8: premium karts
   'v8.locked': 'LOCKED',
   'v8.ticketsLeft': '📺 ×{n}',

@@ -169,7 +169,7 @@ export const ko: Record<StringKey, string> = {
   'track.neon_nexus.desc': '헤어핀 셋, 옥상 점프, 보랏빛 하늘 아래 전력 질주 네온 직선. 전문가 전용.',
   'track.magma_ridge.desc': '칼데라를 오르고, 능선을 뛰어넘고, 아무것도 막아주지 않는 용암 다리 둘을 건너라.',
   'track.switchback_pass.desc': '얼어붙은 고갯길을 오르는 헤어핀 셋, 그 사이엔 직선다운 직선이 없다. 먼저 코너를 빠져나가지 못하면 순위를 잃는다.',
-  'track.prism_skyway.desc': '코너 여덟 개, 14 m의 고저차, 도로 위의 기둥들, 그리고 어디에도 가드는 없다. 카드에서 가장 어려운 랩.',
+  'track.prism_skyway.desc': '허공에 매달린 헤어핀 일곱 개. 하나라도 놓치면 막아줄 벽이 없다.',
   'v8.locked': '잠김',
   'v8.ticketsLeft': '📺 ×{n}',
   'v8.lock.title': '프리미엄 카트',

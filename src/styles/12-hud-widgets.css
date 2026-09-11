@@ -23,6 +23,12 @@
   box-shadow: 0 0 24px rgba(255, 64, 64, 0.65);
   animation: mirror-pulse 0.32s ease-in-out infinite;
 }
+/* Our own shot in flight, or one of ours that just landed. Green reads as good news, and it does
+   not pulse: the mirror is open to be watched, not to demand anything. */
+.hud-mirror.mine {
+  border-color: rgba(64, 226, 138, 0.85);
+  box-shadow: 0 0 18px rgba(64, 226, 138, 0.45);
+}
 .hud-mirror.blue {
   border-color: #3f7fff;
   box-shadow: 0 0 24px rgba(63, 127, 255, 0.7);

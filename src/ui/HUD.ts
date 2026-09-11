@@ -280,6 +280,7 @@ export class HUD {
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
     this.minimap.dispose();
+    this.mirror.dispose();
     this.rootNode.remove();
   }
 
