@@ -31,7 +31,7 @@ const INTERP_DELAY_MAX_MS = 260;
 /** How far a starved client keeps karts moving along their last heading before freezing. */
 const EXTRAPOLATE_MAX_MS = 320;
 export const HOST_TIMEOUT_MS = 8000;
-const BLEND_THRESHOLD_M = 2.5;
+const BLEND_THRESHOLD_M = 4.5;
 const SNAP_THRESHOLD_M = 5;
 const BLEND_PER_TICK = 0.05;
 const RTT_PROBE_INTERVAL_MS = 2000;
@@ -444,10 +444,18 @@ export class ClientSession {
    * and only trimming (2.5 m / 5%) leaves 0.12 m and 5.6 m. Both numbers improve because the
    * correction is no longer adding energy of its own.
    *
-   * Carrying the target forward by its age was tried and measured worse (0.57 m): a straight-line
-   * projection overshoots on a curve, and the projection distance jitters with the link. The real
-   * answer is rollback with input acknowledgements, which needs the client to re-simulate against
-   * the track and is a bigger change than a launch eve deserves.
+   * Two better-sounding ideas were built and measured worse, so they are not here:
+   *
+   * Carrying the target forward by its age overshoots on a curve and the projection distance
+   * jitters with the link (0.57 m a tick).
+   *
+   * Rollback with input acknowledgements — rewind to the acknowledged tick, replay everything
+   * since — needs the kart's whole simulation state at that tick, and the snapshot carries only
+   * the networked fields. Lateral velocity, slip, vertical velocity, ground contact and the drift
+   * and boost timers are not in it, so a replay starts from a state neither end ever occupied and
+   * produces a third trajectory: 0.83 m a tick, seven times a normal step. Doing it properly
+   * means putting the full kart state on the wire, which is a protocol change that wants two real
+   * devices to validate.
    */
   private reconcileLocal(): void {
     const r = this.race;

@@ -190,17 +190,15 @@ describe('host ↔ client sessions over loopback', () => {
     const median = sorted[sorted.length >> 1];
     // How violently a single tick departs from a steady glide: this is what reads as stutter.
     const worstStep = Math.max(...steps.map((d) => Math.abs(d - median)));
-    console.log(
-      `travelled=${travelled.toFixed(1)} reference=${reference.toFixed(1)} hostCopy=${hostCopy.toFixed(1)}` +
-        ` ratio=${(travelled / reference).toFixed(3)} medianStep=${median.toFixed(4)} worstJerk=${worstStep.toFixed(4)} (${(worstStep / median).toFixed(1)}x) drift=${drift.toFixed(2)}`,
-    );
+    void hostCopy;
     expect(reference).toBeGreaterThan(20);
     // Networking may cost a little, but not a slice of every second of driving.
     expect(travelled).toBeGreaterThan(reference * 0.9);
-    // And it must not stutter: no single tick may jump far beyond a normal step. The settings
-    // this guards were measured — 6.1x before, 1.9x after.
-    expect(worstStep / median).toBeLessThan(3);
-    expect(drift).toBeLessThan(6.5);
+    // And it must not stutter: no single tick may jump far beyond a normal step, and the client
+    // must not wander from the host. Measured on this harness: 6.1x and 7.3 m with the original
+    // settings, 1.7x and 3.6 m with the ones this guards.
+    expect(worstStep / median).toBeLessThan(2.5);
+    expect(drift).toBeLessThan(4.5);
   });
 
   it('a client that steers constantly stays with the host (batched per-tick input)', () => {
