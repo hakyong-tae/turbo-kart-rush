@@ -7,6 +7,7 @@ import { getEntitlements, serverReachable, setNickname } from '../verse8/entitle
 import { currentAccount } from '../verse8/server';
 import { normalizeNickname } from '../verse8/nickname';
 import { button, el, TextField } from './dom';
+import { ItemGuide } from './ItemGuide';
 import { showToast } from './toast';
 
 export type VolumeKind = 'music' | 'sfx';
@@ -25,6 +26,7 @@ export class SettingsPanel {
   private readonly accountHint: TextField;
   private readonly langButtons: HTMLButtonElement[] = [];
   private readonly sliders = new Map<VolumeKind, { input: HTMLInputElement; value: HTMLElement }>();
+  private readonly guide: ItemGuide;
   private visible = false;
 
   constructor(
@@ -68,6 +70,20 @@ export class SettingsPanel {
 
     this.buildSlider(panel, 'music', t('settings.music'));
     this.buildSlider(panel, 'sfx', t('settings.sfx'));
+
+    // The item guide is a sibling screen rather than another field: it is a page of reading, and
+    // burying it under the volume sliders would make settings scroll for everyone.
+    this.guide = new ItemGuide(root);
+    // Settings steps aside while the guide is up. Both are full-screen panels, so leaving this one
+    // behind would show two stacked sheets rather than one page of reading.
+    this.guide.onClose = () => {
+      if (this.visible) this.rootNode.classList.remove('hidden');
+    };
+    const guideField = el('div', 'settings-field', undefined, panel);
+    guideField.appendChild(button(t('guide.open'), 'ghost settings-wide', () => {
+      this.rootNode.classList.add('hidden');
+      this.guide.open();
+    }));
 
     const actions = el('div', 'actions', undefined, panel);
     actions.appendChild(button(t('settings.save'), 'primary', () => void this.save()));
@@ -119,16 +135,22 @@ export class SettingsPanel {
   }
 
   hide(): void {
+    this.guide.close();
     this.rootNode.classList.add('hidden');
     this.visible = false;
   }
 
   handleInput(input: InputState): void {
     if (!this.visible) return;
-    if (input.back) this.close();
+    // Back closes the guide first: it opened on top of this panel, so it must close first too.
+    if (input.back) {
+      if (this.guide.isOpen()) this.guide.close();
+      else this.close();
+    }
   }
 
   dispose(): void {
+    this.guide.dispose();
     this.rootNode.remove();
   }
 

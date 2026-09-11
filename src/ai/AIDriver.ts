@@ -314,6 +314,27 @@ export class AIDriver implements IAIDriver {
         threatBehind = true;
       }
     }
+
+    // Fixed obstacles read as hazards that never move. Without this the bots drive straight into
+    // the pylons every lap, which makes a circuit designed around them look broken rather than hard.
+    const obstacles = track.obstacles;
+    if (obstacles) {
+      for (let i = 0; i < obstacles.length; i++) {
+        const o = obstacles[i];
+        const dx = o.position.x - s.position.x;
+        const dz = o.position.z - s.position.z;
+        const ahead = dx * _fwd.x + dz * _fwd.z;
+        if (ahead <= 0 || ahead >= B.ai.hazardLookahead) continue;
+        const lat = dx * _right.x + dz * _right.z;
+        // Wider than a banana: a pylon is solid, and brushing it costs the corner.
+        if (Math.abs(lat) > o.radius + HAZARD_LATERAL || ahead >= nearestHazard) continue;
+        nearestHazard = ahead;
+        const obstacleTrackLat = kartLat + lat;
+        const side = hw - obstacleTrackLat > hw + obstacleTrackLat ? 1 : -1;
+        const urgency = 0.55 + 0.45 * (1 - ahead / B.ai.hazardLookahead);
+        dodgeTarget = (side * (DODGE_CLEARANCE + o.radius) - lat) * urgency;
+      }
+    }
     this.dodge = damp(this.dodge, dodgeTarget, 9, dt);
     latTarget += this.dodge;
 

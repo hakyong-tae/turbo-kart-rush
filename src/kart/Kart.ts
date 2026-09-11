@@ -785,9 +785,15 @@ export class Kart implements IKart {
     const protectedSpeed = s.isBoosting || s.isInvincible;
     if (s.surface === 'offroad' && !protectedSpeed) v *= B.status.offroadFactor;
     if (s.isShrunk) v *= B.status.shrunkFactor;
-    if (s.isInvincible) v *= B.status.starFactor;
     v *= this.slipstream.bonus(this.assistHost);
-    if (s.isBoosting) v *= 1 + s.boostStrength;
+    // Star and boost both lift the ceiling, and the holder gets the better of the two rather than
+    // the product: a star taken while a nitro is still burning should not compound into a speed
+    // nothing on the track can answer.
+    const lift = Math.max(
+      s.isInvincible ? B.status.starFactor : 1,
+      s.isBoosting ? 1 + s.boostStrength : 1,
+    );
+    v *= lift;
     if (s.isSquished) v *= B.status.squishFactor;
     return v;
   }
@@ -904,8 +910,11 @@ export class Kart implements IKart {
       let target = top * throttle;
       if (s.isDrifting) target *= B.drift.speedFactor;
       if (speed < target) {
-        const cap = s.isBoosting ? B.kart.boostAccel : maxAccel;
-        const approach = s.isBoosting ? B.kart.boostApproach : B.kart.accelApproach;
+        // The star pulls on the throttle as hard as a nitro does, not just holding a higher
+        // ceiling — reaching that ceiling at normal acceleration would waste most of the 8 s.
+        const surging = s.isBoosting || s.isInvincible;
+        const cap = surging ? B.kart.boostAccel : maxAccel;
+        const approach = surging ? B.kart.boostApproach : B.kart.accelApproach;
         speed += Math.min(cap, (target - speed) * approach + 0.8) * dt;
         if (speed > target) speed = target;
       } else {
@@ -1083,6 +1092,41 @@ export class Kart implements IKart {
             const friction = Math.max(0, 1 - 1.5 * dt);
             vel.x *= friction;
             vel.z *= friction;
+          }
+        }
+      }
+    }
+
+    // --- fixed obstacles ------------------------------------------------------
+    // Same shape as the wall response above, but radial: push out of the footprint, kill the
+    // velocity going into it, and report a collision so the player hears and feels the hit. A
+    // kart high enough off the ground flies over — that is what the jumps are for.
+    const obstacles = track.obstacles;
+    if (obstacles && !s.isFrozen && !isVoid) {
+      for (let i = 0; i < obstacles.length; i++) {
+        const o = obstacles[i];
+        if (s.position.y > o.position.y + o.height) continue;
+        const dx = s.position.x - o.position.x;
+        const dz = s.position.z - o.position.z;
+        const reach = o.radius + KART_RADIUS;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= reach * reach) continue;
+        const d = Math.sqrt(d2) || 0.0001;
+        const nx = dx / d;
+        const nz = dz / d;
+        const pen = reach - d;
+        s.position.x += nx * pen;
+        s.position.z += nz * pen;
+        const vel = s.velocity;
+        const vIn = -(vel.x * nx + vel.z * nz);
+        if (vIn > 0) {
+          vel.x += nx * vIn * (1 + B.kart.wallRestitution);
+          vel.z += nz * vIn * (1 + B.kart.wallRestitution);
+          if (vIn > 1.0 && this.wallCooldown <= 0) {
+            vel.x *= 0.55;
+            vel.z *= 0.55;
+            this.wallCooldown = 0.3;
+            events.emit('kart:collision', { kartId: s.id, otherId: null, impulse: vIn, position: s.position });
           }
         }
       }

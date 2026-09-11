@@ -117,10 +117,25 @@ export function buildGrandstands(ctx: BuildContext): THREE.Group {
 
   const parts: { geo: THREE.BufferGeometry; color: number | THREE.Color }[] = [];
   const crowdSlots: { lat: number; along: number; y: number }[] = [];
-  const base = f.whw + 3.2;
+  // The stand is one rigid block, but the road under it does not have to be straight. Walk the
+  // span it covers, measure how far the tarmac wanders toward each side in the stand's own frame,
+  // and set that side's stand-off from the worst case. Without this a stadium on a curving start
+  // straight grows through the road — the far end of a 66 m block swings several metres wide of
+  // where the finish-line frame said the edge was.
+  const standOff = (side: number): number => {
+    let worst = f.whw;
+    for (let ds = -length / 2 - 6; ds <= length / 2 + 6; ds += 2) {
+      const g = frameAtS(ctx, centerS + ds);
+      const lat = (g.x - f.x) * f.rx + (g.z - f.z) * f.rz;
+      worst = Math.max(worst, side * lat + g.whw);
+    }
+    return worst + 3.2;
+  };
+  const baseBySide: Record<number, number> = { [-1]: standOff(-1), [1]: standOff(1) };
   const topY = tierRise * tiers;
   const roofY = topY + 4.6;
   for (let side = -1; side <= 1; side += 2) {
+    const base = baseBySide[side];
     for (let k = 0; k < tiers; k++) {
       const lat = side * (base + tierDepth * (k + 0.5));
       const h = tierRise * (k + 1);
@@ -191,7 +206,7 @@ export function buildGrandstands(ctx: BuildContext): THREE.Group {
     for (let side = -1; side <= 1; side += 2) {
       for (const end of [-1, 1]) {
         const mastH = roofY + 9;
-        const lx = side * (base + tierDepth * tiers + 2.2) - side * 0.6;
+        const lx = side * (baseBySide[side] + tierDepth * tiers + 2.2) - side * 0.6;
         const lz = end * (length / 2 + 2.5);
         _p.set(f.x + f.rx * lx - f.fx * lz, f.y + mastH + 0.4, f.z + f.rz * lx - f.fz * lz);
         _e.set(0.35 * side, f.heading + (side > 0 ? Math.PI / 2 : -Math.PI / 2), 0);
@@ -227,7 +242,7 @@ export function buildGrandstands(ctx: BuildContext): THREE.Group {
       for (let side = -1; side <= 1; side += 2) {
         const board = new THREE.Mesh(boardGeo, mat);
         const along = (k - 1) * 20;
-        const lat = side * (base - 0.32);
+        const lat = side * (baseBySide[side] - 0.32);
         board.position.set(f.x + f.rx * lat - f.fx * along, f.y + 0.66, f.z + f.rz * lat - f.fz * along);
         // face the track (inward)
         _e.set(0, f.heading + (side > 0 ? -Math.PI / 2 : Math.PI / 2), 0);

@@ -1,0 +1,81 @@
+/* Item guide — a reference page opened from Settings. Reads like a list, not a dashboard. */
+.item-guide-panel {
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(86vh, 720px);
+}
+
+.item-guide-intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted, #9aa3b2);
+}
+
+.item-guide-list {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
+.item-guide-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 8px;
+  border-radius: 10px;
+}
+
+.item-guide-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.item-guide-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+
+.item-guide-icon canvas {
+  width: 40px;
+  height: 40px;
+  image-rendering: auto;
+}
+
+.item-guide-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.item-guide-name {
+  font-family: var(--display, inherit);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.item-guide-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted, #9aa3b2);
+}
+
+.settings-wide {
+  width: 100%;
+}
+
+@media (max-width: 700px), (max-height: 480px) {
+  .item-guide-panel { max-height: 92vh; }
+  .item-guide-icon { width: 36px; height: 36px; }
+  .item-guide-icon canvas { width: 32px; height: 32px; }
+  .item-guide-name { font-size: 14px; }
+  .item-guide-desc { font-size: 12px; }
+}

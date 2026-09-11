@@ -173,6 +173,14 @@ export interface TrackDefinition {
   boostPads: number[];
   /** Optional t ranges (start, end) that are 'void' beyond the road edge instead of walls. */
   voidRanges?: [number, number][];
+  /**
+   * Contract addition (gameplay-3): fixed obstacles standing on the road.
+   *
+   * `t` is the centerline parameter, `lateral` the signed offset from the centre in metres
+   * (+ = right of travel), `radius` the footprint a kart bounces off. They are part of the
+   * circuit, not the item game: same place every lap, same place on every client.
+   */
+  obstacles?: { t: number; lateral: number; radius?: number }[];
   environment: EnvironmentDef;
   /** Colours used by the track builder. */
   palette: {
@@ -244,6 +252,14 @@ export interface MinimapData {
   worldToMap(x: number, z: number): { x: number; y: number };
 }
 
+/** Contract addition (gameplay-3): one fixed obstacle, resolved to world space by the track. */
+export interface TrackObstacle {
+  position: THREE.Vector3;
+  radius: number;
+  /** Height of the standing part, for the mesh and for judging whether a jump clears it. */
+  height: number;
+}
+
 export interface ITrack {
   readonly def: TrackDefinition;
   /** Root object containing road, terrain, sky, decor. Added to the scene by Game. */
@@ -258,6 +274,8 @@ export interface ITrack {
   readonly itemBoxPositions: readonly THREE.Vector3[];
   /** Boost pad centre positions + their forward directions. */
   readonly boostPads: readonly { position: THREE.Vector3; forward: THREE.Vector3; halfWidth: number }[];
+  /** Contract addition (gameplay-3): fixed obstacles on the road, in world space. */
+  readonly obstacles?: readonly TrackObstacle[];
   readonly minimap: MinimapData;
   /** Sample the centerline frame at t (wraps). */
   sample(t: number, out?: TrackSample): TrackSample;

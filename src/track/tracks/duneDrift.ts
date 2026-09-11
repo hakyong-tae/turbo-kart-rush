@@ -36,11 +36,13 @@ export const duneDrift: TrackDefinition = {
     { x: 171.5, y: 0.5, z: 32.8 }, // left sweep
     { x: 136.8, y: 1.5, z: 52.9 }, // S-bend
     { x: 102.1, y: 2.5, z: 72.9 },
-    { x: 44.1, y: 0.5, z: 72.9 },
-    { x: 0, y: 0, z: 28.8 }, // final sweeper onto the straight
+    { x: 40, y: 0.6, z: 74 },
+    { x: 3, y: 0.3, z: 50 }, // final sweeper
+    // Straight for the last 25 m: the grid sits here, and a corner under it fans the field.
+    { x: 0, y: 0, z: 24 },
   ],
   halfWidth: 8.5,
-  halfWidths: [9, 9, 8.5, 8.5, 8.5, 8.5, 8.5, 9, 9, 9, 8.5, 8.5, 8, 7.5, 7.5, 9, 9, 9, 8.5, 8.5, 8.5, 8.5, 9, 9],
+  halfWidths: [9, 9, 8.5, 8.5, 8.5, 8.5, 8.5, 9, 9, 9, 8.5, 8.5, 8, 7.5, 7.5, 9, 9, 9, 8.5, 8.5, 8.5, 8.5, 9, 9, 9],
   wallHalfWidthFactor: 1.3,
   itemBoxRows: [0.12, 0.42, 0.62, 0.86],
   // The banked shelf above the canyon: the road runs at y 5-6 here while the desert floor sits

@@ -88,6 +88,25 @@ export function validateTrackDefinition(def: TrackDefinition): string[] {
   }
   if (ymax - ymin > 18) warnings.push(`elevation range ${(ymax - ymin).toFixed(1)} m is very large`);
 
+  // The starting grid is laid out from 6 to about 23 m behind the finish line, each kart squared
+  // to the road under it. If the road is still turning there the eight karts fan out across it and
+  // the rigid start-line stands sit on a bend — QA found both on Switchback Pass. Ask for a real
+  // straight, a little longer than the grid, before the line.
+  const t0 = curve.getTangentAt(0);
+  const startHeading = Math.atan2(t0.x, t0.z);
+  let worstFan = 0;
+  let worstFanS = 0;
+  for (let back = 0; back <= 26; back += 2) {
+    const t = ((1 - back / length) % 1 + 1) % 1;
+    const tan = curve.getTangentAt(t);
+    let d = Math.atan2(tan.x, tan.z) - startHeading;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    if (Math.abs(d) > Math.abs(worstFan)) { worstFan = d; worstFanS = back; }
+  }
+  const fanDeg = Math.abs((worstFan * 180) / Math.PI);
+  if (fanDeg > 8) warnings.push(`start straight bends ${fanDeg.toFixed(1)}° by ${worstFanS} m before the line`);
+
   return warnings;
 }
 

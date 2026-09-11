@@ -79,6 +79,11 @@ export interface Balance {
     /** Top-speed multipliers. */
     offroadFactor: number;
     shrunkFactor: number;
+    /**
+     * Top-speed multiplier while the star is up. Matched to nitro (1 + boost strength): the star
+     * is the rarest item on the table and costs the holder nothing to be hit, so it must not also
+     * be the slower choice — QA found players saving a nitro over using a star.
+     */
     starFactor: number;
     squishFactor: number;
   };
@@ -181,7 +186,7 @@ export function createDefaultBalance(): Balance {
       spinDuration: 1.1,
       offroadFactor: 0.55,
       shrunkFactor: 0.65,
-      starFactor: 1.2,
+      starFactor: 1.55,
       squishFactor: 0.5,
     },
     items: {

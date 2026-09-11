@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { detectLang, getLang, localOrdinal, setLang, t } from './i18n';
 import { en } from './locales/en';
 import { ko } from './locales/ko';
+import { TRACKS } from '../track/tracks';
 
 describe('i18n', () => {
   beforeEach(() => {
@@ -12,6 +13,16 @@ describe('i18n', () => {
 
   it('ko and en have identical key sets', () => {
     expect(Object.keys(ko).sort()).toEqual(Object.keys(en).sort());
+  });
+
+  it('every track has a description in both languages', () => {
+    // Key parity alone does not catch this: a new circuit arrives with its description missing
+    // from both files at once, and then the Korean menu quietly shows English. Caught in QA on
+    // Switchback Pass and Prism Skyway.
+    for (const track of TRACKS) {
+      expect(Object.keys(ko)).toContain(`track.${track.id}.desc`);
+      expect(Object.keys(en)).toContain(`track.${track.id}.desc`);
+    }
   });
 
   it('t() returns the current language string and substitutes params', () => {

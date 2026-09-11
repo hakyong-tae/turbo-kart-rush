@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Checkpoint, ITrack, MinimapData, StartSlot, SurfaceQuery, SurfaceType, TrackDefinition, TrackSample } from '../core/types';
+import type { Checkpoint, ITrack, MinimapData, StartSlot, SurfaceQuery, SurfaceType, TrackDefinition, TrackObstacle, TrackSample } from '../core/types';
 import { CHECKPOINT_COUNT, ITEM_BOX_ROW_SIZE, KART_COUNT } from '../core/constants';
 import { lerp, seededRandom, smoothstep, trackDelta, wrap01 } from '../core/math';
 import { Centerline } from './Centerline';
@@ -13,6 +13,7 @@ import { buildDecorations } from './builders/decor';
 import { BOOST_PAD_LENGTH, buildBoostPads, buildGantry, buildGrandstands, buildSponsorBridges, computeItemBoxPositions, type BoostPadInfo } from './builders/props';
 import { buildAnimatedProps } from './builders/animated';
 import { buildLandmarks } from './builders/landmarks';
+import { buildObstacles, computeObstacles } from './builders/obstacles';
 
 /** Half length (metres) of the 'boost' surface strip centred on each boost pad t (= the visible strip). */
 const BOOST_PAD_HALF_LENGTH = BOOST_PAD_LENGTH / 2;
@@ -72,6 +73,7 @@ export class Track implements ITrack {
   readonly startGrid: readonly StartSlot[];
   readonly itemBoxPositions: readonly THREE.Vector3[];
   readonly boostPads: readonly BoostPadInfo[];
+  readonly obstacles: readonly TrackObstacle[];
   readonly minimap: MinimapData;
 
   private readonly cl: Centerline;
@@ -105,6 +107,7 @@ export class Track implements ITrack {
     this.checkpoints = this.buildCheckpoints();
     this.startGrid = this.buildStartGrid();
     this.itemBoxPositions = computeItemBoxPositions(ctx, ITEM_BOX_ROW_SIZE);
+    this.obstacles = computeObstacles(ctx);
     this.minimap = this.buildMinimap();
 
     // ------------------------------------------------------------ geometry
@@ -126,6 +129,8 @@ export class Track implements ITrack {
     this.boostPads = pads;
     this.boostPadHalfWidths = new Float64Array(this.boostPadTs.length);
     for (let i = 0; i < pads.length && i < this.boostPadHalfWidths.length; i++) this.boostPadHalfWidths[i] = pads[i].halfWidth;
+    const obstacleGroup = buildObstacles(ctx, this.obstacles);
+    if (obstacleGroup) root.add(obstacleGroup);
     root.add(buildAnimatedProps(ctx));
     this.object = root;
   }

@@ -41,14 +41,17 @@ export const switchbackPass: TrackDefinition = {
     { x: 107.4, y: 4.6, z: -150.7 },
     { x: 108, y: 4.2, z: -100 },
     { x: 108, y: 3, z: -20 }, // leg 4, the long descent on the outside
-    { x: 100, y: 1.6, z: 36 },
-    { x: 58, y: 0.8, z: 66 }, // wide return sweep, the only place to breathe
-    { x: 10, y: 0.6, z: 64 },
-    { x: -20, y: 0.2, z: 28 }, // final left back onto the start straight
+    { x: 105, y: 1.8, z: 34 },
+    { x: 86, y: 1, z: 64 }, // wide return sweep, the only place to breathe
+    { x: 40, y: 0.7, z: 76 },
+    { x: 3, y: 0.4, z: 54 },
+    // Dead straight onto the line. The grid is laid out 6-22 m behind the finish, so a corner
+    // here would fan the eight karts across the road and sit the stands on a bend.
+    { x: 0, y: 0.15, z: 26 },
   ],
   halfWidth: 7.5,
   halfWidths: [
-    8.5, 8, 7.5, 7, 7, 7, 7, 7.5, 8, 7, 7, 7, 7, 8, 7.5, 7, 7, 7, 7, 7.5, 8.5, 8.5, 9, 9, 8.5,
+    8.5, 8, 7.5, 7, 7, 7, 7, 7.5, 8, 7, 7, 7, 7, 8, 7.5, 7, 7, 7, 7, 7.5, 8.5, 8.5, 9, 9, 8.5, 8.5,
   ],
   wallHalfWidthFactor: 1.45,
   itemBoxRows: [0.07, 0.3, 0.52, 0.78],
