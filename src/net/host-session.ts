@@ -58,8 +58,10 @@ export class HostSession {
   private race: HostRaceView | null = null;
   private tick = 0;
   private readonly inputs = new Map<number, InputState>();
-  /** Per-tick samples waiting to be played, oldest first. */
-  private readonly inputQueue = new Map<number, NetInputSample[]>();
+  /** Per-tick samples waiting to be played, oldest first, each with the sequence it came with. */
+  private readonly inputQueue = new Map<number, { seq: number; sample: NetInputSample }[]>();
+  /** Sequence of the last sample actually applied, sent back so a client can rewind to it. */
+  private readonly appliedSeq = new Map<number, number>();
   /** Host tick each kart's queue was last advanced on, so one tick consumes one sample. */
   private readonly inputAdvanced = new Map<number, number>();
   private readonly lastSeq = new Map<number, number>();
@@ -138,7 +140,11 @@ export class HostSession {
     if (!r) return;
     this.tick++;
     if (this.tick % SNAPSHOT_EVERY !== 0) return;
-    const karts: NetKartPose[] = r.karts.map((k) => poseOf(k));
+    const karts: NetKartPose[] = r.karts.map((k) => {
+      const pose = poseOf(k);
+      pose.ack = this.appliedSeq.get(k.state.id) ?? 0;
+      return pose;
+    });
     this.transport.send(
       MSG.SNAPSHOT,
       encodeSnapshot({
@@ -170,8 +176,10 @@ export class HostSession {
   inputFor(kartId: number): InputState | undefined {
     if (this.inputAdvanced.get(kartId) !== this.tick) {
       this.inputAdvanced.set(kartId, this.tick);
-      const sample = this.inputQueue.get(kartId)?.shift();
-      if (sample) {
+      const next = this.inputQueue.get(kartId)?.shift();
+      if (next) {
+        const sample = next.sample;
+        this.appliedSeq.set(kartId, next.seq);
         let s = this.inputs.get(kartId);
         if (!s) {
           s = createEmptyInput();
@@ -204,6 +212,7 @@ export class HostSession {
       this.inputs.delete(id);
       this.inputQueue.delete(id);
       this.inputAdvanced.delete(id);
+      this.appliedSeq.delete(id);
       this.onHumanLeft?.(id);
     }
   }
@@ -238,7 +247,7 @@ export class HostSession {
           q = [];
           this.inputQueue.set(id, q);
         }
-        for (const sample of inp.samples) q.push(sample);
+        inp.samples.forEach((sample, i) => q.push({ seq: (inp.seq + i) & 0xffff, sample }));
         // A client that stalled and came back must not hand us a long tail of stale steering.
         if (q.length > INPUT_QUEUE_MAX) q.splice(0, q.length - INPUT_QUEUE_MAX);
         const prevUse = this.lastUseSeq.get(id);

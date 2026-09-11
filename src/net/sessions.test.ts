@@ -146,14 +146,26 @@ describe('host ↔ client sessions over loopback', () => {
       standings: () => hostKarts.map((k, i) => ({ kartId: i, name: k.state.character.name, color: 0, place: i + 1, finishTime: -1 })),
     });
     const client = new ClientSession(cliT, roster, 1, () => now);
-    client.attach({ karts: cliKarts, totalLaps: 3 });
+    client.attach({
+      karts: cliKarts,
+      totalLaps: 3,
+      replay: (kart, input) => {
+        kart.setInput(input);
+        kart.update(FIXED_DT, track, []);
+      },
+    });
 
     // Reference: the same kart, same inputs, no networking at all.
     const refKarts = makeKarts(1, track);
-    const start = cliKarts[1].state.position.clone();
-    const steps: number[] = [];
+    // What the player actually sees: the simulated position plus whatever offset the model is
+    // currently carrying to hide a network correction.
+    const seen = (k: Kart) => k.state.position.clone().add(k.netOffset);
+    const start = seen(cliKarts[1]);
+    (globalThis as unknown as { __rewindMiss?: number }).__rewindMiss = 0;
+    const anomalies: number[] = [];
     let drift = 0;
-    let prev = cliKarts[1].state.position.clone();
+    let prev = seen(cliKarts[1]);
+    let prevSpeed = cliKarts[1].state.speed;
 
     for (let tick = 0; tick < 720; tick++) {
       clock.tick = tick;
@@ -175,30 +187,41 @@ describe('host ↔ client sessions over loopback', () => {
       refKarts[1].update(FIXED_DT, track, refKarts);
 
       if (tick > 180) {
-        steps.push(cliKarts[1].state.position.distanceTo(prev));
+        const d = seen(cliKarts[1]).distanceTo(prev);
+        // Compare each tick against what its own speed says it should be: the kart accelerates
+        // through the run, so measuring against a single median calls honest speed-up a stutter.
+        // Averaged across the tick: on a braking tick the end-of-tick speed alone understates
+        // the ground actually covered, and honest braking would read as a jolt.
+        const expected = ((Math.abs(prevSpeed) + Math.abs(cliKarts[1].state.speed)) / 2) * FIXED_DT;
+        anomalies.push(Math.abs(d - expected));
         drift = Math.max(drift, cliKarts[1].state.position.distanceTo(hostKarts[1].state.position));
       }
-      prev = cliKarts[1].state.position.clone();
+      prev = seen(cliKarts[1]);
+      prevSpeed = cliKarts[1].state.speed;
       // Let the transport's ping settle: in the game these ticks are spread across frames.
       await Promise.resolve();
     }
 
-    const travelled = cliKarts[1].state.position.distanceTo(start);
+    const travelled = seen(cliKarts[1]).distanceTo(start);
     const reference = refKarts[1].state.position.distanceTo(start);
     const hostCopy = hostKarts[1].state.position.distanceTo(start);
-    const sorted = steps.slice().sort((a, b) => a - b);
-    const median = sorted[sorted.length >> 1];
-    // How violently a single tick departs from a steady glide: this is what reads as stutter.
-    const worstStep = Math.max(...steps.map((d) => Math.abs(d - median)));
-    void hostCopy;
+    const worstAnomaly = Math.max(...anomalies);
+    const visibleJolts = anomalies.filter((a) => a > 0.02).length;
     expect(reference).toBeGreaterThan(20);
-    // Networking may cost a little, but not a slice of every second of driving.
-    expect(travelled).toBeGreaterThan(reference * 0.9);
-    // And it must not stutter: no single tick may jump far beyond a normal step, and the client
-    // must not wander from the host. Measured on this harness: 6.1x and 7.3 m with the original
-    // settings, 1.7x and 3.6 m with the ones this guards.
-    expect(worstStep / median).toBeLessThan(2.5);
-    expect(drift).toBeLessThan(4.5);
+    // Latency must not cost the player their own driving. Rollback settles the disagreement
+    // exactly instead of dragging the kart toward a stale pose, so the networked client covers
+    // the same ground as an offline one: 0.998 here, against 0.973 for the blend it replaced.
+    expect(travelled).toBeGreaterThan(reference * 0.99);
+    // And the corrections must not be visible. Every tick is checked against the ground its own
+    // speed says it covered; anything left over is a jolt the player would feel. Measured on this
+    // harness: 0.127 m worst and 24 such ticks with the blend, 0.023 m and 2 with rollback and
+    // the model absorbing what is left.
+    expect(worstAnomaly).toBeLessThan(0.04);
+    expect(visibleJolts).toBeLessThan(6);
+    // The client runs ahead of the host by exactly the trip time — that is prediction working,
+    // not drift. This harness delays 30 ticks each way plus jitter, so at ~17 m/s a little over
+    // 8 m is right; far more would mean the two simulations had genuinely parted company.
+    expect(drift).toBeLessThan(12);
   });
 
   it('a client that steers constantly stays with the host (batched per-tick input)', () => {

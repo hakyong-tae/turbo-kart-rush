@@ -25,6 +25,16 @@ export class SlipstreamTracker {
   /** Weight class of the kart we are drafting (null when none). */
   private leaderClass: WeightClass | null = null;
 
+  /** Two numbers of memory, saved and restored with the kart so a rollback replays identically. */
+  save(): [number, WeightClass | null] {
+    return [this.lastAlong, this.leaderClass];
+  }
+
+  load(v: readonly [number, WeightClass | null]): void {
+    this.lastAlong = v[0];
+    this.leaderClass = v[1];
+  }
+
   update(host: SlipstreamHost, others: readonly IKart[], dt: number): void {
     const s = host.state;
     const S = B.slipstream;

@@ -1294,6 +1294,13 @@ export class Game {
       items.object.visible = settings.online.items;
       if (settings.online.role === 'client') items.setNetMode?.('mirror');
       this.online?.attachRace({
+        // The step a client replays through after the host corrects it: the same update the race
+        // loop runs, minus the other karts — their positions come from the host, and a rewind
+        // must not shove them around.
+        replay: (kart, input) => {
+          kart.setInput(input);
+          kart.update(FIXED_DT, track, EMPTY_KARTS);
+        },
         karts,
         raceManager,
         totalLaps: raceManager.totalLaps,

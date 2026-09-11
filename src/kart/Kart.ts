@@ -19,7 +19,7 @@ import type {
   KartState,
   SurfaceQuery,
   NetKartPose,
- ExhaustAnchor } from '../core/types';
+ ExhaustAnchor, WeightClass } from '../core/types';
 import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_RADIUS } from '../core/constants';
@@ -63,10 +63,66 @@ const _query: SurfaceQuery = {
   center: new THREE.Vector3(),
 };
 
+/** Largest correction the model will absorb rather than show; beyond this the kart really moved. */
+const NET_SMOOTH_MAX = 2.5;
+const NET_SMOOTH_RATE = 10;
+
 function approachZero(v: number, step: number): number {
   if (v > 0) return Math.max(0, v - step);
   if (v < 0) return Math.min(0, v + step);
   return 0;
+}
+
+
+/**
+ * A complete physics save of one kart: everything `update` reads, and nothing it only draws.
+ *
+ * This exists for network rollback. A client that disagrees with the host has to put its kart
+ * back the way it was at the tick the host is talking about and drive it forward again, and the
+ * networked pose alone cannot do that — lateral velocity, slip, vertical speed, ground contact
+ * and the drift and boost timers are all absent from it, and starting a replay without them
+ * lands the kart in a state neither machine ever occupied.
+ *
+ * `state` is copied field by field so new members of KartState are carried without anyone having
+ * to remember this file; `character` is shared rather than copied because it never changes.
+ */
+export interface KartSave {
+  state: Record<string, unknown>;
+  numbers: Float64Array;
+  flags: boolean[];
+  groundNormal: THREE.Vector3;
+  collisionCooldown: Float32Array;
+  slipstream: [number, WeightClass | null];
+}
+
+export function createKartSave(): KartSave {
+  return {
+    state: {},
+    numbers: new Float64Array(11),
+    flags: [false, false],
+    groundNormal: new THREE.Vector3(0, 1, 0),
+    collisionCooldown: new Float32Array(32),
+    slipstream: [0, null],
+  };
+}
+
+function copyState(from: Record<string, unknown>, to: Record<string, unknown>): void {
+  for (const key in from) {
+    const v = from[key];
+    if (key === 'character') {
+      to[key] = v;
+    } else if (v instanceof THREE.Vector3) {
+      const dst = to[key];
+      if (dst instanceof THREE.Vector3) dst.copy(v);
+      else to[key] = v.clone();
+    } else if (v instanceof THREE.Quaternion) {
+      const dst = to[key];
+      if (dst instanceof THREE.Quaternion) dst.copy(v);
+      else to[key] = v.clone();
+    } else {
+      to[key] = v;
+    }
+  }
 }
 
 export class Kart implements IKart {
@@ -120,6 +176,10 @@ export class Kart implements IKart {
   private accelEst = 0;
   private prevSpeedVis = 0;
   private pendingLandImpact = 0;
+  /** Position error absorbed from a network correction, decayed away over a few frames. */
+  private readonly netSmooth = new THREE.Vector3();
+  /** Last frame's spin-out hop, so a correction applied between frames keeps it. */
+  private visSpinHop = 0;
   private pendingHop = false;
   private starVisualActive = false;
   private accentStage = -1;
@@ -358,7 +418,12 @@ export class Kart implements IKart {
 
     const v = this.visual;
     v.scale.set(sxz * squishXZ * this.visShrink, sy * this.visSquishY * this.visShrink, sxz * squishXZ * this.visShrink);
-    v.position.y = spinHop;
+    // Network corrections are carried by the model, not the physics, and fade in about 150 ms.
+    const keep = Math.exp(-NET_SMOOTH_RATE * dt);
+    this.netSmooth.multiplyScalar(keep);
+    if (this.netSmooth.lengthSq() < 1e-6) this.netSmooth.set(0, 0, 0);
+    this.visSpinHop = spinHop;
+    v.position.set(this.netSmooth.x, spinHop + this.netSmooth.y, this.netSmooth.z);
     _euler.set(this.visPitch, this.visYawOffset + spinYaw, this.visRoll, 'YXZ');
     v.quaternion.setFromEuler(_euler);
 
@@ -554,6 +619,75 @@ export class Kart implements IKart {
   }
 
   /** Online multiplayer: adopt a host-authored pose for a remote (or corrected local) kart. */
+
+  /** Writes this kart's whole simulation state into `out`. Allocation-free after the first call. */
+  save(out: KartSave): void {
+    copyState(this.state as unknown as Record<string, unknown>, out.state);
+    const n = out.numbers;
+    n[0] = this.lateralVel;
+    n[1] = this.vy;
+    n[2] = this.freeY;
+    n[3] = this.slip;
+    n[4] = this.groundVy;
+    n[5] = this.lastGroundY;
+    n[6] = this.absCharge;
+    n[7] = this.hopTimer;
+    n[8] = this.frozenThrottleTime;
+    n[9] = this.padCooldown;
+    n[10] = this.wallCooldown;
+    out.flags[0] = this.hasGroundSample;
+    out.flags[1] = this.prevDriftHeld;
+    out.groundNormal.copy(this.groundNormal);
+    out.collisionCooldown.set(this.collisionCooldown);
+    out.slipstream = this.slipstream.save();
+  }
+
+  /** Puts the kart back exactly as `src` found it. */
+  restore(src: KartSave): void {
+    copyState(src.state, this.state as unknown as Record<string, unknown>);
+    const n = src.numbers;
+    this.lateralVel = n[0];
+    this.vy = n[1];
+    this.freeY = n[2];
+    this.slip = n[3];
+    this.groundVy = n[4];
+    this.lastGroundY = n[5];
+    this.absCharge = n[6];
+    this.hopTimer = n[7];
+    this.frozenThrottleTime = n[8];
+    this.hasGroundSample = src.flags[0];
+    this.prevDriftHeld = src.flags[1];
+    this.groundNormal.copy(src.groundNormal);
+    this.collisionCooldown.set(src.collisionCooldown);
+    this.padCooldown = n[9];
+    this.wallCooldown = n[10];
+    this.slipstream.load(src.slipstream);
+  }
+
+  /**
+   * Hides a network correction from the eye.
+   *
+   * When an online client rewinds and replays, the kart legitimately ends up somewhere slightly
+   * different, and moving it there in one frame is a visible twitch. The jump is handed here
+   * instead: the model keeps drawing where it was and slides to the truth over a few frames,
+   * while the simulation gets the corrected position immediately.
+   */
+  /** The offset the model is currently carrying: where the player sees the kart, minus where it is. */
+  get netOffset(): Readonly<THREE.Vector3> {
+    return this.netSmooth;
+  }
+
+  absorbCorrection(dx: number, dy: number, dz: number): void {
+    this.netSmooth.x = clamp(this.netSmooth.x + dx, -NET_SMOOTH_MAX, NET_SMOOTH_MAX);
+    this.netSmooth.y = clamp(this.netSmooth.y + dy, -NET_SMOOTH_MAX, NET_SMOOTH_MAX);
+    this.netSmooth.z = clamp(this.netSmooth.z + dz, -NET_SMOOTH_MAX, NET_SMOOTH_MAX);
+    // Applied at once, not at the next update: the correction lands between frames, and leaving
+    // the model a frame behind would show the very jump this is here to hide.
+    this.visual.position.x = this.netSmooth.x;
+    this.visual.position.y = this.visSpinHop + this.netSmooth.y;
+    this.visual.position.z = this.netSmooth.z;
+  }
+
   applyNetState(pose: NetKartPose): void {
     const s = this.state;
     s.position.set(pose.x, pose.y, pose.z);

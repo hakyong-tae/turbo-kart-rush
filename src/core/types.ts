@@ -395,6 +395,9 @@ export interface ExhaustAnchor {
   direction: THREE.Vector3;
 }
 
+/** Opaque handle for a kart's saved simulation state (see `KartSave` in src/kart/Kart.ts). */
+export type KartSaveOpaque = object;
+
 export interface IKart {
   readonly state: KartState;
   /** Root object (kart body + driver + wheels). Added to the scene by Game. */
@@ -403,6 +406,18 @@ export interface IKart {
   readonly input: InputState;
   /** Contract addition (garage): the look this kart wears. Empty = the character's own colours. */
   readonly cosmetics?: KartCosmetics;
+  /**
+   * Contract addition (rollback): a complete save of the simulation, so an online client can put
+   * the kart back at an earlier tick and replay from there. `KartSave` is opaque to callers —
+   * make one with `createKartSave()` from src/kart/Kart.ts and hand the same object back.
+   */
+  save?(out: KartSaveOpaque): void;
+  restore?(src: KartSaveOpaque): void;
+  /**
+   * Contract addition (rollback): hands the model a position jump to absorb, so a correction the
+   * simulation applies at once is drawn as a slide over a few frames.
+   */
+  absorbCorrection?(dx: number, dy: number, dz: number): void;
 
   setInput(input: InputState): void;
   /** Advance physics by dt (fixed step). Handles ground, walls, drift, boost, hop, kart-kart bumps. */
@@ -592,6 +607,12 @@ export interface OnlineRaceConfig {
 
 /** Contract addition (online multiplayer): one kart's state as carried by a snapshot. */
 export interface NetKartPose {
+  /**
+   * Contract addition (rollback): the last input sequence the host had applied to this kart when
+   * this pose was taken, so a client knows which of its predicted ticks the pose accounts for.
+   * 0 when the host has heard nothing from that kart yet.
+   */
+  ack?: number;
   id: number;
   x: number;
   y: number;

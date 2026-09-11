@@ -83,6 +83,8 @@ export type EventName = keyof GameEvents;
 export type EventHandler<K extends EventName> = (payload: GameEvents[K]) => void;
 
 class EventBus {
+  private muted = false;
+
   private handlers = new Map<EventName, Set<(payload: unknown) => void>>();
 
   on<K extends EventName>(name: K, handler: EventHandler<K>): () => void {
@@ -107,7 +109,25 @@ class EventBus {
     this.handlers.get(name)?.delete(handler as (payload: unknown) => void);
   }
 
+  /**
+   * Runs `fn` with every emit dropped.
+   *
+   * Used when a client replays its own inputs to correct a network disagreement: the kart lives
+   * through those ticks a second time, and without this it would announce a second set of drifts,
+   * boosts and landings to the audio and particle layers for events the player already saw.
+   */
+  silenced<T>(fn: () => T): T {
+    const was = this.muted;
+    this.muted = true;
+    try {
+      return fn();
+    } finally {
+      this.muted = was;
+    }
+  }
+
   emit<K extends EventName>(name: K, payload: GameEvents[K]): void {
+    if (this.muted) return;
     const set = this.handlers.get(name);
     if (!set) return;
     for (const h of Array.from(set)) {
@@ -121,6 +141,7 @@ class EventBus {
 
   clear(): void {
     this.handlers.clear();
+    this.muted = false;
   }
 }
 

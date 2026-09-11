@@ -5,7 +5,7 @@
  * events, and mirrors phase / lap / place / finish of the local kart as the usual race events.
  */
 import * as THREE from 'three';
-import type { IItemManager, IKart, InputState, NetHazard } from '../core/types';
+import { createEmptyInput, type IItemManager, type IKart, type InputState, type NetHazard } from '../core/types';
 import { events } from '../core/events';
 import {
   MSG,
@@ -22,6 +22,7 @@ import {
   type Snapshot,
   type StandingMsg,
 } from './protocol';
+import { createKartSave, type KartSave } from '../kart/Kart';
 import { SNAPSHOT_EVERY } from './host-session';
 import type { Transport } from './types';
 
@@ -42,11 +43,38 @@ interface Stamped {
   snap: Snapshot;
 }
 
+/** One predicted tick: the input this client applied and a full save of the kart afterwards. */
+interface PredictedTick {
+  seq: number;
+  sample: NetInputSample;
+  save: KartSave;
+}
+
+/**
+ * How many predicted ticks to keep. Three seconds at 120 Hz, because the tick a host acknowledges
+ * is older than it looks: the input travelled there, waited its turn in the queue, and the
+ * snapshot carrying the acknowledgement travelled back. On a 250 ms link with jitter that is
+ * comfortably past a second, and a history that cannot reach the acknowledged tick falls back to
+ * blending — which is the behaviour this exists to replace.
+ */
+const HISTORY_TICKS = 360;
+/**
+ * How far the prediction may sit from the host's version of the same tick before it is rewound.
+ * Below this the two agree for practical purposes, and touching the kart would only add jitter.
+ */
+const REWIND_EPS_M = 0.12;
+
 export interface ClientRaceView {
   karts: readonly IKart[];
   totalLaps: number;
   /** Item manager in mirror mode (undefined when items are off). */
   items?: Pick<IItemManager, 'applyNetItems'>;
+  /**
+   * Steps one kart through one fixed tick with the given input. The net layer knows which inputs
+   * must be replayed after a correction but nothing about tracks or timesteps, so the game hands
+   * it the step. Without it the session falls back to blending.
+   */
+  replay?: (kart: IKart, input: InputState) => void;
 }
 
 export class ClientSession {
@@ -72,6 +100,17 @@ export class ClientSession {
   private lastSnapshotAt = 0;
   /** Per-tick inputs since the last send. */
   private readonly pending: NetInputSample[] = [];
+  private pendingFirstSeq = 0;
+  /** Sequence of the next input sample this client will produce. */
+  private inputSeq = 0;
+  /**
+   * What this client predicted, tick by tick: the input it applied and a full save of the kart
+   * afterwards. A second of it outlasts any round trip worth correcting. Preallocated and reused,
+   * because this is written 120 times a second.
+   */
+  private readonly history: PredictedTick[] = [];
+  private historyAt = 0;
+  private readonly replayInput: InputState = createEmptyInput();
   private lastLocal: NetKartPose | null = null;
   /** Clock reading when `lastLocal` arrived, so its age can be compensated for. */
   private lastLocalAt = 0;
@@ -148,6 +187,10 @@ export class ClientSession {
     if (input.useItem) this.useSeq = (this.useSeq + 1) & 0xff;
     // Every tick is recorded; the relay only lets us speak every 50 ms, so the ticks in between
     // ride along in the next batch instead of being thrown away.
+    const seq = this.inputSeq & 0xffff;
+    this.inputSeq = (this.inputSeq + 1) & 0xffff;
+    this.record(seq, input);
+    if (this.pending.length === 0) this.pendingFirstSeq = seq;
     if (this.pending.length < INPUT_BATCH_MAX) {
       this.pending.push({
         steer: input.steer,
@@ -159,10 +202,9 @@ export class ClientSession {
       });
     }
     if (this.tick % SNAPSHOT_EVERY === 0 && this.pending.length > 0) {
-      this.seq = (this.seq + 1) & 0xffff;
       this.transport.send(
         MSG.INPUT,
-        encodeInputBatch({ seq: this.seq, useSeq: this.useSeq, samples: this.pending }),
+        encodeInputBatch({ seq: this.pendingFirstSeq, useSeq: this.useSeq, samples: this.pending }),
         true,
       );
       this.pending.length = 0;
@@ -197,6 +239,34 @@ export class ClientSession {
       .finally(() => {
         this.rttProbeInFlight = false;
       });
+  }
+
+  /** Saves the kart as it stands, right after it stepped, so a rewind has somewhere to go. */
+  private record(seq: number, input: InputState): void {
+    const k = this.race?.karts[this.localKartId];
+    if (!k?.save) return;
+    let slot = this.history[this.historyAt];
+    if (!slot) {
+      slot = { seq, sample: { steer: 0, throttle: 0, brake: 0, drift: false, useItemHeld: false, lookBack: false }, save: createKartSave() };
+      this.history[this.historyAt] = slot;
+    }
+    slot.seq = seq;
+    slot.sample.steer = input.steer;
+    slot.sample.throttle = input.throttle;
+    slot.sample.brake = input.brake;
+    slot.sample.drift = input.drift;
+    slot.sample.useItemHeld = input.useItemHeld;
+    slot.sample.lookBack = input.lookBack;
+    k.save(slot.save);
+    this.historyAt = (this.historyAt + 1) % HISTORY_TICKS;
+  }
+
+  /** History entry for `seq`, or null when it has already scrolled out of the ring. */
+  private historyFor(seq: number): number {
+    for (let i = 0; i < this.history.length; i++) {
+      if (this.history[i]?.seq === seq) return i;
+    }
+    return -1;
   }
 
   /** Standings derived from the newest snapshot (used when the host vanishes). */
@@ -463,15 +533,18 @@ export class ClientSession {
     if (!r || !target) return;
     const k = r.karts[this.localKartId];
     if (!k || !k.applyNetState) return;
+
+    // With an acknowledgement, a full save of the tick it names, and a way to step the kart, the
+    // disagreement can be settled exactly instead of smoothed over.
+    if (r.replay && k.save && k.restore && target.ack !== undefined && this.rewind(k, target, r.replay)) return;
+
     const s = k.state;
-    const tx = target.x;
-    const tz = target.z;
-    const dx = tx - s.position.x;
+    const dx = target.x - s.position.x;
     const dy = target.y - s.position.y;
-    const dz = tz - s.position.z;
+    const dz = target.z - s.position.z;
     const err = Math.hypot(dx, dy, dz);
     if (err > SNAP_THRESHOLD_M) {
-      k.applyNetState({ ...target, x: tx, z: tz, lap: s.lap, place: s.place, checkpointIndex: s.checkpointIndex });
+      k.applyNetState({ ...target, lap: s.lap, place: s.place, checkpointIndex: s.checkpointIndex });
       return;
     }
     if (err > BLEND_THRESHOLD_M) {
@@ -483,6 +556,65 @@ export class ClientSession {
     }
     // Frozen flag follows the host so the grid release matches the countdown.
     if (s.isFrozen !== target.isFrozen) k.setFrozen(target.isFrozen);
+  }
+
+  /**
+   * Settles the local kart against the host's last word about it.
+   *
+   * The host says "after your input N, your kart was here". That tick is in our history, so the
+   * only question worth asking is whether the prediction was right. Usually it was — both ends
+   * run the same inputs through the same physics — and then nothing is touched at all, which is
+   * why the kart stops twitching.
+   *
+   * When it was not, the kart is restored to our own full save of tick N (velocity, slip, ground
+   * contact, drift and boost timers — none of which travel in a snapshot), the networked fields
+   * are overwritten with what the host says, and every input since is replayed through the real
+   * simulation. The result is where the kart would have been had we known earlier, rather than a
+   * blend toward a pose that is already out of date.
+   *
+   * Returns false when the history no longer reaches that far, leaving the blend to cope.
+   */
+  private rewind(k: IKart, target: NetKartPose, replay: (kart: IKart, input: InputState) => void): boolean {
+    const ack = target.ack ?? 0;
+    const at = this.historyFor(ack);
+    if (at < 0) return false;
+    const entry = this.history[at];
+    const save = entry.save as unknown as KartSave;
+    const dx = (save.state.position as THREE.Vector3).x - target.x;
+    const dy = (save.state.position as THREE.Vector3).y - target.y;
+    const dz = (save.state.position as THREE.Vector3).z - target.z;
+    if (Math.hypot(dx, dy, dz) <= REWIND_EPS_M) {
+      // The host agreed with us about that tick, so everything predicted since still stands.
+      if (k.state.isFrozen !== target.isFrozen) k.setFrozen(target.isFrozen);
+      return true;
+    }
+
+    const s = k.state;
+    // Where the player is currently being shown, so the difference can be handed to the model.
+    const seenX = s.position.x, seenY = s.position.y, seenZ = s.position.z;
+    k.restore?.(entry.save);
+    k.applyNetState?.({ ...target, lap: s.lap, place: s.place, checkpointIndex: s.checkpointIndex });
+    // Replaying re-lives those ticks: without silencing them the kart would announce a second set
+    // of drifts, boosts and landings for events the player already saw and heard.
+    events.silenced(() => {
+      for (let i = 1; i < HISTORY_TICKS; i++) {
+        const slot = this.history[(at + i) % HISTORY_TICKS];
+        if (!slot || ((slot.seq - ack) & 0xffff) > 0x8000 || slot.seq === ack) break;
+        this.replayInput.steer = slot.sample.steer;
+        this.replayInput.throttle = slot.sample.throttle;
+        this.replayInput.brake = slot.sample.brake;
+        this.replayInput.drift = slot.sample.drift;
+        this.replayInput.useItemHeld = slot.sample.useItemHeld;
+        this.replayInput.lookBack = slot.sample.lookBack;
+        replay(k, this.replayInput);
+        // The corrected path becomes the new history, or the next rewind starts from fiction.
+        k.save?.(slot.save);
+      }
+    });
+    // The simulation now holds the corrected position; the model is told to carry the difference
+    // so the player sees a slide rather than a jump.
+    k.absorbCorrection?.(seenX - s.position.x, seenY - s.position.y, seenZ - s.position.z);
+    return true;
   }
 }
 

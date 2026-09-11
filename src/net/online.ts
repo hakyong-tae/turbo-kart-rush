@@ -5,7 +5,7 @@
  * mode 'real'     → agent8 relay (inside the Verse8 host)
  * mode 'loopback' → in-page hub with one bot racer (local demo / tests)
  */
-import type { Difficulty, IItemManager, IKart, RaceSettings } from '../core/types';
+import type { Difficulty, IItemManager, IKart, InputState, RaceSettings } from '../core/types';
 import { createEmptyInput } from '../core/types';
 import { CHARACTERS } from '../kart/roster';
 import type { RaceManager } from '../game/RaceManager';
@@ -28,6 +28,11 @@ export interface OnlineRaceHooks {
   roster: readonly RosterEntry[];
   /** Item manager (host: authority source, client: mirror sink). Omit when items are off. */
   items?: IItemManager;
+  /**
+   * Steps one kart through one fixed tick. A client replays its own inputs through this after the
+   * host corrects it; only the game knows the track and the timestep.
+   */
+  replay?: (kart: IKart, input: InputState) => void;
 }
 
 const PHASE_MAP: Record<string, RacePhase> = {
@@ -168,7 +173,12 @@ export class OnlineController {
       });
     }
     if (this.clientSession) {
-      this.clientSession.attach({ karts: hooks.karts, totalLaps: hooks.totalLaps, items: hooks.items?.applyNetItems ? hooks.items : undefined });
+      this.clientSession.attach({
+        karts: hooks.karts,
+        totalLaps: hooks.totalLaps,
+        items: hooks.items?.applyNetItems ? hooks.items : undefined,
+        replay: hooks.replay,
+      });
       this.clientSession.sendLoaded();
     }
   }

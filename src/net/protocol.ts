@@ -61,6 +61,7 @@ export interface NetInputSample {
 }
 
 export interface NetInputBatch {
+  /** Sequence of the first sample; the rest are consecutive, one per tick. */
   seq: number;
   useSeq: number;
   /** Oldest first; the host consumes one per tick. */
@@ -154,7 +155,7 @@ export interface Snapshot {
 }
 
 export const SNAPSHOT_HEADER_BYTES = 10;
-export const SNAPSHOT_KART_BYTES = 21;
+export const SNAPSHOT_KART_BYTES = 23;
 export const SNAPSHOT_HAZARD_BYTES = 11;
 
 const F_DRIFT = 1;
@@ -227,6 +228,8 @@ export function encodeSnapshot(s: Snapshot): ArrayBuffer {
     );
     v.setUint8(o + 19, Math.max(0, ITEM_CODES.indexOf(k.item)));
     v.setUint8(o + 20, clamp(k.itemCount, 0, 255));
+    // Which of this kart's inputs the host had consumed: the point a client rewinds to.
+    v.setUint16(o + 21, (k.ack ?? 0) & 0xffff);
     o += SNAPSHOT_KART_BYTES;
   }
   v.setUint8(o, clamp(boxes.length, 0, 255));
@@ -292,6 +295,7 @@ export function decodeSnapshot(buf: ArrayBuffer): Snapshot | null {
       rouletteActive: (g & G_ROULETTE) !== 0,
       item: ITEM_CODES[v.getUint8(o + 19)] ?? 'none',
       itemCount: v.getUint8(o + 20),
+      ack: v.getUint16(o + 21),
     });
     o += SNAPSHOT_KART_BYTES;
   }
