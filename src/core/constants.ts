@@ -31,7 +31,15 @@ export const KART_HEIGHT = 0.9;
 export const KART_RADIUS = 0.85;
 
 /** Baseline top speed of a medium kart in m/s (~ 80 km/h). Stats scale around this. */
-export const BASE_TOP_SPEED = 22;
+/**
+ * Reference top speed in m/s, before the character's speed stat.
+ *
+ * Raised from 22 with `accelApproach` cut at the same time. At 22 with a fast approach a kart was
+ * within 1% of its ceiling after 37 m, so every straight longer than that was a procession and
+ * slipstream had nothing left to give. The ceiling is now high enough, and approached slowly
+ * enough, that the last few m/s are still coming in at 100 m.
+ */
+export const BASE_TOP_SPEED = 26;
 
 /** Number of sequential checkpoints spread evenly along the track (t = i / N). */
 export const CHECKPOINT_COUNT = 12;

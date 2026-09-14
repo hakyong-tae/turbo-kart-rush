@@ -915,7 +915,7 @@ export class Kart implements IKart {
         const surging = s.isBoosting || s.isInvincible;
         const cap = surging ? B.kart.boostAccel : maxAccel;
         const approach = surging ? B.kart.boostApproach : B.kart.accelApproach;
-        speed += Math.min(cap, (target - speed) * approach + 0.8) * dt;
+        speed += Math.min(cap, (target - speed) * approach + B.kart.accelFloor) * dt;
         if (speed > target) speed = target;
       } else {
         speed += Math.max(-B.kart.overSpeedDecelMax, (target - speed) * B.kart.overSpeedApproach) * dt;

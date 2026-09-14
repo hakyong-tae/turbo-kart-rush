@@ -37,8 +37,17 @@ export interface Balance {
   kart: {
     /** m/s^2 at (0.5 + acceleration stat) = 1. Medium kart 0 -> 95% top in ~2.5 s. */
     accelBase: number;
-    /** Proportional approach toward target speed (1/s). */
+    /**
+     * Proportional approach toward target speed (1/s), and the floor under it.
+     *
+     * These two decide how a straight feels. `accelBase` caps the pull low down, so a kart still
+     * leaves a hairpin hard; the approach governs the long climb after that, and it is deliberately
+     * slack: 50% of top speed arrives in 1.5 s, but 99% takes 5.7 s and about 100 m. On anything
+     * shorter than that a kart never quite tops out, which is what makes a tow, a mini-turbo or a
+     * boost pad worth having on the straight rather than only into the next corner.
+     */
     accelApproach: number;
+    accelFloor: number;
     /** Acceleration cap / approach while boosting (~95% of boosted top in ~0.3 s). */
     boostAccel: number;
     boostApproach: number;
@@ -164,7 +173,8 @@ export function createDefaultBalance(): Balance {
   return {
     kart: {
       accelBase: 9.0,
-      accelApproach: 2.2,
+      accelApproach: 0.7,
+      accelFloor: 0.3,
       boostAccel: 45,
       boostApproach: 7,
       overSpeedDecelMax: 10,
@@ -198,9 +208,9 @@ export function createDefaultBalance(): Balance {
       squishFactor: 0.5,
     },
     items: {
-      greenSpeed: 34,
-      redSpeed: 30,
-      blueSpeed: 45,
+      greenSpeed: 40,
+      redSpeed: 36,
+      blueSpeed: 53,
       greenLife: 9,
       redLife: 8,
       bananaLife: 40,

@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { BALANCE, applyBalanceOverrides, createDefaultBalance } from './balance';
 
 describe('balance', () => {
-  it('defaults match the original tuning', () => {
+  it('defaults match the shipped tuning', () => {
+    // A smoke test that the table loads intact, not a design constraint: when a number here is
+    // deliberately retuned, update it. greenSpeed moved 34 -> 40 with the top-speed change, so
+    // that shells keep the same closing speed on the karts they chase.
     expect(BALANCE.kart.accelBase).toBe(9);
     expect(BALANCE.drift.boostDurations).toEqual([0, 0.7, 1.2, 1.8]);
-    expect(BALANCE.items.greenSpeed).toBe(34);
+    expect(BALANCE.items.greenSpeed).toBe(40);
     expect(BALANCE.itemTable[0].banana).toBe(35);
     expect(BALANCE.ai.profiles.hard.releaseStage).toBe(3);
     expect(BALANCE.race.retireSeconds).toBe(10);

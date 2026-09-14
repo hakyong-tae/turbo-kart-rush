@@ -41,7 +41,10 @@ const ITEM_FALLBACK_COLOR: Record<ItemType, string> = {
 /** Speedometer gauge arc length in SVG units (240° of a r=44 circle). */
 const GAUGE_ARC = 184.3;
 const ROULETTE_FALLBACK_INTERVAL = 0.09;
-const SPEED_MAX_KMH = BASE_TOP_SPEED * 3.6 * 1.7;
+// Full scale on the gauge. Headroom for everything that can stack on top of a kart's own ceiling:
+// the fastest character, a star, and a tow behind a heavy kart. At 1.7 the needle pegged during a
+// boost chain, which makes the gauge read as broken exactly when it is most interesting.
+const SPEED_MAX_KMH = BASE_TOP_SPEED * 3.6 * 1.9;
 
 interface TimedNode {
   node: HTMLElement;

@@ -68,12 +68,17 @@ describe('gameplay-2', () => {
       leader.resetTo(slot.position, slot.quaternion);
       const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(slot.quaternion);
       follower.resetTo(slot.position.clone().addScaledVector(fwd, -4), slot.quaternion);
-      // Leader on partial throttle so the follower can sit in the wake without ramming it.
-      leader.setInput({ ...createEmptyInput(), throttle: 0.7 });
+      // Both flat out, and the follower is held at a fixed 4 m in the wake every step. Letting it
+      // chase the leader down made the test depend on closing speed, which is a property of the
+      // acceleration curve, not of the tow: retuning that curve broke a test about the weight
+      // matrix. What is being measured is the multiplier, so the geometry is held still.
+      leader.setInput(fullThrottle);
       follower.setInput(fullThrottle);
       const karts = [leader, follower];
       let ratio = 0;
-      run(karts, track, 9, () => {
+      run(karts, track, 6, () => {
+        follower.state.position.copy(leader.state.position).addScaledVector(fwd, -4);
+        follower.state.speed = leader.state.speed;
         if (follower.state.isDrafting && !follower.state.isBoosting && ratio === 0) {
           const soloTop = follower.topSpeed() / BALANCE.slipstream.bonus[leader.state.character.weightClass][follower.state.character.weightClass];
           ratio = follower.topSpeed() / soloTop;
