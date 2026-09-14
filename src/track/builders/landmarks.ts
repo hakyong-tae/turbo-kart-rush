@@ -396,6 +396,26 @@ function addIceCastle(ctx: BuildContext, group: THREE.Group): void {
   group.add(castle);
 }
 
+/**
+ * True when a prop running parallel to the centerline at `side * (whw + extra)` stays off the road
+ * for its whole length. Every sample of the proposed path is measured against every part of the
+ * circuit, not just the part it was offset from.
+ */
+function clearsTrack(ctx: BuildContext, i0: number, i1: number, step: number, side: number, extra: number): boolean {
+  const { cl } = ctx;
+  for (let i = i0; i <= i1; i += step) {
+    const lat = cl.whw[i] + extra;
+    const x = cl.px[i] + cl.bx[i] * side * lat;
+    const z = cl.pz[i] + cl.bz[i] * side * lat;
+    for (let j = 0; j < cl.n; j += 3) {
+      const dx = x - cl.px[j];
+      const dz = z - cl.pz[j];
+      if (dx * dx + dz * dz < (cl.whw[j] + 3) * (cl.whw[j] + 3)) return false;
+    }
+  }
+  return true;
+}
+
 // ------------------------------------------------------------------ neon: holographic billboard + monorail
 function addHoloBillboard(ctx: BuildContext, group: THREE.Group): void {
   const spot = findSpot(ctx, 0.585, 1, 16, 8);
@@ -452,6 +472,11 @@ function addMonorail(ctx: BuildContext, group: THREE.Group): void {
   const i0 = Math.floor(t0 * n);
   const i1 = Math.floor(t1 * n);
   const step = 4;
+  // The beam is a rigid offset from the centerline, which only works while the circuit does not
+  // fold back on itself. On a switchback the road 15 m outside one leg is the next leg, and the
+  // monorail ends up straddling the track — QA found it standing down the middle of Prism Skyway.
+  // Rather than special-case a track, check the beam's own path and skip it when it does not clear.
+  if (!clearsTrack(ctx, i0, i1, step, side, lateralExtra)) return;
   const count = Math.floor((i1 - i0) / step) + 1;
   // beam cross-section: 4 corners -> box tube
   const hw = 0.9;

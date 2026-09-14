@@ -78,24 +78,36 @@ export class TerrainField {
     const voids = def.voidRanges ?? [];
     this.hasVoid = voids.length > 0;
 
+    // Void weight per centerline sample, worked out once.
+    //
+    // This used to be computed inside the rasterisation loop below, which visits every sample for
+    // every cell near it and re-ran the whole smoothstep for each hit. On a circuit that is void
+    // for nearly its whole length — Prism Skyway is 91% — that was the single most expensive thing
+    // in building a track, and it was the same handful of answers every time.
+    //
+    // Fully void inside [a,b]; the basin ramps up gradually over ~0.03 t (~35 m) outside the range
+    // so the shore is a slope rather than a vertical cliff across the road.
+    const voidAt = new Float32Array(cl.n);
+    if (voids.length > 0) {
+      for (let i = 0; i < cl.n; i++) {
+        const t = i / cl.n;
+        let vw = 0;
+        for (const [a, b] of voids) {
+          const inA = smoothstep(-0.03, 0, trackDelta(a, t));
+          const inB = smoothstep(-0.03, 0, trackDelta(t, b));
+          vw = Math.max(vw, Math.min(inA, inB));
+        }
+        voidAt[i] = vw;
+      }
+    }
+
     // Pass 1: rasterise the centerline into the grid (nearest-sample distance, height, void weight).
     const step = 2;
-    const voidOf = (t: number): number => {
-      let vw = 0;
-      for (const [a, b] of voids) {
-        // Fully void inside [a,b]; the basin ramps up gradually over ~0.03 t (~35 m) outside the
-        // range so the lake shore is a slope rather than a vertical cliff across the road.
-        const inA = smoothstep(-0.03, 0, trackDelta(a, t));
-        const inB = smoothstep(-0.03, 0, trackDelta(t, b));
-        vw = Math.max(vw, Math.min(inA, inB));
-      }
-      return vw;
-    };
     this.forEachCellNear(cl, step, INFLUENCE_RADIUS, (idx, d, i) => {
       if (d < this.dist[idx]) {
         this.dist[idx] = d;
         this.roadY[idx] = cl.py[i];
-        this.voidW[idx] = voidOf(i / cl.n);
+        this.voidW[idx] = voidAt[i];
       }
     });
     // Pass 2: near the road, take the LOWEST road height among samples that are almost as close as

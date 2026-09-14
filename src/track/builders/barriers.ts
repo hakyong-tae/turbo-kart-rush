@@ -223,13 +223,16 @@ function buildIceBlocks(ctx: BuildContext, group: THREE.Group): void {
 
 // ------------------------------------------------------------------ warning posts for void edges
 function buildWarningPosts(ctx: BuildContext, group: THREE.Group): void {
-  const post = new THREE.CylinderGeometry(0.07, 0.09, 1.0, 6);
+  // Kept deliberately coarse. A track with no barriers lines its whole length with these — Prism
+  // Skyway carries about 370 of them — so each one is a metre-tall marker seen at racing speed,
+  // and segments spent rounding a 13 cm ball are segments spent on nothing.
+  const post = new THREE.CylinderGeometry(0.07, 0.09, 1.0, 5);
   post.translate(0, 0.5, 0);
   paintGeometry(post, new THREE.Color(0xf0f0f0));
-  const band = new THREE.CylinderGeometry(0.085, 0.085, 0.32, 6);
+  const band = new THREE.CylinderGeometry(0.085, 0.085, 0.32, 5);
   band.translate(0, 0.78, 0);
   paintGeometry(band, new THREE.Color(0xff3b30));
-  const top = new THREE.SphereGeometry(0.13, 8, 6);
+  const top = new THREE.SphereGeometry(0.13, 6, 4);
   top.translate(0, 1.08, 0);
   paintGeometry(top, new THREE.Color(0xffd23a));
   const geo = mergeGeometries([post, band, top], false);

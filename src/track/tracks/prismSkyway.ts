@@ -78,8 +78,12 @@ export const prismSkyway: TrackDefinition = {
     8.5, 7.5, 8, 8, 8, 8, 7.5, 8, 8, 8, 8, 7.5, 8, 8, 8, 8, 7.5, 8, 8, 8, 8, 7.5, 8, 8, 8, 8, 7.5, 8, 8, 8, 8, 7.5, 8, 8, 8, 8, 7.5, 9, 9, 9, 9, 9, 9,
   ],
   wallHalfWidthFactor: 1.12,
-  itemBoxRows: [0.09, 0.33, 0.56, 0.88],
-  boostPads: [0.2, 0.45, 0.7],
+  itemBoxRows: [0.09, 0.33, 0.56, 0.8, 0.945],
+  // Three chained through the return sweep (t 0.84..0.94), about 40 m apart — close enough that
+  // the boost from one is still burning at the next, so the whole straight is one long run if the
+  // line is right. The sweep is the only place on the lap wide enough to pass, and it was empty:
+  // a lap of hairpins with nowhere to use the speed is a queue, not a race.
+  boostPads: [0.2, 0.45, 0.7, 0.855, 0.885, 0.915],
   // Only on the legs. A pylon inside a hairpin that has no run-off is not a challenge, it is a
   // coin toss, and this track already asks enough of the driver.
   obstacles: [
