@@ -225,3 +225,44 @@
 .hud-standing.ally {
   background: rgba(58, 123, 255, 0.12);
 }
+
+/* ----------------------------------------------------------------------------
+   Screen layering
+
+   Every full-viewport panel is a `.screen`, and until now none of them declared a
+   z-index — so which one won was decided by DOM order, and by whichever small
+   piece of chrome inside another screen happened to declare `z-index: 2`. The
+   lobby's gear and records buttons did, which put them above any panel opened on
+   top of the menu. It only showed when a panel was tall enough to reach the
+   corners (the item guide, the garage), and a language change made it worse by
+   rebuilding the menu *after* the panels, putting the whole lobby in front and
+   swallowing the scroll.
+
+   So the order is declared here once, and giving `.screen` a z-index also makes
+   each screen a stacking context — which keeps a child's `z-index: 2` a private
+   matter inside its own screen instead of a claim on the whole app.
+   --------------------------------------------------------------------------- */
+.screen {
+  z-index: 10;
+}
+
+/* Panels opened on top of the menu. */
+.screen.lb,
+.screen.settings,
+.screen.item-guide,
+.screen.garage,
+.screen.daily,
+.screen.online,
+.screen.lock-sheet {
+  z-index: 40;
+}
+
+/* In-race overlays sit above those; loading covers everything but a toast. */
+.screen.pause,
+.screen.results {
+  z-index: 50;
+}
+
+.screen.loading {
+  z-index: 60;
+}

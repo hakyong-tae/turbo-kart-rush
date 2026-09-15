@@ -83,6 +83,7 @@ import {
   getCosmetics,
   getEntitlements,
   refreshEntitlements,
+  watchForeground,
   saveCupResult,
   consumePremiumRace as consumeTicket,
 } from '../verse8/entitlements';
@@ -150,6 +151,8 @@ export class Game {
   private readonly uiRoot: HTMLElement;
   private readonly touch: TouchControls;
   private unsubLang: (() => void) | null = null;
+  /** Keeps the online identity's nickname in step with the account record. */
+  private unsubOnlineNick: (() => void) | null = null;
   private lockSheet: LockSheet;
   private leaderboard: LeaderboardPanel;
   private settings: SettingsPanel;
@@ -235,6 +238,9 @@ export class Game {
     // after a finished race, so the records panel looked offline and VX never opened.
     initShop();
     void refreshEntitlements();
+    // Two devices share one account. Coming back to the game re-reads the record, so a ticket
+    // spent on the phone is not still showing as available on the desktop.
+    watchForeground();
 
 
     // ---------------------------------------------------------- systems
@@ -327,6 +333,7 @@ export class Game {
     this.loading.dispose();
     this.muteIndicator.remove();
     this.unsubLang?.();
+    this.unsubOnlineNick?.();
     this.unsubLang = null;
     this.input.attachTouch(null);
     this.touch.dispose();
@@ -495,6 +502,16 @@ export class Game {
       { nick, characterId: this.mainMenu.highlightedCharacter.id, cos: ent.cos },
       { trackId: TRACKS[0]?.id ?? 'sunny_circuit', difficulty: 'normal', laps: DEFAULT_LAPS },
     );
+    // The identity above is a snapshot, and on a cold start the nickname has often not arrived
+    // yet — which is why a host who had set one still showed as RACER to everyone, in the lobby,
+    // in the race and on the standings. Follow the record instead of sampling it once.
+    this.unsubOnlineNick?.();
+    this.unsubOnlineNick = onEntitlementsChange((e) => {
+      if (e.loaded && e.nickname) c.setNick(e.nickname);
+    });
+    const known = getEntitlements();
+    if (known.loaded && known.nickname) c.setNick(known.nickname);
+
     c.onRaceStart = (settings) => {
       if (isPremium(settings.characterId)) void consumeTicket(settings.characterId);
       this.onlinePanel.hide();
@@ -645,7 +662,9 @@ export class Game {
           showToast(t('v8.lock.adFailed'), 'error');
           return;
         }
-        showToast(t('v8.lock.granted'), 'info');
+        // The total, not just the delta: "+3" on its own left QA unable to tell a double grant
+        // from a grant on top of tickets they already had.
+        showToast(t('v8.lock.granted', { n: String(getEntitlements().premiumRaces) }), 'info');
         this.lockSheet.hide();
         this.mainMenu.proceedFromCharacter();
       },
@@ -700,8 +719,18 @@ export class Game {
       return;
     }
     void submitTime(trackId, timeMs, r.settings.characterId, r.settings.difficulty).then((res) => {
-      if (!res || this.race !== r) return;
+      if (this.race !== r) return;
+      // A lost submit used to be silent, which is how "my time never appeared on the board" and
+      // "my time was not fast enough" became the same experience for a player. Say which it was.
+      if (!res) {
+        showToast(t('lb.submitFailed'), 'error');
+        return;
+      }
       this.lastSubmit = res;
+      // This is the player's standing on the track's record board, which has nothing to do with
+      // where they came in this race — the first time set on a circuit is rank 1 even if its
+      // driver finished last. The banner says "track record" for that reason: it sat beside an
+      // 8th-place finish reading "1st" and was read as the race result.
       if (res.updated && res.rank && this.state === 'results') {
         this.results.showRankBanner(t('lb.newRank', { rank: res.rank }));
       }
@@ -1197,7 +1226,12 @@ export class Game {
         others[j] = t;
       }
       const player = new Kart(0, playerChar, true, getCosmetics());
-      player.state.racerName = localRacerName(getEntitlements().nickname, playerChar.name);
+      // Only the kart's own name stands in when the record has actually loaded and the player has
+      // set nothing. While it is still on its way, the kart keeps its name rather than being
+      // handed one of the bot handles — a player whose nickname was merely slow to arrive should
+      // never see themselves racing as "kkobuk".
+      const ent = getEntitlements();
+      player.state.racerName = localRacerName(ent.loaded ? ent.nickname : '', playerChar.name);
       karts.push(player);
       for (let id = 1; id < KART_COUNT; id++) {
         const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;

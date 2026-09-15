@@ -24,6 +24,7 @@ import {
 } from './protocol';
 import { createKartSave, type KartSave } from '../kart/Kart';
 import { SNAPSHOT_EVERY } from './host-session';
+import { FIXED_DT } from '../core/constants';
 import type { Transport } from './types';
 
 /** Base render delay behind the newest snapshot; adapts upward with measured arrival jitter. */
@@ -31,6 +32,12 @@ export const INTERP_DELAY_MS = 100;
 const INTERP_DELAY_MAX_MS = 260;
 /** How far a starved client keeps karts moving along their last heading before freezing. */
 const EXTRAPOLATE_MAX_MS = 320;
+/** Fraction of real time the render clock may run fast or slow while it catches up. */
+const RENDER_CLOCK_DRIFT = 0.04;
+/** Past this much disagreement, drifting would take seconds — take the new time in one step. */
+const RENDER_CLOCK_RESYNC_TICKS = 600 * (1 / (FIXED_DT * 1000));
+/** Host ticks per millisecond of real time. */
+const TICKS_PER_MS = 1 / (FIXED_DT * 1000);
 export const HOST_TIMEOUT_MS = 8000;
 const BLEND_THRESHOLD_M = 4.5;
 const SNAP_THRESHOLD_M = 5;
@@ -96,6 +103,23 @@ export class ClientSession {
   private rttProbeAt = 0;
   private rttProbeInFlight = false;
   private arrivalJitter = 10;
+  /**
+   * The host tick this client is drawing the field at — fractional, and always behind.
+   *
+   * Remote karts used to be interpolated between the times their snapshots *arrived*. But a
+   * snapshot is a picture of a fixed slice of simulated time (SNAPSHOT_EVERY ticks, ~58 ms),
+   * and arrivals are not evenly spaced: on the delay+jitter harness two consecutive snapshots
+   * arrive 17 ms apart, then 75 ms apart. Spreading 58 ms of motion over 17 ms of render time
+   * and then over 75 ms makes the kart lurch and stall — every wobble in the network became a
+   * wobble in the kart. That is the teleporting QA reported: 1.06 m in a single frame, on half
+   * of all frames.
+   *
+   * Interpolating in the host's own tick space instead decouples the two entirely. The clock is
+   * advanced by real elapsed time converted to ticks, and only *drifted* toward where the arrival
+   * estimate says it should sit — never jumped, never run backwards.
+   */
+  private renderTick = 0;
+  private renderClockAt = 0;
   private lastPhase: RacePhase = PHASE.grid;
   private lastSnapshotAt = 0;
   /** Per-tick inputs since the last send. */
@@ -369,6 +393,39 @@ export class ClientSession {
     }
   }
 
+  /**
+   * Moves the render moment forward and returns it.
+   *
+   * Real time passes, so the clock passes with it; the difference between where it is and where
+   * the arrival estimate says it should be is taken out slowly, by running up to 12% off real
+   * time. That is small enough to be invisible on a kart and large enough to absorb a changed
+   * estimate within a second. The only jump allowed is the first frame, and a recovery when the
+   * clock has fallen so far outside the buffer that drifting back would take seconds.
+   */
+  private advanceRenderClock(): number {
+    const now = this.now();
+    const newest = this.buffer[this.buffer.length - 1];
+    if (!newest) return this.renderTick;
+    // Render delay still tracks the real arrival cadence — ~1.5 intervals plus jitter — but it is
+    // spent as a number of host ticks to sit behind the newest snapshot, not as a wall-clock
+    // offset applied to arrival stamps.
+    const delayMs = Math.min(INTERP_DELAY_MAX_MS, Math.max(INTERP_DELAY_MS, this.arrivalMean * 1.5 + this.arrivalJitter * 2));
+    const target = newest.snap.tick - delayMs * TICKS_PER_MS;
+    const elapsedMs = this.renderClockAt > 0 ? Math.min(250, now - this.renderClockAt) : 0;
+    this.renderClockAt = now;
+    if (this.renderTick === 0 || Math.abs(target - this.renderTick) > RENDER_CLOCK_RESYNC_TICKS) {
+      this.renderTick = target;
+      return this.renderTick;
+    }
+    const elapsedTicks = elapsedMs * TICKS_PER_MS;
+    const drift = clampAbs(target - this.renderTick, elapsedTicks * RENDER_CLOCK_DRIFT);
+    this.renderTick += elapsedTicks + drift;
+    // Never run past the newest thing we have been told about: that is extrapolation, and the
+    // starve handling below is where it belongs.
+    if (this.renderTick > newest.snap.tick) this.renderTick = newest.snap.tick;
+    return this.renderTick;
+  }
+
   private pushSnapshot(snap: Snapshot): void {
     const last = this.buffer[this.buffer.length - 1];
     if (last && snap.tick <= last.snap.tick) return; // out of order / duplicate
@@ -454,25 +511,23 @@ export class ClientSession {
   private applyInterpolated(): void {
     const r = this.race;
     if (!r || this.buffer.length === 0) return;
-    // Render delay tracks the real arrival cadence: ~1.5 intervals + jitter, clamped.
-    const delay = Math.min(INTERP_DELAY_MAX_MS, Math.max(INTERP_DELAY_MS, this.arrivalMean * 1.5 + this.arrivalJitter * 2));
-    const renderAt = this.now() - delay;
+    const renderAt = this.advanceRenderClock();
     let a = this.buffer[0];
     let b = this.buffer[0];
     for (let i = 0; i < this.buffer.length; i++) {
-      if (this.buffer[i].at <= renderAt) a = this.buffer[i];
-      if (this.buffer[i].at >= renderAt) {
+      if (this.buffer[i].snap.tick <= renderAt) a = this.buffer[i];
+      if (this.buffer[i].snap.tick >= renderAt) {
         b = this.buffer[i];
         break;
       }
       b = this.buffer[i];
     }
-    const span = b.at - a.at;
-    const alpha = span > 0 ? Math.min(1, Math.max(0, (renderAt - a.at) / span)) : 1;
+    const span = b.snap.tick - a.snap.tick;
+    const alpha = span > 0 ? Math.min(1, Math.max(0, (renderAt - a.snap.tick) / span)) : 1;
     // Starved (no snapshot newer than renderAt): dead-reckon along each kart's heading so the
     // field keeps moving instead of freezing, up to EXTRAPOLATE_MAX_MS.
-    const starve = renderAt - b.at;
-    const extraS = starve > 0 ? Math.min(EXTRAPOLATE_MAX_MS, starve) / 1000 : 0;
+    const starveMs = (renderAt - b.snap.tick) / TICKS_PER_MS;
+    const extraS = starveMs > 0 ? Math.min(EXTRAPOLATE_MAX_MS, starveMs) / 1000 : 0;
     for (const pb of b.snap.karts) {
       if (pb.id === this.localKartId) continue;
       const k = r.karts[pb.id];
@@ -616,6 +671,10 @@ export class ClientSession {
     k.absorbCorrection?.(seenX - s.position.x, seenY - s.position.y, seenZ - s.position.z);
     return true;
   }
+}
+
+function clampAbs(v: number, limit: number): number {
+  return v > limit ? limit : v < -limit ? -limit : v;
 }
 
 export function lerpAngle(a: number, b: number, t: number): number {

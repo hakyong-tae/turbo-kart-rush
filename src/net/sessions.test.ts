@@ -161,6 +161,11 @@ describe('host ↔ client sessions over loopback', () => {
     // currently carrying to hide a network correction.
     const seen = (k: Kart) => k.state.position.clone().add(k.netOffset);
     const start = seen(cliKarts[1]);
+    // The OTHER kart, as this client draws it. Remote karts are interpolated from snapshots
+    // rather than simulated, and that is what a player watching the field actually sees.
+    let remotePrev = cliKarts[0].state.position.clone();
+    let remoteFirst = true;
+    const remoteJumps: number[] = [];
     (globalThis as unknown as { __rewindMiss?: number }).__rewindMiss = 0;
     const anomalies: number[] = [];
     let drift = 0;
@@ -198,6 +203,13 @@ describe('host ↔ client sessions over loopback', () => {
       }
       prev = seen(cliKarts[1]);
       prevSpeed = cliKarts[1].state.speed;
+      if (tick > 180) {
+        const rd = cliKarts[0].state.position.distanceTo(remotePrev);
+        const rExpected = Math.abs(cliKarts[0].state.speed) * FIXED_DT;
+        if (!remoteFirst) remoteJumps.push(Math.abs(rd - rExpected));
+        remoteFirst = false;
+      }
+      remotePrev.copy(cliKarts[0].state.position);
       // Let the transport's ping settle: in the game these ticks are spread across frames.
       await Promise.resolve();
     }
@@ -207,6 +219,8 @@ describe('host ↔ client sessions over loopback', () => {
     const hostCopy = hostKarts[1].state.position.distanceTo(start);
     const worstAnomaly = Math.max(...anomalies);
     const visibleJolts = anomalies.filter((a) => a > 0.02).length;
+    const worstRemote = Math.max(...remoteJumps);
+    const remoteJolts = remoteJumps.filter((a) => a > 0.02).length;
     expect(reference).toBeGreaterThan(20);
     // Latency must not cost the player their own driving. Rollback settles the disagreement
     // exactly instead of dragging the kart toward a stale pose, so the networked client covers
@@ -218,6 +232,13 @@ describe('host ↔ client sessions over loopback', () => {
     // the model absorbing what is left.
     expect(worstAnomaly).toBeLessThan(0.04);
     expect(visibleJolts).toBeLessThan(6);
+    // And the same for the karts this client only watches. A snapshot is a picture of a fixed
+    // slice of simulated time, but arrivals are not evenly spaced — interpolating between arrival
+    // stamps spread 58 ms of motion across a 17 ms gap and then a 75 ms one, so every wobble in
+    // the network became a wobble in the kart. Interpolating in the host's tick space instead:
+    // 1.060 m worst and 295 of 538 ticks jolting, down to 0.034 m and 2.
+    expect(worstRemote).toBeLessThan(0.06);
+    expect(remoteJolts).toBeLessThan(8);
     // The client runs ahead of the host by exactly the trip time — that is prediction working,
     // not drift. This harness delays 30 ticks each way plus jitter, so at ~17 m/s a little over
     // 8 m is right; far more would mean the two simulations had genuinely parted company.

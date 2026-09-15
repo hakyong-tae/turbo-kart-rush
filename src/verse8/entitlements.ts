@@ -45,6 +45,19 @@ export function applyEntitlements(next: Entitlements): void {
   state = { ...next, loaded: true };
   for (const fn of Array.from(listeners)) fn(state);
 }
+
+/**
+ * Merges a field the server just told us about, without claiming the rest of the record is known.
+ *
+ * `grantPremiumRaces` and friends learn one number from their own reply. Folding that into `state`
+ * with `applyEntitlements` used to stamp `loaded: true` over a record that had never been fetched,
+ * so a session whose first fetch was lost would go on believing the player's nickname was empty —
+ * and then race under a bot's handle. Loaded means fetched, and only a fetch may set it.
+ */
+function mergeEntitlements(patch: Partial<Entitlements>): void {
+  state = { ...state, ...patch };
+  for (const fn of Array.from(listeners)) fn(state);
+}
 export function canRace(characterId: string): boolean {
   if (!isPremium(characterId)) return true;
   return state.premium || state.premiumRaces > 0;
@@ -61,11 +74,11 @@ export function getCosmetics(): KartCosmetics {
 /** Saves the garage look. Cached optimistically so the preview never waits on the network. */
 export async function saveCosmetics(cos: KartCosmetics): Promise<boolean> {
   const packed = packCosmetics(cos);
-  applyEntitlements({ ...state, cos: packed });
+  mergeEntitlements({ cos: packed });
   if (!useServer()) return true;
   const r = await serverSetCosmetics(packed);
   if (!r) return false;
-  applyEntitlements({ ...state, cos: r.cos });
+  mergeEntitlements({ cos: r.cos });
   return true;
 }
 
@@ -74,10 +87,51 @@ function useServer(): boolean {
   return inVerse8Host();
 }
 
+/**
+ * Pulls the record from the server, and keeps trying until it arrives.
+ *
+ * The connection has a budget, and on a cold start — the app launched from nothing, on a phone,
+ * on mobile data — it loses that race often. This used to be called once: if that one call came
+ * back empty the session ran on `EMPTY` forever, which is why the nickname box was blank after a
+ * restart four times in five, why the ticket count read zero on one device while another still
+ * showed three, and why an ad watched in that state paid for nothing.
+ *
+ * So: retry with a widening gap, and never stop while the record is still unknown.
+ */
+const RETRY_MS = [400, 1000, 2000, 4000, 8000, 15000];
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let attempt = 0;
+
 export async function refreshEntitlements(): Promise<void> {
   if (!useServer()) return;
   const e = await fetchEntitlements();
-  if (e) applyEntitlements(e);
+  if (e) {
+    attempt = 0;
+    applyEntitlements(e);
+    return;
+  }
+  if (retryTimer !== null) return;
+  const wait = RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)];
+  attempt++;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void refreshEntitlements();
+  }, wait);
+}
+
+/**
+ * Re-reads the record whenever the player comes back to the game.
+ *
+ * Two devices share one account, so the other one may have spent a ticket while this tab was in
+ * the background — the case QA hit going from PC back to the phone. Coming back to a stale count
+ * is how a player ends up watching an ad they had already paid for.
+ */
+export function watchForeground(): void {
+  if (!useServer() || typeof document === 'undefined') return;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshEntitlements();
+  });
+  window.addEventListener('focus', () => void refreshEntitlements());
 }
 
 /** After a host-verified rewarded ad: +3 premium races (server caps at 9, 10 grants/day). */
@@ -85,7 +139,10 @@ export async function grantPremiumRaces(): Promise<boolean> {
   if (!useServer()) return mockStore.grant();
   const r = await serverGrantPremiumRaces();
   if (!r) return false;
-  applyEntitlements({ ...state, premiumRaces: r.premiumRaces });
+  mergeEntitlements({ premiumRaces: r.premiumRaces });
+  // The reply is the only place the real total is known, so make sure the rest of the record
+  // catches up too — this is usually the first successful call of a session that started offline.
+  if (!state.loaded) void refreshEntitlements();
   return r.granted;
 }
 
@@ -95,19 +152,20 @@ export async function consumePremiumRace(characterId: string): Promise<boolean> 
   const r = await serverConsumePremiumRace(characterId);
   // Server unreachable inside the host: only free karts (or a confirmed purchase) may start.
   if (!r) return !isPremium(characterId) || state.premium;
-  applyEntitlements({ ...state, premiumRaces: r.premiumRaces });
+  mergeEntitlements({ premiumRaces: r.premiumRaces });
+  if (!state.loaded) void refreshEntitlements();
   return r.ok;
 }
 
 /** Returns the stored (normalised) nickname, or null when the server rejected / is absent. */
 export async function setNickname(name: string): Promise<string | null> {
   if (!useServer()) {
-    applyEntitlements({ ...state, nickname: name });
+    mergeEntitlements({ nickname: name });
     return name;
   }
   const r = await serverSetNickname(name);
   if (!r) return null;
-  applyEntitlements({ ...state, nickname: r.nickname });
+  mergeEntitlements({ nickname: r.nickname });
   return r.nickname;
 }
 
@@ -128,10 +186,10 @@ export function getCupProgress(): CupProgress {
 export async function saveCupResult(id: CupId, place: number): Promise<void> {
   const next = recordCupResult(getCupProgress(), id, place);
   if (next === getCupProgress()) return;
-  applyEntitlements({ ...state, cups: { ...state.cups, ...next } as Record<string, number> });
+  mergeEntitlements({ cups: { ...state.cups, ...next } as Record<string, number> });
   if (!useServer()) return;
   const r = await serverSetCupProgress(next as Record<string, number>);
-  if (r) applyEntitlements({ ...state, cups: r.cups });
+  if (r) mergeEntitlements({ cups: r.cups });
 }
 
 export function serverReachable(): boolean {
@@ -158,4 +216,10 @@ export const mockStore = {
 export function _resetForTests(): void {
   state = EMPTY;
   listeners.clear();
+  if (retryTimer !== null) clearTimeout(retryTimer);
+  retryTimer = null;
+  attempt = 0;
 }
+
+/** Test seam: the partial merge used by the grant/consume/nickname replies. */
+export const _mergeForTests = mergeEntitlements;

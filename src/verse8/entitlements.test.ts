@@ -8,10 +8,26 @@ import {
   isPremium,
   mockStore,
   onEntitlementsChange,
+  _mergeForTests,
 } from './entitlements';
 
 describe('entitlements (mock store rules)', () => {
   beforeEach(() => _resetForTests());
+
+  it('a reply about one field never claims the record has loaded', () => {
+    // The bug this guards: `grantPremiumRaces` learns the new ticket count from its own reply and
+    // used to fold it in with the full-record setter, which stamps `loaded: true`. A session whose
+    // first fetch was lost therefore went on believing the player's nickname was genuinely empty —
+    // blank in Settings, a bot handle in the race — instead of not yet known. QA hit it four
+    // restarts in five.
+    expect(getEntitlements().loaded).toBe(false);
+    _mergeForTests({ premiumRaces: 3 });
+    expect(getEntitlements().premiumRaces).toBe(3);
+    expect(getEntitlements().loaded).toBe(false);
+    applyEntitlements({ premium: false, premiumRaces: 3, nickname: 'Speedy', cos: '', cups: {} });
+    expect(getEntitlements().loaded).toBe(true);
+    expect(getEntitlements().nickname).toBe('Speedy');
+  });
 
   it('premium set is fennec/bram/rosa', () => {
     expect(['fennec', 'bram', 'rosa'].every(isPremium)).toBe(true);
