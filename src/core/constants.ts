@@ -8,8 +8,19 @@ export const GAME_TITLE = 'DRIFT DASH GP';
 
 /** Total karts on the grid (player + AI). */
 export const KART_COUNT = 8;
-/** Ship switch for online races: false hides the lobby button (single race + records still work). */
-export const ONLINE_ENABLED = true;
+/**
+ * Ship switch for online races: false hides the lobby button (single race + records still work).
+ *
+ * Off for launch. The netcode is sound on a simulated link — the client keeps its own driving, and
+ * watched karts are interpolated in the host's tick space rather than on arrival times — but the
+ * relay's real behaviour on phones was never brought under control, and QA still found it
+ * unplayable on a live session. A mode that cannot be relied on is worse than one that is not
+ * offered, so it stays behind this flag until a real multi-device session says otherwise.
+ *
+ * Nothing else was removed: `src/net/` and the lobby all still build and are covered by tests, so
+ * turning this back on is a one-line change.
+ */
+export const ONLINE_ENABLED = false;
 
 /** Default number of laps per race (tracks may override via TrackDefinition.laps). */
 export const DEFAULT_LAPS = 3;
