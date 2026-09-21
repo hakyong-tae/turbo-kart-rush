@@ -58,8 +58,23 @@ function mergeEntitlements(patch: Partial<Entitlements>): void {
   state = { ...state, ...patch };
   for (const fn of Array.from(listeners)) fn(state);
 }
+/**
+ * True while the server is the authority but its answer has not arrived yet.
+ *
+ * "Not known" and "nothing" are different answers, and conflating them is what locked a kart on
+ * the phone that the same account could drive on the desktop. Every read of this record that
+ * drives UI has to ask which of the two it is looking at.
+ */
+export function entitlementsPending(): boolean {
+  return useServer() && !state.loaded;
+}
+
 export function canRace(characterId: string): boolean {
   if (!isPremium(characterId)) return true;
+  // While the record is still on its way, let the player through. Nothing is given away by this:
+  // starting a premium race spends a ticket through `consumePremiumRace`, which is decided on the
+  // server, so an optimistic card here can only ever be corrected — never exploited.
+  if (entitlementsPending()) return true;
   return state.premium || state.premiumRaces > 0;
 }
 

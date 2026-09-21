@@ -8,8 +8,20 @@ import {
   isPremium,
   mockStore,
   onEntitlementsChange,
+  entitlementsPending,
   _mergeForTests,
 } from './entitlements';
+
+/** Pretends we are inside the Verse8 host iframe, where the server is the authority. */
+function asEmbedded(fn: () => void): void {
+  const real = Object.getOwnPropertyDescriptor(window, 'parent');
+  Object.defineProperty(window, 'parent', { value: {}, configurable: true });
+  try {
+    fn();
+  } finally {
+    if (real) Object.defineProperty(window, 'parent', real);
+  }
+}
 
 describe('entitlements (mock store rules)', () => {
   beforeEach(() => _resetForTests());
@@ -27,6 +39,25 @@ describe('entitlements (mock store rules)', () => {
     applyEntitlements({ premium: false, premiumRaces: 3, nickname: 'Speedy', cos: '', cups: {} });
     expect(getEntitlements().loaded).toBe(true);
     expect(getEntitlements().nickname).toBe('Speedy');
+  });
+
+  it('a kart is not locked merely because the record has not arrived', () => {
+    // QA: an account with tickets left showed the kart locked on the phone while the same account
+    // could drive it on the desktop. The phone had simply not received the record yet, and
+    // "not known" was being answered as "nothing". Starting a premium race spends a ticket through
+    // the server, so being optimistic here costs nothing and cannot be exploited.
+    asEmbedded(() => {
+      expect(entitlementsPending()).toBe(true);
+      expect(canRace('rosa')).toBe(true);
+
+      // Once the record is in, an empty one really does mean locked.
+      applyEntitlements({ premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {} });
+      expect(entitlementsPending()).toBe(false);
+      expect(canRace('rosa')).toBe(false);
+
+      applyEntitlements({ premium: false, premiumRaces: 2, nickname: '', cos: '', cups: {} });
+      expect(canRace('rosa')).toBe(true);
+    });
   });
 
   it('premium set is fennec/bram/rosa', () => {

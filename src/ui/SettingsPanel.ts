@@ -3,7 +3,7 @@
  */
 import type { InputState } from '../core/types';
 import { getLang, setLang, t, type Lang } from '../core/i18n';
-import { getEntitlements, serverReachable, setNickname } from '../verse8/entitlements';
+import { entitlementsPending, getEntitlements, onEntitlementsChange, serverReachable, setNickname } from '../verse8/entitlements';
 import { currentAccount } from '../verse8/server';
 import { normalizeNickname } from '../verse8/nickname';
 import { button, el, TextField } from './dom';
@@ -11,6 +11,11 @@ import { ItemGuide } from './ItemGuide';
 import { showToast } from './toast';
 
 export type VolumeKind = 'music' | 'sfx';
+
+/** A touch device, where focusing a text field opens a keyboard over half the screen. */
+function softKeyboardLikely(): boolean {
+  return Boolean(window.matchMedia?.('(pointer: coarse)').matches);
+}
 
 export interface SettingsHooks {
   getVolumes: () => { music: number; sfx: number };
@@ -27,6 +32,9 @@ export class SettingsPanel {
   private readonly langButtons: HTMLButtonElement[] = [];
   private readonly sliders = new Map<VolumeKind, { input: HTMLInputElement; value: HTMLElement }>();
   private readonly guide: ItemGuide;
+  private readonly unsubEntitlements: () => void;
+  /** True once the player has touched the field, so a late arrival never overwrites their typing. */
+  private nickEdited = false;
   private visible = false;
 
   constructor(
@@ -46,12 +54,27 @@ export class SettingsPanel {
     this.nickInput.autocomplete = 'off';
     // Game keys (WASD, space…) must not drive the menu while typing here.
     this.nickInput.addEventListener('keydown', (e) => e.stopPropagation());
+    this.nickInput.addEventListener('input', () => {
+      this.nickEdited = true;
+    });
     // Soft keyboard (phones): pin the panel to the top and keep the field in view.
+    //
+    // Only where a soft keyboard actually appears. `.kb` re-aligns the panel from centred to
+    // top, and on desktop — where `show()` focuses this field for you — that state was switched
+    // on for nothing and then switched off again by the blur from your next click. The panel
+    // moved between mousedown and mouseup, so the mouseup landed on a different control and no
+    // click event ever reached the button: QA's "the item guide needs two clicks".
+    //
+    // And even on a phone the same blur happens when you tap away from the field, so the class
+    // is dropped a frame later, after any click already in flight has been delivered.
     this.nickInput.addEventListener('focus', () => {
+      if (!softKeyboardLikely()) return;
       this.rootNode.classList.add('kb');
       setTimeout(() => this.nickInput.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
     });
-    this.nickInput.addEventListener('blur', () => this.rootNode.classList.remove('kb'));
+    this.nickInput.addEventListener('blur', () => {
+      requestAnimationFrame(() => this.rootNode.classList.remove('kb'));
+    });
     el('span', 'settings-hint', t('settings.nicknameHint'), nickField);
     this.accountHint = new TextField(el('span', 'settings-hint settings-account', '', nickField));
 
@@ -84,6 +107,11 @@ export class SettingsPanel {
       this.rootNode.classList.add('hidden');
       this.guide.open();
     }));
+
+    // The account record arrives asynchronously and, on a phone on a slow connection, often after
+    // this panel has already been opened. Reading it once at open is what left the nickname box
+    // blank after a restart — the value was simply not there yet, and nothing came back for it.
+    this.unsubEntitlements = onEntitlementsChange(() => this.fillFromRecord());
 
     const actions = el('div', 'actions', undefined, panel);
     actions.appendChild(button(t('settings.save'), 'primary', () => void this.save()));
@@ -124,14 +152,23 @@ export class SettingsPanel {
   }
 
   show(): void {
-    this.nickInput.value = getEntitlements().nickname;
-    const acct = currentAccount();
-    this.accountHint.set(acct ? t('settings.account', { id: acct.slice(-6) }) : t('settings.accountNone'));
+    this.nickEdited = false;
+    this.fillFromRecord();
     this.langButtons.forEach((b) => b.classList.toggle('selected', b.textContent?.toLowerCase() === getLang()));
     this.syncSliders();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
-    if (!window.matchMedia?.('(pointer: coarse)').matches) this.nickInput.focus();
+    if (!softKeyboardLikely()) this.nickInput.focus();
+  }
+
+  /** Nickname and account, from whatever the record currently says — called again when it changes. */
+  private fillFromRecord(): void {
+    const ent = getEntitlements();
+    if (!this.nickEdited) this.nickInput.value = ent.nickname;
+    // An empty box means "you have not set one". Say so only once that is actually known.
+    this.nickInput.placeholder = entitlementsPending() ? t('settings.nickLoading') : t('settings.nicknamePh');
+    const acct = currentAccount();
+    this.accountHint.set(acct ? t('settings.account', { id: acct.slice(-6) }) : t('settings.accountNone'));
   }
 
   hide(): void {
@@ -150,6 +187,7 @@ export class SettingsPanel {
   }
 
   dispose(): void {
+    this.unsubEntitlements();
     this.guide.dispose();
     this.rootNode.remove();
   }

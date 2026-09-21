@@ -8,7 +8,7 @@ import { GAME_TITLE, DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
 import { t, t as tt, tOr } from '../core/i18n';
 import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
-import { canRace, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
+import { canRace, entitlementsPending, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
 import type { StringKey } from '../core/i18n';
@@ -385,7 +385,13 @@ export class MainMenu {
       if (ent.premium) badge.classList.add('hidden');
       else {
         badge.classList.remove('hidden');
-        badge.textContent = ent.premiumRaces > 0 ? t('v8.ticketsLeft', { n: ent.premiumRaces }) : t('v8.locked');
+        // Say "checking" rather than "locked" until the account record lands — a phone on a slow
+        // connection was telling players a kart they owned tickets for was unavailable.
+        badge.textContent = entitlementsPending()
+          ? t('v8.checking')
+          : ent.premiumRaces > 0
+            ? t('v8.ticketsLeft', { n: ent.premiumRaces })
+            : t('v8.locked');
       }
     });
   }
