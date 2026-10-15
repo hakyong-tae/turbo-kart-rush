@@ -12,7 +12,10 @@ function buildId(): string {
   let sha = 'nogit';
   try {
     sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    const dirty = execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    // Tracked files only. `npm install` leaves an untracked package-lock.json behind, and counting
+    // that would put a "+" on every clean build the Verse8 builder makes — a marker that cries
+    // wolf is worse than no marker.
+    const dirty = execSync('git status --porcelain --untracked-files=no', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
     if (dirty) sha += '+';
   } catch {
     /* building outside a checkout (the Verse8 builder may do this) — the date still identifies it */
