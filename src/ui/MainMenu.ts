@@ -13,6 +13,11 @@ import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
 import type { StringKey } from '../core/i18n';
 
+/** Build stamp, or a placeholder when running somewhere the define is absent (unit tests). */
+function buildStamp(): string {
+  return typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
+}
+
 /** Cup labels are keyed by id at runtime; the locale test covers the same ground. */
 type LocaleKey = Parameters<typeof t>[0];
 const tk = (key: string): string => t(key as LocaleKey);
@@ -135,7 +140,9 @@ export class MainMenu {
       el('kbd', '', k, row);
       el('span', '', v, row);
     }
-    el('div', 'version', t('title.version'), title);
+    // The build stamp rides along with the version line: a QA screenshot of the lobby is then
+    // enough to say which build the findings are against.
+    el('div', 'version', `${t('title.version')} · ${buildStamp()}`, title);
 
     // ------------------------------------------------------- character select
     const chars = el('section', 'panel-select panel-chars', undefined, this.rootNode);
