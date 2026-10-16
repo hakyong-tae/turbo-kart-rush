@@ -11,6 +11,7 @@
 //   * Epoch-guarded writes: a stale attempt cannot clobber a fresh success.
 
 import { GameServer } from '@agent8/gameserver';
+import { resolveIdentity } from './identity';
 
 let instance: any = null;
 let connected = false;
@@ -31,7 +32,10 @@ async function connectViaStore(budgetMs: number): Promise<boolean> {
   const store = useGameServerStore.getState();
   if (store.connected) return true;
 
-  void store.connect();
+  // Name the player explicitly. Left to itself the gameserver only reads `?account=`, and falls
+  // back to an invented `anonymous-…` identity that a mobile webview can lose on every relaunch.
+  const { account } = resolveIdentity();
+  void store.connect(account ? { account } : undefined);
 
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {

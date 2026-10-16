@@ -228,6 +228,7 @@ export const en = {
   'settings.sfx': 'SOUND EFFECTS',
   'settings.save': 'SAVE',
   'settings.account': 'Account …{id} (records are saved to this account)',
+  'settings.accountGuest': 'Guest …{id} — without a Verse8 sign-in, your nickname, records and tickets may not survive closing the app.',
   'settings.nickLoading': 'Loading your account…',
   'settings.accountNone': 'Not connected to Verse8 — records stay on this device.',
   'settings.close': 'CLOSE',

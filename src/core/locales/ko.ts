@@ -217,6 +217,7 @@ export const ko: Record<StringKey, string> = {
   'settings.sfx': '효과음',
   'settings.save': '저장',
   'settings.account': '계정 …{id} (기록은 이 계정에 저장됩니다)',
+  'settings.accountGuest': '게스트 …{id} — Verse8에 로그인하지 않으면 앱을 다시 켤 때 닉네임·기록·이용권이 사라질 수 있어요.',
   'settings.nickLoading': '계정 정보를 불러오는 중…',
   'settings.accountNone': 'Verse8 미접속 — 기록은 이 기기에만 남습니다.',
   'settings.close': '닫기',

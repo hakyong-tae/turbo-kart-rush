@@ -5,6 +5,7 @@ import type { InputState } from '../core/types';
 import { getLang, setLang, t, type Lang } from '../core/i18n';
 import { entitlementsPending, getEntitlements, onEntitlementsChange, serverReachable, setNickname } from '../verse8/entitlements';
 import { currentAccount } from '../verse8/server';
+import { isAnonymousAccount } from '../verse8/identity';
 import { normalizeNickname } from '../verse8/nickname';
 import { button, el, TextField } from './dom';
 import { ItemGuide } from './ItemGuide';
@@ -168,7 +169,12 @@ export class SettingsPanel {
     // An empty box means "you have not set one". Say so only once that is actually known.
     this.nickInput.placeholder = entitlementsPending() ? t('settings.nickLoading') : t('settings.nicknamePh');
     const acct = currentAccount();
-    this.accountHint.set(acct ? t('settings.account', { id: acct.slice(-6) }) : t('settings.accountNone'));
+    // A guest identity is the gameserver's own invention and may not survive the app being closed.
+    // Say so plainly: a nickname or ticket that vanishes with no explanation reads as a bug in the
+    // game, when the real answer is "sign in to Verse8".
+    if (!acct) this.accountHint.set(t('settings.accountNone'));
+    else if (isAnonymousAccount(acct)) this.accountHint.set(t('settings.accountGuest', { id: acct.slice(-6) }));
+    else this.accountHint.set(t('settings.account', { id: acct.slice(-6) }));
   }
 
   hide(): void {
