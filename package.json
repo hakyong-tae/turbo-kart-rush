@@ -14,15 +14,15 @@
   },
   "dependencies": {
     "@agent8/gameserver": "^1.10.2",
-    "@verse8/ads": "^0.5.0",
+    "@verse8/ads": "^0.5.1",
     "@verse8/platform": "^2.1.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/three": "^0.185.4",
-    "jsdom": "^27.0.1",
+    "jsdom": "^27.4.0",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vitest": "^3.2.7"
   }
 }
