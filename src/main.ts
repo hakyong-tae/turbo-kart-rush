@@ -1,3 +1,4 @@
+import './buildTag';
 /**
  * Bootstrap: WebGL2 detection, global error handling, then hand over to Game.
  */

@@ -1,0 +1,15 @@
+// Stamps src/buildInfo with the current source commit and time (KST) right before a Verse8 push; commit the
+// stamp with it. The game shows it as a small "build MM/DD HH:MM · <sha>" badge for 20 s after loading.
+// Usage: node tools/stamp-build.mjs
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+const sha = execSync('git rev-parse --short HEAD').toString().trim();
+const t = new Date(Date.now() + 9 * 3600 * 1000);
+const p = (n) => String(n).padStart(2, '0');
+const at = `${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+const file = new URL('../src/buildInfo.ts', import.meta.url);
+const src = fs.readFileSync(file, 'utf8')
+  .replace(/SOURCE_COMMIT = '[^']*'/, `SOURCE_COMMIT = '${sha}'`)
+  .replace(/STAMPED_AT = '[^']*'/, `STAMPED_AT = '${at}'`);
+fs.writeFileSync(file, src);
+console.log('stamped', sha, at);
