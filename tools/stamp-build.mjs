@@ -1,5 +1,5 @@
 // Stamps src/buildInfo with the current source commit and time (KST) right before a Verse8 push; commit the
-// stamp with it. The game shows it as a small "build MM/DD HH:MM · <sha>" badge for 20 s after loading.
+// stamp with it. The game shows it as a small "build MM/DD HH:MM · <sha>" badge until the first tap or key press.
 // Usage: node tools/stamp-build.mjs
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
