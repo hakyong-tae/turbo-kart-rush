@@ -4,11 +4,21 @@
  * block-blaster, GAME_SIZE_RESPONSE + REQUEST_GAME_SIZE from server-survival) — send both.
  */
 export function inVerse8Host(): boolean {
+  if (typeof window === 'undefined') return false;
   try {
-    return typeof window !== 'undefined' && window.parent !== window;
+    if (window.parent !== window) return true;
   } catch {
     return true; // cross-origin parent access threw → we ARE embedded
   }
+  // The Verse8 mobile app opens the game directly in its web view (no iframe), so the iframe test alone sent
+  // app players to the local mock: saves, purchases and ads never reached Verse8. Verse8 always hands the
+  // page an account + signed token, and serves it from a verse8 host.
+  try {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('auth') && q.get('account')) return true;
+    if (/(^|\.)verse8\.(games|io)$/.test(window.location.hostname)) return true;
+  } catch { /* fall through */ }
+  return false;
 }
 
 function postSize(): void {
