@@ -87,7 +87,7 @@ export const ko: Record<StringKey, string> = {
   'guide.open': '아이템 설명서',
   'guide.title': '아이템 설명서',
   'guide.intro': '아이템 상자는 순위에 따라 다른 것을 준다. 뒤에 있을수록 강한 아이템이 나오고, 선두는 방어 아이템 위주로 받는다. 브레이크를 누른 채 사용하면 뒤로 던진다.',
-  'guide.banana': '뒤에 놓거나 앞으로 던진다. 밟은 카트는 회전하며 멈춘다.',
+  'guide.banana': '카트 뒤에 떨어뜨린다. 밟은 카트는 회전하며 멈춘다.',
   'guide.triple_banana': '바나나 세 개가 카트 주위를 돈다. 도는 동안은 뒤에서 오는 등껍질을 대신 막아준다.',
   'guide.green_shell': '직선으로 날아가고 벽에 맞으면 튕긴다. 맞히려면 조준이 필요하다.',
   'guide.triple_green_shell': '초록 등껍질 세 개가 주위를 돈다. 하나씩 쏘거나 방패로 남겨둔다.',

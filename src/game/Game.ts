@@ -30,7 +30,8 @@ import { CHARACTERS, getCharacter } from '../kart/roster';
 import { Track } from '../track/Track';
 import { TRACKS, getTrackDef } from '../track/tracks';
 import { ItemManager } from '../items/ItemManager';
-import { buildItemIcon } from '../items/itemVisuals';
+import { ALL_ITEM_TYPES } from '../core/types';
+import { buildItemIcon, buildItemMesh } from '../items/itemVisuals';
 import { AIDriver } from '../ai/AIDriver';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
@@ -262,6 +263,17 @@ export class Game {
 
     // ---------------------------------------------------------- ui
     this.backdrop = new MenuBackdrop();
+    // The showcase kart is built before the server's saved look arrives; repaint it when the look (or the
+    // premium flag that gates it) changes, or the lobby kept the default paint until the next garage save.
+    let shownLook = '';
+    this.unsubs.push(
+      onEntitlementsChange((ent) => {
+        const look = `${ent.cos ?? ''}|${ent.premium ? 1 : 0}`;
+        if (look === shownLook) return;
+        shownLook = look;
+        this.safe(() => this.backdrop.applyCosmetics(getCosmetics()));
+      }),
+    );
     this.mainMenu = this.buildMainMenu();
     this.results = this.buildResults();
     this.pauseMenu = this.buildPauseMenu();
@@ -906,8 +918,23 @@ export class Game {
     const r = this.race;
     this.shadersReady = false;
     if (!r) return;
+    // Items appear mid-race (shells, bananas, bombs…), so their materials used to compile on first use:
+    // the one or two hitches QA saw only in the first race of a session. Put one of each in the scene,
+    // hidden behind the camera, for the compile pass, and draw every HUD item icon once.
+    const warm = new THREE.Group();
+    warm.name = 'item-warmup';
+    for (const type of ALL_ITEM_TYPES) {
+      buildItemIcon(type);
+      const mesh = buildItemMesh(type);
+      mesh.position.set(0, -500, 0);
+      warm.add(mesh);
+    }
+    this.scene.add(warm);
+    const dropWarm = (): void => { this.scene.remove(warm); };
     const renderer = this.renderer as { compileAsync?: (s: THREE.Object3D, c: THREE.Camera) => Promise<unknown> };
     if (typeof renderer.compileAsync !== 'function') {
+      this.renderer.compile(this.scene, this.camera);
+      dropWarm();
       this.shadersReady = true;
       return;
     }
@@ -916,10 +943,12 @@ export class Game {
       promise = renderer.compileAsync.call(this.renderer, this.scene, this.camera);
     } catch (err) {
       console.warn('[Game] compileAsync threw; falling back to synchronous compile', err);
+      dropWarm();
       this.shadersReady = true;
       return;
     }
     const done = (): void => {
+      dropWarm();
       if (this.race === r) this.shadersReady = true;
     };
     promise.then(done, (err: unknown) => {

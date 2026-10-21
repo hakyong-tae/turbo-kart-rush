@@ -606,12 +606,10 @@ export class ItemManager implements IItemManager {
     _fwd.normalize();
 
     switch (base) {
-      case 'banana': {
-        const throwForward = !aimBack && speed > 0.5 * top;
-        if (throwForward) this.spawnLobbed('banana', kart, 'banana', 7.5, Math.max(speed, 0) + 12);
-        else this.spawnDropped('banana', kart, 'banana');
+      case 'banana':
+        // Always dropped behind the kart (QA 10/21: lobbing it ahead at speed read as "thrown the wrong way").
+        this.spawnDropped('banana', kart, 'banana');
         break;
-      }
       case 'green_shell':
         this.spawnShell('green_shell', kart, aimBack, item);
         break;

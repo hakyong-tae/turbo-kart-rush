@@ -87,7 +87,7 @@ export const en = {
   'guide.open': 'Item guide',
   'guide.title': 'Item guide',
   'guide.intro': 'Boxes give you different things depending on where you are running. The further back you are the stronger the roll; the leader is mostly handed defence. Hold the brake as you use an item to aim it backwards.',
-  'guide.banana': 'Drop it behind or throw it ahead. Whoever touches it spins.',
+  'guide.banana': 'Dropped behind your kart. Whoever touches it spins.',
   'guide.triple_banana': 'Three orbit your kart. While they circle they take a shell for you.',
   'guide.green_shell': 'Flies straight and bounces off walls. You have to aim this one.',
   'guide.triple_green_shell': 'Three green shells orbit. Fire them one at a time or keep them as a shield.',
