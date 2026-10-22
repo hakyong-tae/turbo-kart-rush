@@ -43,3 +43,15 @@
 .btn.btn.btn {
   background-origin: border-box;
 }
+
+/* Track select on PC: the "2/2 · choose circuit" header was absolutely placed for the old six-card grid
+   that sat in the lower half; with eight circuits the grid reaches the top and covered it, at any window
+   height. Keep the header in the flow, above the grid. */
+@media (min-width: 701px) {
+  .panel-tracks {
+    align-items: stretch;
+  }
+  .panel-tracks .select-header {
+    position: static;
+  }
+}
