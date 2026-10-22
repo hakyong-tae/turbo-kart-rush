@@ -17,15 +17,15 @@ Laid out for the ONE store listing: one feature graphic plus raw in-game screens
 | `ScreenShots/screenshot-06.png` | 1280×720 | 출발 직후 그리드(코럴 코스트) / the pack off the start line |
 | `ScreenShots/screenshot-07.png` | 1280×720 | 차고 · 프리셋(홀로 그리드) / garage presets |
 | `ScreenShots/screenshot-08.png` | 1280×720 | 레이스 결과 / results |
-| `ScreenShots/phone-1.jpg` | 2532×1170 | 폰 가로: 로비 / phone landscape: lobby |
-| `ScreenShots/phone-2.jpg` | 2532×1170 | 폰: 부스트 패드 · 2위 추월(네온 넥서스), 터치 버튼 / boost pad, touch buttons |
-| `ScreenShots/phone-3.jpg` | 2532×1170 | 폰: 접전 · 후방 미러 / close pack with the rear-view mirror |
-| `ScreenShots/phone-4.jpg` | 2532×1170 | 폰: 차고 / garage |
-| `ScreenShots/phone-5.jpg` | 2532×1170 | 폰: 오늘의 도전 / daily challenge |
+| `ScreenShots/phone-1` | 1280×720 | 폰 가로: 로비 / phone landscape: lobby |
+| `ScreenShots/phone-2` | 1280×720 | 폰: 부스트 패드 · 2위 추월(네온 넥서스), 터치 버튼 / boost pad, touch buttons |
+| `ScreenShots/phone-3` | 1280×720 | 폰: 접전 · 후방 미러 / close pack with the rear-view mirror |
+| `ScreenShots/phone-4` | 1280×720 | 폰: 차고 / garage |
+| `ScreenShots/phone-5` | 1280×720 | 폰: 오늘의 도전 / daily challenge |
 
 - 파일당 1.3 MB 이하. PNG가 넘으면 같은 이름의 고화질 JPG로 저장 / Each file ≤ 1.3 MB; a PNG over the cap is saved as a high-quality JPG with the same stem
 - 게임은 가로 전용이라 세로 스크린샷은 없어요. / The game is landscape-only, so there are no portrait shots.
-- 폰 스크린샷은 844×390 @3x 터치 에뮬레이션(isMobile + hasTouch)이라 터치 조작 버튼이 보여요. / Phone shots use 844×390 @3x touch emulation, so the touch controls show.
+- 폰 스크린샷은 640×360 @2x 터치 에뮬레이션(isMobile + hasTouch)이라 터치 조작 버튼이 보여요. / Phone shots use 640×360 @2x touch emulation, so the touch controls show.
 
 ## 다시 만들기 / Regenerate
 
@@ -48,3 +48,5 @@ node tools/marketing/graphic.mjs marketing/onestore-kit/_work/keyart/<frame>.png
 - 숨기는 것: 빌드 배지, 로비 버전 줄(빌드 스탬프 포함), 토스트, Vite 오류 오버레이. 로컬에서만 생기는 "순위를 불러오지 못했습니다" 줄(오늘의 도전)과 1280×720에서 카드에 가려 한 글자만 삐져나오는 서킷 선택 헤더도 숨김 / Hidden: build badge, lobby version line, toasts, Vite overlay, the local-only "could not load the board" line, and the track-select header sliver that the card grid covers at 1280×720
 - 차고 스크린샷은 로컬 모의 결제(메모리 내, 실제 결제 아님)로 차고 해금 상태를 만든 뒤 찍어요. / The garage shot unlocks the garage through the local in-memory mock checkout (no real purchase).
 - 작업 파일은 `_work/`(gitignore) / Intermediate files live in `_work/` (gitignored)
+
+규격: 모든 스크린샷 1280×720(16:9), 파일당 1MB 이하(넘으면 JPG). / All screenshots 1280×720 (16:9), ≤1 MB each.

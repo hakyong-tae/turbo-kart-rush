@@ -205,8 +205,8 @@ export async function sampleAction(page) {
   });
 }
 
-/** PNG if it fits the store's 1.3 MB cap, else a high-quality JPG with the same stem. */
-export async function saveCapped(page, stem, { clip, capBytes = 1.3 * 1024 * 1024 } = {}) {
+/** PNG if it fits the store's 1 MB cap, else a high-quality JPG with the same stem. */
+export async function saveCapped(page, stem, { clip, capBytes = 1000 * 1000 } = {}) {
   const { writeFileSync, rmSync } = await import('node:fs');
   const png = await page.screenshot({ type: 'png', clip });
   rmSync(`${stem}.png`, { force: true });

@@ -4,7 +4,7 @@
 //   node tools/marketing/shots.mjs [desktop|phone]   # both when omitted
 //
 // desktop → marketing/onestore-kit/ScreenShots/screenshot-01..08  (1280×720, DPR 1)
-// phone   → marketing/onestore-kit/ScreenShots/phone-1..5        (844×390 @3 = 2532×1170, touch)
+// phone   → marketing/onestore-kit/ScreenShots/phone-1..5        (640×360 @2 = 1280×720, touch)
 // Race shots come from a real race with the dev autopilot driving the player: every few frames
 // the scene is scored (drift sparks / boost, a hit the camera can see, a pack ahead) and the
 // best frames per category are kept under _work/cand-<profile>/ (override a pick with
@@ -30,7 +30,8 @@ const PROFILES = {
     plan: ['lobby', 'racers', 'tracks', 'drift', 'item', 'pack', 'garage', 'results'],
   },
   phone: {
-    view: { width: 844, height: 390, dpr: 3, phone: true },
+    // 16:9 phone landscape (ONE store: ≤1300 px, 16:9, ≤1 MB) → 1280×720 with the touch controls
+    view: { width: 640, height: 360, dpr: 2, phone: true },
     racer: 3, // Max Vortex
     tracks: [4], // Neon Nexus
     name: (i) => `phone-${i}`,
