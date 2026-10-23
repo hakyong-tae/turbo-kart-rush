@@ -1,7 +1,7 @@
 # Drift Dash GP (구 Turbo Kart Rush) — 구조 분석 노트
 
 > 원본: https://github.com/bridge-mind/turbo-kart-rush (MIT, 커밋 1개 `6c0456c`)
-> 로컬: `/Users/hytae/Downloads/turbo-kart-rush` · 포트 **5178** · `.claude/launch.json` 항목 `turbo-kart-rush`
+> 로컬: `/Users/hytae/Downloads/Drift Dash GP` · 포트 **5178** · `.claude/launch.json` 항목 `turbo-kart-rush`
 > Three.js 0.185 + TypeScript 7 + Vite 8. **에셋 파일 0개** — 지오메트리/텍스처/오디오 전부 런타임 생성.
 > 원작 자체가 "Claude Fable 5.1 서브에이전트 5개가 프롬프트 1개로 만든 게임"이고, `CONTRACT.md`가 그 에이전트들 사이의 아키텍처 계약서. **이 문서(NOTES.md) + CONTRACT.md 두 개가 Verse8 AI 컨텍스트 문서.**
 
@@ -11,7 +11,7 @@
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v23.11.0/bin:$PATH"
-cd /Users/hytae/Downloads/turbo-kart-rush
+cd /Users/hytae/Downloads/Drift Dash GP
 npm run dev          # http://localhost:5178  (vite --host, strictPort 아님)
 npm run typecheck    # tsc --noEmit  — 현재 클린
 npm test             # vitest — touchMath / InputManager / tracks / balance / i18n (30 tests)
