@@ -331,6 +331,42 @@
   padding-left: calc(var(--slant) - 2px);
 }
 
+/* Picker: one out of many (the sixteen circuits). With a pointer, a grid of equal cells, four to
+   a row. On touch, one row that scrolls sideways, so it never eats the height of a phone. */
+.segmented.picker {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  row-gap: 4px;
+  padding-left: calc(var(--slant) - 2px);
+}
+
+.segmented.picker > .seg {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+#ui.touch .segmented.picker {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#ui.touch .segmented.picker::-webkit-scrollbar {
+  display: none;
+}
+
+#ui.touch .segmented.picker > .seg {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
 .seg {
   appearance: none;
   display: inline-flex;

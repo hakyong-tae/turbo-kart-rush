@@ -1,12 +1,6 @@
 /* Short desktop windows (≤720px tall) and reduced motion */
 
 @media (max-height: 720px) {
-  .char-swatch {
-    height: 66px;
-  }
-  .track-art {
-    height: 84px;
-  }
   .select-header .panel-title {
     font-size: 28px;
   }

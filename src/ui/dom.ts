@@ -28,6 +28,15 @@ export function cssRgba(color: number, alpha: number): string {
 }
 
 /** Remove + re-add a class so its CSS animation restarts. */
+/**
+ * Brings `child` to the middle of a row that scrolls sideways (the circuit picker on touch).
+ * Only the row moves: `scrollIntoView` would also drag the panel around it.
+ */
+export function centerInRow(row: HTMLElement, child: HTMLElement | undefined): void {
+  if (!child || row.scrollWidth <= row.clientWidth + 1) return;
+  row.scrollLeft = child.offsetLeft - (row.clientWidth - child.offsetWidth) / 2;
+}
+
 export function restartAnimation(node: HTMLElement, cls: string): void {
   node.classList.remove(cls);
   // Force a style flush so the browser notices the class was removed.

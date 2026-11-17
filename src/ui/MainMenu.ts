@@ -43,6 +43,7 @@ const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: StringKey }
 const STAT_BLOCKS = 5;
 /** Default character-grid column count (the stylesheet drops to 2 columns on phones). */
 const CHAR_COLUMNS = 4;
+const TRACK_COLUMNS = 4;
 /** The lobby's small buttons sit two to a row (13-lobby-gate.css). */
 const LOBBY_COLUMNS = 2;
 
@@ -237,8 +238,9 @@ export class MainMenu {
       this.diffButtons.push(b);
     });
 
-    // Grand Prix: three races on one ticket, points decide it. Locked cups stay visible with a
-    // padlock; pressing one says what unlocks it. A star marks a cup already finished.
+    // Grand Prix: a run of races on one ticket, points decide it. Locked cups stay visible with a
+    // padlock; pressing one says what unlocks it. A star marks a cup already finished. While the
+    // cursor is on a cup, the grid above shows which circuits it runs.
     const cupSeg = optionGroup('cup-row', t('cup.label'));
     cupSeg.classList.add('cup-seg');
     CUPS.forEach((cup, i) => {
@@ -250,6 +252,12 @@ export class MainMenu {
       b.addEventListener('pointerenter', () => {
         this.trackRow = 3;
         this.cupIndex = i;
+        this.refreshTrackFocus();
+      });
+      // A mouse that wanders off takes the cup preview with it; a finger has nowhere to wander.
+      b.addEventListener('pointerleave', (ev) => {
+        if (ev.pointerType !== 'mouse' || this.trackRow !== 3) return;
+        this.trackRow = 0;
         this.refreshTrackFocus();
       });
       b.addEventListener('click', (ev) => {
@@ -334,15 +342,9 @@ export class MainMenu {
         break;
       }
       case 'trackSelect': {
-        if (input.menuUp) {
-          this.trackRow = (this.trackRow + 4) % 5;
-          this.refreshTrackFocus();
-          events.emit('ui:move', {});
-        } else if (input.menuDown) {
-          this.trackRow = (this.trackRow + 1) % 5;
-          this.refreshTrackFocus();
-          events.emit('ui:move', {});
-        } else if (input.menuLeft || input.menuRight) {
+        if (input.menuUp) this.moveTrackRow(-1);
+        else if (input.menuDown) this.moveTrackRow(1);
+        else if (input.menuLeft || input.menuRight) {
           const dir = input.menuRight ? 1 : -1;
           if (this.trackRow === 0) {
             const n = this.tracks.length;
@@ -430,6 +432,9 @@ export class MainMenu {
     if (this.panel === 'trackSelect') {
       this.trackRow = 0;
       this.refreshTrackFocus();
+      revealCard(this.trackCards[this.trackIndex]);
+    } else if (this.panel === 'characterSelect') {
+      revealCard(this.charCards[this.charIndex]);
     }
   }
 
@@ -452,6 +457,7 @@ export class MainMenu {
       if (sound) events.emit('ui:move', {});
       this.onHighlight?.(def.id);
     }
+    revealCard(this.charCards[i]);
   }
 
   private setTrack(i: number, sound = false): void {
@@ -461,6 +467,7 @@ export class MainMenu {
     this.trackCards.forEach((c, k) => c.classList.toggle('selected', k === i));
     this.refreshTrackFocus();
     if (changed && sound) events.emit('ui:move', {});
+    revealCard(this.trackCards[i]);
   }
 
   private setDifficulty(i: number, sound = false): void {
@@ -515,6 +522,10 @@ export class MainMenu {
     );
     this.cupButtons.forEach((b, k) => b.classList.toggle('focused', this.trackRow === 3 && k === this.cupIndex));
     this.startButton.classList.toggle('focused', this.trackRow === 4);
+    // With sixteen circuits and five cups, a cup's name no longer says what is in it: dim the rest.
+    const cup = this.trackRow === 3 ? CUPS[this.cupIndex] : undefined;
+    this.trackCards[0]?.parentElement?.classList.toggle('cup-preview', !!cup);
+    this.trackCards.forEach((c, k) => c.classList.toggle('in-cup', !!cup && cup.trackIds.includes(this.tracks[k].id)));
     this.refreshCups();
   }
 
@@ -570,13 +581,32 @@ export class MainMenu {
 
   /** Live column count of the character grid (responsive CSS changes it), for up/down navigation. */
   private charColumns(): number {
-    const grid = this.charCards[0]?.parentElement;
-    if (!grid) return CHAR_COLUMNS;
-    const cols = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length;
-    return cols > 0 ? cols : CHAR_COLUMNS;
+    return gridColumns(this.charCards, CHAR_COLUMNS);
   }
 
-  /** Card: thumbnail, number plate, name, weight chip, and a lock chip on premium karts. */
+  private trackColumns(): number {
+    return gridColumns(this.trackCards, TRACK_COLUMNS);
+  }
+
+  /**
+   * Up / down among the circuit cards. Off the top of the grid lands on START, off the bottom on
+   * the mode row: the same ring of rows as before, with the grid counting as one tall row.
+   */
+  private moveTrackRow(dir: number): void {
+    if (this.trackRow === 0) {
+      const next = this.trackIndex + dir * this.trackColumns();
+      if (next >= 0 && next < this.tracks.length) {
+        this.setTrack(next, true);
+        return;
+      }
+    }
+    this.trackRow = (this.trackRow + (dir > 0 ? 1 : 4)) % 5;
+    this.refreshTrackFocus();
+    if (this.trackRow === 0) revealCard(this.trackCards[this.trackIndex]);
+    events.emit('ui:move', {});
+  }
+
+  /** Card: thumbnail with the weight chip (and a lock chip on premium karts), number plate, name. */
   private buildCharacterCard(c: CharacterDef, index: number): HTMLElement {
     const card = el('div', 'card char-card');
     card.tabIndex = -1;
@@ -609,7 +639,8 @@ export class MainMenu {
     const row = el('div', 'char-row', undefined, card);
     el('span', 'plate char-plate', String(index + 1), row);
     el('div', 'card-name', c.name.toUpperCase(), row);
-    const weight = el('div', `chip weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
+    // On the thumbnail, so a card is two lines tall and sixteen of them fit a screen.
+    const weight = el('div', `chip char-weight weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), swatch);
     weight.title = t('menu.weightClass');
     return card;
   }
@@ -638,4 +669,30 @@ export class MainMenu {
     el('span', 'chip', tt('menu.laps', { n: t.laps }), meta);
     return card;
   }
+}
+
+/** Live column count of a card grid (responsive CSS changes it), for up / down navigation. */
+function gridColumns(cards: readonly HTMLElement[], fallback: number): number {
+  const grid = cards[0]?.parentElement;
+  if (!grid) return fallback;
+  const cols = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length;
+  return cols > 0 ? cols : fallback;
+}
+
+/**
+ * Scrolls a select panel just far enough that `card` is clear of the panel's top edge and of the
+ * strip pinned to its bottom. `scrollIntoView` cannot do this: it does not know about the strip.
+ * Does nothing when the panel is hidden or does not scroll.
+ */
+function revealCard(card: HTMLElement | undefined): void {
+  const panel = card?.closest<HTMLElement>('.panel-select');
+  if (!card || !panel || panel.scrollHeight <= panel.clientHeight + 1) return;
+  const box = card.getBoundingClientRect();
+  if (box.height === 0) return;
+  const view = panel.getBoundingClientRect();
+  const strip = panel.querySelector<HTMLElement>('.select-footer')?.getBoundingClientRect();
+  const floor = (strip && strip.top > view.top ? strip.top : view.bottom) - 8;
+  const ceiling = view.top + 8;
+  if (box.bottom > floor) panel.scrollTop += box.bottom - floor;
+  else if (box.top < ceiling) panel.scrollTop -= ceiling - box.top;
 }

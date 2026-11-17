@@ -13,7 +13,7 @@ import { canRace } from '../verse8/entitlements';
 import { unpackCosmetics } from '../core/cosmetics';
 import { badgeElement } from './badges';
 import { getLookThumbnail } from './kartThumbnails';
-import { button, el, TextField } from './dom';
+import { button, centerInRow, el, TextField } from './dom';
 import { showToast } from './toast';
 
 const DIFFS: readonly Difficulty[] = ['easy', 'normal', 'hard'];
@@ -327,9 +327,11 @@ export class OnlinePanel {
     this.settingsBox.replaceChildren();
     const trackRow = el('div', 'settings-field', undefined, this.settingsBox);
     el('span', 'settings-label', t('menu.pickCircuit'), trackRow);
-    const trackSeg = el('div', 'segmented wrap', undefined, trackRow);
+    const trackSeg = el('div', 'segmented picker', undefined, trackRow);
+    let chosen: HTMLElement | undefined;
     for (const tr of this.tracks) {
       const b = el('button', 'seg' + (tr.id === v.trackId ? ' selected' : ''), tr.name.toUpperCase(), trackSeg);
+      if (tr.id === v.trackId) chosen = b;
       b.type = 'button';
       b.disabled = !v.isHost;
       b.addEventListener('click', (e) => {
@@ -337,6 +339,8 @@ export class OnlinePanel {
         void this.run(() => this.ctl().lobby.setSettings({ trackId: tr.id }));
       });
     }
+    // The box is rebuilt on every lobby update: put the chosen circuit back in view.
+    centerInRow(trackSeg, chosen);
     const diffRow = el('div', 'settings-field settings-row', undefined, this.settingsBox);
     el('span', 'settings-label', t('menu.difficulty'), diffRow);
     const diffSeg = el('div', 'segmented', undefined, diffRow);

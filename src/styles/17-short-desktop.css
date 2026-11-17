@@ -13,9 +13,10 @@
     padding-top: 2vh;
     padding-bottom: 10px;
   }
+  /* The grid still fills the height when there is room, but never shrinks below its cards:
+     past that point the panel scrolls. */
   .card-grid {
-    flex: 0 0 auto;
-    align-content: start;
+    flex: 1 0 auto;
   }
   .panel-select .select-footer {
     position: sticky;

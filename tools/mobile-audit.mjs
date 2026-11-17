@@ -204,11 +204,21 @@ async function flow(size, lang) {
     await shot2('17-chars-focus');
     await p2.keyboard.press('Enter', { delay: 70 });
     await sleep(900);
-    for (let row = 1; row <= 4; row++) {
+    // Up from the first row of cards wraps to START, then on up through the cup, difficulty and
+    // mode rows; one more lands back on the chosen card.
+    for (const row of ['start', 'cups', 'difficulty', 'mode']) {
+      await p2.keyboard.press('ArrowUp', { delay: 70 });
+      await sleep(120);
+      await shot2(`18-tracks-focus-${row}`);
+    }
+    // Back onto the chosen card, then down through the grid: the cursor walks the rows of cards
+    // before it leaves for the options.
+    await p2.keyboard.press('ArrowUp', { delay: 70 });
+    for (let row = 2; row <= 4; row++) {
       await p2.keyboard.press('ArrowDown', { delay: 70 });
       await sleep(120);
-      await shot2(`18-tracks-focus-row${row}`);
     }
+    await shot2('18-tracks-focus-grid-row4');
     await p2.close();
   } else {
     await page.close();

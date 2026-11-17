@@ -12,7 +12,7 @@ import { fetchTopTimes, type SubmitResult } from '../verse8/server';
 import { unpackCosmetics } from '../core/cosmetics';
 import { badgeElement } from './badges';
 import { getLookThumbnail } from './kartThumbnails';
-import { button, el, TextField } from './dom';
+import { button, centerInRow, el, TextField } from './dom';
 import { icon } from './icons';
 
 const ROWS = 10;
@@ -36,6 +36,7 @@ export class LeaderboardPanel {
 
   private readonly rootNode: HTMLElement;
   private readonly tabs: HTMLButtonElement[] = [];
+  private readonly tabRow: HTMLElement;
   private readonly table: HTMLElement;
   private readonly status: TextField;
   private readonly mine: TextField;
@@ -52,7 +53,8 @@ export class LeaderboardPanel {
     this.rootNode = el('div', 'screen lb hidden', undefined, root);
     const panel = el('div', 'panel lb-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('lb.title'), panel);
-    const tabRow = el('div', 'lb-tabs segmented wrap', undefined, panel);
+    const tabRow = el('div', 'lb-tabs segmented picker', undefined, panel);
+    this.tabRow = tabRow;
     for (const tr of tracks) {
       const b = el('button', 'seg lb-tab', tr.name.toUpperCase(), tabRow);
       b.type = 'button';
@@ -111,6 +113,7 @@ export class LeaderboardPanel {
   private async load(trackId: string, submit: SubmitResult | null = null): Promise<void> {
     this.trackId = trackId;
     this.tabs.forEach((b, i) => b.classList.toggle('selected', this.tracks[i].id === trackId));
+    centerInRow(this.tabRow, this.tabs[this.tracks.findIndex((tr) => tr.id === trackId)]);
     this.table.replaceChildren();
     this.mine.set('');
     const seq = ++this.requestSeq;

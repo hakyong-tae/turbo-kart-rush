@@ -103,12 +103,18 @@
   font-size: clamp(26px, 3.6vw, 46px);
 }
 
+/* Sixteen cards, four rows. The grid takes whatever height the header and the strip leave and
+   shares it between the rows; the thumbnail is the part of a card that stretches. Below the
+   smallest readable card the grid stops shrinking and the panel scrolls instead (short
+   desktop windows, phones). */
 .card-grid {
   pointer-events: auto;
   display: grid;
   gap: clamp(8px, 1vw, 12px);
-  align-content: center;
-  flex: 1;
+  grid-auto-rows: minmax(min-content, 1fr);
+  align-content: stretch;
+  flex: 1 1 0;
+  max-height: 760px;
 }
 
 /* Character select: everything lives in the left ~60% so the 3D kart is framed on the right. */
@@ -128,13 +134,12 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-/* Track select: eight circuits, four to a row. */
+/* Track select: sixteen circuits, four to a row. */
 .panel-tracks {
   align-items: stretch;
 }
 
 .panel-tracks .card-grid {
-  flex: 0 1 auto;
   width: min(93vw, 1240px);
   margin: 0 auto;
 }
@@ -176,6 +181,9 @@
 .card:nth-child(6) { animation-delay: 0.15s; }
 .card:nth-child(7) { animation-delay: 0.18s; }
 .card:nth-child(8) { animation-delay: 0.21s; }
+/* The second eight come in with their row, not seven steps later: the whole grid lands in 0.5 s. */
+.card:nth-child(n + 9) { animation-delay: 0.24s; }
+.card:nth-child(n + 13) { animation-delay: 0.27s; }
 
 @keyframes card-in {
   from {
@@ -238,18 +246,28 @@
   padding-right: 0.22em;
 }
 
-/* Character card: thumbnail, plate + name, weight chip, lock chip. */
+/* Character card: thumbnail (weight chip and lock chip on it), plate + name. */
 .char-card {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-height: 0;
 }
 
 .char-swatch {
   position: relative;
-  height: clamp(60px, 10vh, 104px);
+  flex: 1 1 0;
+  min-height: 52px;
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+.char-weight {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  z-index: 1;
+  background: var(--asphalt);
 }
 
 .char-thumb {
@@ -282,10 +300,6 @@
   font-size: clamp(13px, 1.2vw, 17px);
 }
 
-.char-card > .chip {
-  align-self: flex-start;
-}
-
 .lock-badge {
   position: absolute;
   top: 11px;
@@ -304,11 +318,13 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-height: 0;
 }
 
 .track-art {
   position: relative;
-  height: clamp(74px, 12vh, 118px);
+  flex: 1 1 0;
+  min-height: 56px;
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -342,10 +358,17 @@
   gap: 8px;
 }
 
+/* The lap count rides on the thumbnail, opposite the theme chip: a card is two lines tall. */
 .track-meta {
+  position: absolute;
+  top: 16px;
+  right: 16px;
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+}
+
+.track-meta .chip {
+  background: var(--asphalt);
 }
 
 /* Difficulty stars (drawn icons): lit ones yellow, the rest in the divider colour. */
@@ -439,6 +462,12 @@
 }
 
 /* Grand Prix chips: a padlock while locked, a star once a cup has been finished. */
+/* Cursor on a cup: the circuits it does not run step back. A filter, not opacity: the card-in
+   animation holds opacity at its last keyframe. */
+.track-grid.cup-preview .card:not(.in-cup) {
+  filter: brightness(0.4) saturate(0.5);
+}
+
 .cup-chip .icon {
   width: 13px;
   height: 13px;

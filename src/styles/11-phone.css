@@ -28,6 +28,18 @@
   .card-grid {
     flex: 0 0 auto;
     align-content: start;
+    grid-auto-rows: auto;
+    max-height: none;
+  }
+  .char-swatch {
+    flex: none;
+    min-height: 0;
+    height: clamp(60px, 10vh, 104px);
+  }
+  .track-art {
+    flex: none;
+    min-height: 0;
+    height: clamp(74px, 12vh, 118px);
   }
   .select-header .panel-title {
     font-size: 22px;
@@ -58,11 +70,27 @@
   }
 }
 
-/* Landscape phones (≤480px tall): compact cards so both rows and the strip fit without
-   scrolling. Four racers to a row, four circuits to a row. */
+/* Landscape phones (≤480px tall): compact cards. Six racers to a row, so all sixteen and the
+   strip fit without scrolling; four circuits to a row, which scroll under the taller strip. */
 @media (max-height: 480px) {
   .card-grid {
     gap: 6px;
+  }
+  .char-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  /* Also on a landscape phone narrower than 700 px, where the portrait rule would give two. */
+  .track-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* A card this narrow has no room for the number plate or the word on the lock. */
+  .char-plate,
+  .lock-badge.lock .lock-text {
+    display: none;
+  }
+  .char-weight {
+    left: 3px;
+    bottom: 3px;
   }
   .card {
     padding: 4px;
@@ -95,14 +123,9 @@
   .stars {
     font-size: 12px;
   }
-  /* The lap count rides on the thumbnail, opposite the theme chip, to save a line per card. */
   .track-meta {
-    position: absolute;
     top: 10px;
     right: 10px;
-  }
-  .track-meta .chip {
-    background: var(--asphalt);
   }
   .track-theme-chip {
     top: 3px;
