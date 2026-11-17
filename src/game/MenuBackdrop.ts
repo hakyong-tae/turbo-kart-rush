@@ -154,9 +154,9 @@ export class MenuBackdrop {
     // shaders were compiled against), only their colours changed.
     const hemi = new THREE.HemisphereLight(0x8a8f9c, 0x101114, 0.55);
     this.group.add(hemi);
-    const rimA = new THREE.PointLight(0xffffff, 16, 22, 2);
+    const rimA = new THREE.PointLight(0xffffff, 10, 22, 2);
     rimA.position.set(-4.2, 1.9, -3.2);
-    const rimB = new THREE.PointLight(0xffe9a0, 16, 22, 2);
+    const rimB = new THREE.PointLight(0xffe9a0, 10, 22, 2);
     rimB.position.set(4.2, 1.5, -3.2);
     this.group.add(rimA, rimB);
 
@@ -290,7 +290,10 @@ export class MenuBackdrop {
     this.kart = null;
   }
 
-  /** Small PMREM environment (flat dark sky + three soft light cards) for the kart's paint. */
+  /**
+   * Small PMREM environment (flat dark sky + three soft light cards) for the kart's paint.
+   * The cards are grey, not white: white ones put highlights on the chrome hot enough to bloom.
+   */
   private buildEnvironment(renderer: THREE.WebGLRenderer): void {
     let pmrem: THREE.PMREMGenerator | null = null;
     try {
@@ -299,13 +302,13 @@ export class MenuBackdrop {
       envScene.background = new THREE.Color(ASPHALT);
       const cardMat = (c: number) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide, fog: false });
       const cardGeo = new THREE.PlaneGeometry(12, 5);
-      const cardA = new THREE.Mesh(cardGeo, cardMat(0xffffff));
+      const cardA = new THREE.Mesh(cardGeo, cardMat(0x8f9299));
       cardA.position.set(-6, 9, 4);
       cardA.lookAt(0, 0, 0);
-      const cardB = new THREE.Mesh(cardGeo, cardMat(0xffe9a0));
+      const cardB = new THREE.Mesh(cardGeo, cardMat(0x9c8f62));
       cardB.position.set(7, 7, -3);
       cardB.lookAt(0, 0, 0);
-      const cardC = new THREE.Mesh(cardGeo, cardMat(0xffffff));
+      const cardC = new THREE.Mesh(cardGeo, cardMat(0xa4a7ae));
       cardC.position.set(0, 12, 0);
       cardC.lookAt(0, 0, 0);
       envScene.add(cardA, cardB, cardC);

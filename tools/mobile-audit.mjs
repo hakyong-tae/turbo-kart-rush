@@ -164,25 +164,25 @@ async function flow(size, lang) {
 
   // Keyboard focus must be visible everywhere a keyboard can go (desktop only).
   if (size === 'pc') {
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight', { delay: 70 });
     await sleep(150);
     await shot('15-results-focus');
     await page.close();
     const p2 = await open(size, lang);
     const shot2 = (s) => p2.screenshot({ path: `${OUT}/${size}-${lang}-${s}.png` });
-    await p2.keyboard.press('ArrowDown');
+    await p2.keyboard.press('ArrowDown', { delay: 70 });
     await sleep(150);
     await shot2('16-title-focus');
-    await p2.keyboard.press('ArrowUp');
-    await p2.keyboard.press('Enter');
+    await p2.keyboard.press('ArrowUp', { delay: 70 });
+    await p2.keyboard.press('Enter', { delay: 70 });
     await sleep(900);
-    await p2.keyboard.press('ArrowRight');
+    await p2.keyboard.press('ArrowRight', { delay: 70 });
     await sleep(150);
     await shot2('17-chars-focus');
-    await p2.keyboard.press('Enter');
+    await p2.keyboard.press('Enter', { delay: 70 });
     await sleep(900);
     for (let row = 1; row <= 4; row++) {
-      await p2.keyboard.press('ArrowDown');
+      await p2.keyboard.press('ArrowDown', { delay: 70 });
       await sleep(120);
       await shot2(`18-tracks-focus-row${row}`);
     }
