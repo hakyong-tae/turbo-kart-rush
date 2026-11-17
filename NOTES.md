@@ -21,7 +21,7 @@ npm run preview
 
 - `index.html` → `/src/main.ts` (WebGL2 체크 → `new Game(#app).start()`), `/src/style.css` (1,938줄, UI 전부 DOM+CSS)
 - 디버그 핸들: `window.__turboKartRush` (Game 인스턴스, private 필드 그대로 접근 가능)
-- **로딩 90%에서 멈춘 것처럼 보이는 현상**: 탭이 백그라운드면 rAF가 멈추고 `loadingElapsed`가 안 늘어서 그런 것. 버그 아님. (Game.ts `frameLoading`: 셰이더 `compileAsync` 완료 or 8초 타임아웃 후 100%)
+- **로딩 90%에서 멈춘 것처럼 보이는 현상**: 탭이 백그라운드면 rAF가 멈추고 `loadingElapsed`가 안 늘어서 그런 것. 버그 아님. (Game.ts `frameLoading`: 셰이더 컴파일 완료 or 8초 타임아웃 후 100%)
 - 내장 브라우저 패널은 오디오 뮤트(`🔇 MUTED` 표시). 일반 크롬에서 열어야 사운드 확인 가능.
 - GitHub Pages 배포: `.github/workflows/deploy.yml` (node 22, `npm ci && typecheck && build` → Pages)
 - **Verse8 배포·규칙**: `docs/VERSE8-CONTEXT.md` (깨뜨리면 안 되는 것 7개, 콘솔 체크리스트, develop push + V8 Agent 프롬프트)
@@ -119,7 +119,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
                                                                     finished → results → title
 ```
 - `Game.frame(dt, input)`가 상태별 분기. 메뉴 상태는 `MainMenu.handleInput` + 백드롭 렌더.
-- `loading`: 2프레임 대기 후 `buildRace()` **동기** 빌드 → `renderer.compileAsync`로 셰이더 워밍 → 100%면 `enterCountdown()`.
+- `loading`: 2프레임 대기 후 `buildRace()` **동기** 빌드 → `renderer.compile`로 셰이더 워밍을 걸고 로딩 프레임마다 `pollShaders()`로 완료 여부 확인(three의 `compileAsync`는 쓰지 않는다 — 컴파일 대기 중에 레이스가 해제되면 three의 타이머가 해제된 재질을 읽어 오류가 났다) → 100%면 `enterCountdown()`.
 - `finished`: 플레이어 완주 후 `playerAutoDriver`(AIDriver)가 플레이어 카트 자동주행, 전원 완주 or 12초 후 results.
 
 ### 3.3 루프

@@ -63,6 +63,9 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 - Particles: fixed pools, `take()` accumulators; never `new` inside emitters.
 - Geometry/material caches live in `itemVisuals.ts` and per-kart in `KartModel.ts` (`dispose()` frees).
 - Thumbnails are rendered once per session (`kartThumbnails.ts` / `trackThumbnails.ts`) and cached.
+- Shader warm-up: `Game.warmShaders()` calls `renderer.compile()` and the loading loop asks each frame whether the
+  programs are ready (`pollShaders`). Do not switch to three's `compileAsync`: its own timer outlives the race, and
+  disposing a race mid-compile then throws from inside three.
 
 ## 4. Verification tools
 
@@ -72,6 +75,7 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 | `npm run typecheck && npm run build` | must stay clean; `grep -c '"@agent8/gameserver' dist/assets/*.js` → 0 |
 | `node tools/mobile-audit.mjs [url] [--out dir] [--hud] [--phone-fonts] [--lang en]` | every screen at phone 844×390 (touch) and PC 1280×720, ko + en, + portrait gate → `marketing/.audit/` (`--hud`: race HUD on bright and dark circuits; `--phone-fonts`: without Impact, as a phone renders it — run this before judging the English UI) |
 | `node tools/kart-lineup.mjs` | all eight karts rendered from the real builder |
+| `node tools/restart-during-load-check.mjs [url]` | a race disposed while its shaders are still compiling must be harmless (exit 0 = pass) |
 | `node tools/promo-capture.mjs` | store video + thumbnail |
 
 Headless Chrome needs `--use-gl=angle --use-angle=metal --ignore-gpu-blocklist` for WebGL2.

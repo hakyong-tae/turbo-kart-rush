@@ -228,7 +228,9 @@ async function hud(size, lang, trackName, team = false) {
     const cards = [...document.querySelectorAll('.track-card')];
     const card = cards.find((c) => c.querySelector('.card-name')?.textContent?.toUpperCase().includes(name));
     if (!card) return false;
-    card.click();
+    // Clicking the card that is already selected starts the race, and the start button below
+    // would then start it a second time.
+    if (!card.classList.contains('selected')) card.click();
     return true;
   }, trackName);
   if (!picked) console.log(`  track not found: ${trackName}`);
