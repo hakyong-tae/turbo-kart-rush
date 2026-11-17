@@ -3,13 +3,19 @@
    panel rather than growing it, because the panel must never be taller than a landscape phone. */
 
 .garage-panel {
+  --pad-x: 16px;
+  --pad-y: 10px;
   width: min(1040px, 96vw);
+  max-width: none;
   max-height: 92vh;
-  padding: 16px 18px 14px;
-  pointer-events: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+/* The checker strip is a flex item here; the column gap already spaces it from the head. */
+.garage-panel::before {
+  margin-bottom: 0;
 }
 
 .garage-head {
@@ -23,11 +29,9 @@
   letter-spacing: 0.04em;
   color: var(--ink-dim);
 }
-.garage-state.owned {
-  color: var(--green);
-}
+.garage-state.owned,
 .garage-state.auditioning {
-  color: var(--gold);
+  color: var(--yellow);
 }
 
 .garage-body {
@@ -42,9 +46,8 @@
   /* Fixed shape so the turntable never becomes a letterbox slot when the catalogue grows. */
   align-self: start;
   aspect-ratio: 4 / 3;
-  border-radius: var(--radius-sm);
-  background: radial-gradient(120% 90% at 50% 15%, rgba(55, 168, 255, 0.16), rgba(6, 7, 16, 0.9) 70%);
-  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  background: var(--asphalt);
   overflow: hidden;
   min-height: 240px;
 }
@@ -62,29 +65,38 @@
   min-height: 0;
 }
 
+/* Tabs: small slanted plates, the open one yellow. */
 .garage-tabs {
+  --slant: 6px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px 0;
+  padding-left: calc(var(--slant) - 2px);
 }
 
 .garage-tab {
-  font: 600 11px/1 var(--body);
-  letter-spacing: 0.06em;
-  padding: 7px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.04);
+  min-height: 32px;
+  padding: 0 14px;
+  margin-left: calc(2px - var(--slant));
+  border: 0;
+  border-radius: 0;
+  background: var(--panel-hi);
   color: var(--ink-dim);
+  font: 700 12px/1 var(--body);
+  letter-spacing: 0.04em;
   cursor: pointer;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
 }
 .garage-tab:hover {
   color: var(--ink);
+  background: var(--line);
 }
 .garage-tab.selected {
-  background: var(--accent-grad);
-  border-color: transparent;
-  color: #080a16;
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+#ui.touch .garage-tab {
+  min-height: 44px;
 }
 
 .garage-rows {
@@ -94,11 +106,13 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
 
 .garage-row-label {
   display: block;
-  font: 600 11px/1 var(--body);
+  font: 700 11px/1 var(--body);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -112,22 +126,21 @@
 }
 
 .garage-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  border: 2px solid transparent;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius);
+  border: 2px solid var(--asphalt);
   cursor: pointer;
   padding: 0;
 }
 .garage-swatch.selected {
   border-color: var(--ink);
-  transform: scale(1.08);
+  outline: 2px solid var(--yellow);
 }
 .garage-swatch-default {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--panel-hi);
   color: var(--ink-dim);
-  font: 600 13px/1 var(--body);
+  font: 700 13px/1 var(--body);
 }
 
 .garage-options {
@@ -141,41 +154,41 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.04);
+  min-height: 40px;
+  padding: 6px 8px 6px 10px;
+  border-radius: var(--radius);
+  border: 2px solid var(--asphalt);
+  background: var(--asphalt);
   color: var(--ink);
   font: 500 12px/1.15 var(--body);
   text-align: left;
   cursor: pointer;
 }
 .garage-option:hover {
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--panel-hi);
+  border-color: var(--panel-hi);
 }
 .garage-option.selected {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 1px var(--blue) inset;
+  border-color: var(--yellow);
 }
 /* Locked entries stay readable: dimming them to nothing hides what the pass is for. */
 .garage-option.locked .garage-option-name {
   color: var(--ink-dim);
 }
+.garage-option-name {
+  flex: 1;
+  min-width: 0;
+}
 .garage-option-lock,
 .garage-option-free {
-  font: 700 9px/1 var(--body);
-  letter-spacing: 0.06em;
-  padding: 3px 5px;
-  border-radius: 4px;
-  white-space: nowrap;
+  min-height: 18px;
+  padding: 1px 7px;
+  font-size: 9px;
 }
-.garage-option-lock {
-  background: rgba(255, 210, 63, 0.16);
-  color: var(--gold);
-}
-.garage-option-free {
-  background: rgba(92, 255, 138, 0.14);
-  color: var(--green);
+.garage-option-lock .icon {
+  width: 11px;
+  height: 11px;
+  vertical-align: 0;
 }
 
 .garage-hint {
@@ -189,6 +202,7 @@
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  margin-top: 0;
 }
 .garage-actions .garage-unlock {
   margin-right: auto;
@@ -197,8 +211,10 @@
 /* Phone landscape: the stage shrinks rather than the list, which is what players actually use. */
 @media (max-height: 480px) {
   .garage-panel {
+    --pad-x: 12px;
+    --pad-y: 8px;
     max-height: 96vh;
-    padding: 10px 12px 8px;
+    gap: 6px;
   }
   .garage-body {
     grid-template-columns: minmax(200px, 34%) 1fr;
@@ -209,6 +225,16 @@
   }
   .garage-options {
     grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  }
+  .garage-actions .btn {
+    padding: 0 20px;
+    font-size: 14px;
+  }
+  /* All nine tabs on one line. */
+  .garage-tab {
+    padding: 0 9px;
+    font-size: 11px;
+    letter-spacing: 0;
   }
 }
 
@@ -241,11 +267,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* The row gains a thumbnail column ahead of the name (base grid lives in 10-verse8-panels). */
-.online-player {
-  grid-template-columns: auto 1fr 8em 7em;
-}
 .online-player-thumb {
   width: 44px;
   height: 28px;
@@ -257,14 +278,6 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-}
-
-.results-winner {
-  display: block;
-  width: 176px;
-  max-width: 44%;
-  margin: 2px auto -6px;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.5));
 }
 
 /* Badge glyphs inherit the row's colour, so friend-or-foe tinting carries through. */
@@ -281,11 +294,6 @@
   height: 15px;
   margin-right: 2px;
 }
-.garage-option-name {
-  flex: 1;
-  min-width: 0;
-}
-.standing-name,
 .lb-cell.lb-name,
 .online-player-nick {
   display: flex;
@@ -295,9 +303,9 @@
 
 /* Grand Prix: the running table on the results screen (the cup chips live in 04-menu). */
 .cup-standings {
-  margin: 8px auto 0;
+  margin: 10px auto 0;
   width: min(420px, 92%);
-  border-top: 1px solid var(--glass-border);
+  border-top: 2px solid var(--line);
   padding-top: 8px;
 }
 .cup-standings-head {
@@ -313,12 +321,13 @@
   grid-template-columns: 1.6em 1fr auto;
   gap: 8px;
   align-items: center;
-  padding: 3px 6px;
-  border-radius: 6px;
+  padding: 3px 6px 3px 4px;
+  border-left: 4px solid transparent;
   font-size: 12px;
 }
 .cup-standing.you {
-  background: rgba(55, 168, 255, 0.16);
+  background: var(--panel-hi);
+  border-left-color: var(--yellow);
   font-weight: 700;
 }
 .cup-standing-place {
@@ -334,7 +343,7 @@
   white-space: nowrap;
 }
 .cup-standing-points {
-  color: var(--gold);
+  color: var(--yellow);
   font-variant-numeric: tabular-nums;
 }
 
@@ -347,18 +356,17 @@
     padding-top: 6px;
   }
   .cup-standing {
-    padding: 2px 6px;
+    padding: 2px 6px 2px 4px;
     font-size: 11px;
   }
 }
 
 /* Daily challenge: the seeded run of the day, its kart picker and its own board. */
 .daily-panel {
+  --pad-x: 20px;
+  --pad-y: 14px;
   width: min(620px, 94vw);
   max-height: 92vh;
-  overflow-y: auto;
-  padding: 18px 20px 14px;
-  pointer-events: auto;
 }
 .daily-rule {
   color: var(--ink-dim);
@@ -366,14 +374,14 @@
   margin-bottom: 2px;
 }
 .daily-status {
-  color: var(--gold);
+  color: var(--ink-dim);
   font-size: 12px;
   min-height: 1.3em;
   margin-bottom: 10px;
 }
 .daily-karts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 6px;
   margin-bottom: 12px;
 }
@@ -381,21 +389,25 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 44px;
   padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius);
+  border: 0;
+  background: var(--asphalt);
   color: var(--ink);
-  font: 600 12px/1.1 var(--body);
+  font: 700 12px/1.1 var(--body);
   cursor: pointer;
   text-align: left;
 }
 .daily-kart:hover:not(.disabled) {
-  background: rgba(255, 255, 255, 0.11);
+  background: var(--panel-hi);
 }
 .daily-kart.disabled {
-  opacity: 0.4;
+  color: var(--ink-faint);
   cursor: default;
+}
+.daily-kart.disabled img {
+  filter: grayscale(1) brightness(0.6);
 }
 .daily-kart img {
   width: 42px;
@@ -409,7 +421,7 @@
   white-space: nowrap;
 }
 .daily-board {
-  border-top: 1px solid var(--glass-border);
+  border-top: 2px solid var(--line);
   padding-top: 8px;
 }
 .daily-row {
@@ -417,12 +429,13 @@
   grid-template-columns: 1.8em 44px 1fr auto;
   gap: 8px;
   align-items: center;
-  padding: 3px 6px;
-  border-radius: 6px;
+  padding: 3px 6px 3px 4px;
+  border-left: 4px solid transparent;
   font-size: 13px;
 }
 .daily-row.you {
-  background: rgba(55, 168, 255, 0.16);
+  background: var(--panel-hi);
+  border-left-color: var(--yellow);
   font-weight: 700;
 }
 .daily-rank {
@@ -453,9 +466,10 @@
 
 @media (max-height: 480px) {
   .daily-panel {
-    padding: 10px 14px 8px;
+    --pad-x: 14px;
+    --pad-y: 8px;
   }
   .daily-karts {
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 }

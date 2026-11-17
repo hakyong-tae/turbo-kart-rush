@@ -232,34 +232,6 @@
   top: calc(var(--hud-pad) + 96px);
   font-size: 15px;
 }
-.standing-row.side-ally .standing-place { color: #6fa3ff; }
-.standing-row.side-rival .standing-place { color: #ff6b74; }
-.standing-points {
-  font-family: var(--display);
-  font-size: 16px;
-  letter-spacing: 0.05em;
-  color: var(--gold);
-  min-width: 4.2em;
-  text-align: right;
-}
-.standing-points.zero {
-  color: var(--ink-faint);
-}
-.results-panel.team-us .results-title { color: #6fa3ff; }
-.results-panel.team-them .results-title { color: #ff6b74; }
 .hud-finish.retired {
   color: #ff6b74;
-}
-.standings.points .standing-row {
-  grid-template-columns: 58px 16px 1fr auto auto;
-}
-@media (max-width: 700px) {
-  .standings.points .standing-row {
-    grid-template-columns: 44px 14px 1fr auto auto;
-    gap: 8px;
-  }
-  .standing-points {
-    min-width: 3.2em;
-    font-size: 14px;
-  }
 }

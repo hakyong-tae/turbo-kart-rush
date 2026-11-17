@@ -4,7 +4,11 @@
 .lock-sheet,
 .lb,
 .settings,
-.v8-mock {
+.v8-mock,
+.screen.garage,
+.screen.daily,
+.screen.online,
+.screen.item-guide {
   position: absolute;
   inset: 0;
   display: flex;

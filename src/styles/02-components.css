@@ -204,8 +204,16 @@
   background: var(--panel);
 }
 
-.btn.danger {
-  box-shadow: inset 6px 0 0 var(--red);
+/* Danger: a red band along the slanted left edge. */
+.btn.danger::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--slant) + 6px);
+  background: var(--red);
+  clip-path: polygon(var(--slant) 0, 100% 0, 6px 100%, 0 100%);
 }
 
 .btn.small {
@@ -246,10 +254,6 @@
 
 .btn.icon-only.focused::before {
   display: none;
-}
-
-.btn.danger.focused {
-  box-shadow: inset 6px 0 0 var(--red);
 }
 
 /* Fingers have no cursor: a touch screen shows the buttons as they are. */

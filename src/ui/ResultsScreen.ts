@@ -1,6 +1,6 @@
 /**
- * Post-race standings table with staggered row animation, confetti for a podium
- * finish and Race Again / Change Track / Main Menu actions.
+ * Post-race screen: the player's place on a big number plate, the standings table, confetti for
+ * a podium finish and Race Again / Change Circuit / Lobby actions (records as an icon button).
  */
 import type { InputState, RaceStanding, RaceMode, Team } from '../core/types';
 import { SIDE_COLORS, computeTeamResult, isTeamMode, pointsFor, teamOf } from '../core/teams';
@@ -12,10 +12,11 @@ import type { CupEntry } from '../core/cups';
 import { badgeElement } from './badges';
 import { CHARACTERS } from '../kart/roster';
 import { getLookThumbnail } from './kartThumbnails';
-import { button, cssHex, el, FocusRing, TextField } from './dom';
+import { button, cssHex, el, FocusRing, setButtonContent, TextField } from './dom';
 
 const CONFETTI_COUNT = 56;
-const CONFETTI_COLORS = ['#ffd23f', '#ff3ab8', '#37a8ff', '#7cff6b', '#ff7a2f', '#ffffff'];
+/** Race yellow, white and the two greys of the palette: flag-day paper, not a rainbow. */
+const CONFETTI_COLORS = ['#ffd400', '#ffffff', '#b9bdc7', '#ffd400', '#3d4049', '#ffffff'];
 
 /** What the results screen needs to know about an in-progress cup. */
 export interface CupView {
@@ -33,6 +34,7 @@ export class ResultsScreen {
 
   private readonly rootNode: HTMLElement;
   private readonly panel: HTMLElement;
+  private readonly plate: TextField;
   private readonly heading: TextField;
   private readonly subheading: TextField;
   private readonly rankBanner: TextField;
@@ -50,23 +52,31 @@ export class ResultsScreen {
     this.confetti = el('div', 'confetti', undefined, this.rootNode);
     this.panel = el('div', 'panel results-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('results.kicker'), this.panel);
+    // Head: the one thing this screen is for — where you finished — on a number plate, with the
+    // verdict beside it and the winner's kart at the far end.
+    const head = el('div', 'results-head', undefined, this.panel);
+    this.plate = new TextField(el('div', 'plate results-plate', '', head));
+    const headText = el('div', 'results-head-text', undefined, head);
+    this.heading = new TextField(el('h2', 'panel-title results-title', '', headText));
+    this.subheading = new TextField(el('div', 'results-sub', '', headText));
     // The winner's actual kart, garage look and all — the reward for building one is being seen.
-    this.winnerShot = el('img', 'results-winner hidden', undefined, this.panel);
-    this.heading = new TextField(el('h2', 'panel-title results-title', '', this.panel));
-    this.subheading = new TextField(el('div', 'results-sub', '', this.panel));
+    this.winnerShot = el('img', 'results-winner hidden', undefined, head);
     this.rankBanner = new TextField(el('div', 'results-rank hidden', '', this.panel));
     this.table = el('div', 'standings', undefined, this.panel);
     // Cup table: only filled during a Grand Prix, where the race result is half the story.
     this.cupBox = el('div', 'cup-standings hidden', undefined, this.panel);
+    // Reserved for the progression update: coins, experience and mission progress earned by
+    // this race go between the table and the buttons. Empty (and collapsed) until then.
+    el('div', 'results-rewards', undefined, this.panel);
     const actions = el('div', 'actions', undefined, this.panel);
     this.focus = new FocusRing((i) => this.activate(i));
     const again = button(t('results.again'), 'primary', () => this.activate(0));
     this.againButton = again;
     const change = button(t('results.changeTrack'), '', () => this.activate(1));
     const menu = button(t('results.mainMenu'), 'ghost', () => this.activate(2));
-    const records = button(t('lb.button'), 'ghost', () => this.activate(3));
+    const records = button(t('lb.button'), 'ghost icon-only results-records', () => this.activate(3), 'trophy');
     this.recordsButton = records;
-    actions.append(records, again, change, menu);
+    actions.append(again, change, menu, records);
     this.focus.add(again);
     this.focus.add(change);
     this.focus.add(menu);
@@ -83,6 +93,14 @@ export class ResultsScreen {
     this.confetti.replaceChildren();
     const player = standings.find((s) => s.isPlayer);
     const place = player ? player.place : standings.length;
+    // Plate: the place as a bare number; podium places take their metal, a retirement goes red.
+    const retired = player ? !isFinite(player.finishTime) || player.finishTime <= 0 : false;
+    this.plate.set(retired ? t('results.dnf') : String(place));
+    const plateNode = this.plate.node;
+    plateNode.classList.toggle('red', retired);
+    plateNode.classList.toggle('gold', !retired && place === 1);
+    plateNode.classList.toggle('silver', !retired && place === 2);
+    plateNode.classList.toggle('bronze', !retired && place === 3);
     this.showWinnerKart(standings[0]);
     this.renderCup(cup);
     const winnerTime = standings.length > 0 ? standings[0].finishTime : 0;
@@ -204,7 +222,7 @@ export class ResultsScreen {
     this.cupBox.replaceChildren();
     this.cupBox.classList.toggle('hidden', !cup);
     // The primary action carries the cup through: another race, or the final tally.
-    this.againButton.textContent = cup ? (cup.isFinal ? t('cup.finish') : t('cup.next')) : t('results.again');
+    setButtonContent(this.againButton, cup ? (cup.isFinal ? t('cup.finish') : t('cup.next')) : t('results.again'));
     if (!cup) return;
     const head = el('div', 'cup-standings-head', undefined, this.cupBox);
     el('span', 'cup-standings-title', t('cup.standings'), head);

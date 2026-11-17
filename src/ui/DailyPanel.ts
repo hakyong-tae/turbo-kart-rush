@@ -51,7 +51,7 @@ export class DailyPanel {
     this.kartRow = el('div', 'daily-karts', undefined, panel);
     this.table = el('div', 'daily-board', undefined, panel);
     const actions = el('div', 'actions', undefined, panel);
-    actions.appendChild(button(t('menu.back'), 'ghost', () => this.close()));
+    actions.appendChild(button(t('menu.back'), 'ghost', () => this.close(), 'chevron-left'));
   }
 
   get isVisible(): boolean {
