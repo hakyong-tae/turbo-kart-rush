@@ -131,7 +131,7 @@ export class MenuBackdrop {
     this.disposables.push(podiumGeo, podiumMat);
 
     // Lights -----------------------------------------------------------------------
-    const key = new THREE.DirectionalLight(0xffffff, 2.0);
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(3.2, 6.5, 4.2);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -145,7 +145,7 @@ export class MenuBackdrop {
     key.shadow.normalBias = 0.02;
     this.group.add(key, key.target);
 
-    const top = new THREE.SpotLight(0xffffff, 14, 0, 0.55, 0.7, 2);
+    const top = new THREE.SpotLight(0xffffff, 9, 0, 0.55, 0.7, 2);
     top.position.set(0, 6.5, 0.5);
     top.target.position.set(0, PODIUM_HEIGHT, 0);
     this.group.add(top, top.target);

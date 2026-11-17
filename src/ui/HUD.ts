@@ -325,7 +325,13 @@ export class HUD {
       on('race:positionChange', (e) => {
         if (!e.isPlayer) return;
         const up = e.to < e.from;
-        // Shown for one second, and only when the place actually changes.
+        // Shown for one second, and only when the place actually changes. A second change inside
+        // that second replaces the first instead of stacking on it.
+        for (let i = this.timed.length - 1; i >= 0; i--) {
+          if (!this.timed[i].node.classList.contains('hud-posflash')) continue;
+          this.timed[i].node.remove();
+          this.timed.splice(i, 1);
+        }
         const node = this.flashCenter(localOrdinal(e.to).toUpperCase(), `hud-posflash ${up ? 'up' : 'down'}`, 1.0);
         node.prepend(icon(up ? 'chevron-up' : 'chevron-down'));
       }),

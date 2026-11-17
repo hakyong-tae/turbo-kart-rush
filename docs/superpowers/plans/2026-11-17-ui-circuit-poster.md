@@ -294,7 +294,7 @@ git commit -am "UI poster 2/6: lobby, wordmark, asphalt backdrop, controls legen
 
 **Files:** `src/ui/HUD.ts`, `src/ui/hud/StandingsBoard.ts`, `src/ui/Minimap.ts`, `src/ui/TouchControls.ts`, `src/styles/07,09,12,14`
 
-- [ ] **Step 1: 왼쪽 열** — `.hud-left`(순위표 + 미니맵을 세로로). `StandingsBoard`에 `setCompact(on)`: 켜지면 상위 3명 + 나(4줄)만 그린다(시그니처에 반영, 프레임당 할당 없음). `HUD.setTouch(on)`이 호출한다.
+- [ ] **Step 1: 왼쪽 열** — `.hud-left`(순위표 + 미니맵을 세로로). 터치 배치의 "상위 3명 + 나(4줄)"는 CSS로 한다(`#ui.touch .hud-standing:nth-child(n+4):not(.you)` 숨김 + `:has()`로 4번째 줄 보충). 순위표 코드는 항상 8줄을 그린다. *(구현 중 변경: 처음 계획은 `StandingsBoard.setCompact()`였으나 JS 상태 없이 같은 결과가 나와 CSS로 바꿨다.)*
 - [ ] **Step 2: 미니맵** — 인라인 크기 제거(CSS `--map`으로 크기 지정), 도로 채움 `#15161a`.
 - [ ] **Step 3: 아이템 칸** — 빈 칸 2px 점선 `--line`, 아이템이 있으면 `--panel` + 노란 테두리. 오버드라이브는 아래쪽 노란 진행 막대(`--od`).
 - [ ] **Step 4: 랩·타이머·순위 번호판·속도계·가운데 알림** — 스펙대로. 순위 변동 알림의 삼각 문자는 `chevron-up/down` 아이콘, 역주행은 `uturn` 아이콘.
@@ -331,4 +331,4 @@ grep -rnP "[\x{2190}-\x{21ff}\x{2300}-\x{23ff}\x{25a0}-\x{27ff}\x{2b00}-\x{2bff}
 ## Self-Review
 
 - 스펙 1절 → Task 1 Step 6. 2·3절 → Task 1 Step 7. 4절 → Task 1 Step 1~5, Task 2 Step 3, Task 4·5의 아이콘 연결. 5절 → Task 2 Step 4·8. 6절 로비·조작법 → Task 2, 레이서·서킷 → Task 3, 결과·나머지 → Task 4, HUD → Task 5. 7절 파일 표 → 위 파일 구조 표와 일치. 8절 → Task 6.
-- 이름 일관성: `icon()`/`ICON_NAMES`/`IconName`, `buildLogo()`, `buildControlsLegend()`, `hasSeenControls()`/`markControlsSeen()`, `StandingsBoard.setCompact()`, `HUD.setTouch()`.
+- 이름 일관성: `icon()`/`ICON_NAMES`/`IconName`, `buildLogo()`, `buildControlsLegend()`, `hasSeenControls()`/`markControlsSeen()`.

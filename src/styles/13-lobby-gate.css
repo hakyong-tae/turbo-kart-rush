@@ -29,7 +29,8 @@
 
 .lobby-grid .lobby-btn {
   min-height: 48px;
-  padding: 0 14px;
+  /* Extra room on the left: the focus chevron sits there, clear of the icon. */
+  padding: 0 12px 0 28px;
   font-size: clamp(14px, 1.25vw, 17px);
   letter-spacing: 0.08em;
 }

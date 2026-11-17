@@ -74,18 +74,9 @@ function paint(ctx: CanvasRenderingContext2D, def: TrackDefinition): void {
 
   drawScenery(ctx, def.theme, hy, env.skyHorizon, env.skyBottom, rnd);
 
-  // Ground plane (darker toward the viewer for depth).
-  const ground = ctx.createLinearGradient(0, hy, 0, H);
-  ground.addColorStop(0, hex(shade(pal.ground, 0.12)));
-  ground.addColorStop(1, hex(shade(pal.ground, -0.28)));
-  ctx.fillStyle = ground;
+  // Ground plane: one flat tone. The sky above is the only gradient the card keeps.
+  ctx.fillStyle = hex(shade(pal.ground, -0.08));
   ctx.fillRect(0, hy, W, H - hy);
-  // Haze line where ground meets sky.
-  const haze = ctx.createLinearGradient(0, hy, 0, hy + 26);
-  haze.addColorStop(0, rgba(env.skyBottom, 0.55));
-  haze.addColorStop(1, rgba(env.skyBottom, 0));
-  ctx.fillStyle = haze;
-  ctx.fillRect(0, hy, W, 26);
 
   drawCourse(ctx, def, hy);
 }

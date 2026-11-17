@@ -25,6 +25,17 @@
 .results-panel {
   --pad-x: clamp(16px, 2.4vw, 28px);
   width: min(92vw, 720px);
+  padding-bottom: 0;
+}
+
+/* The buttons stay in reach however long the tables get (a cup adds a second one). */
+.results-panel > .actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 calc(-1 * var(--pad-x));
+  padding: 12px var(--pad-x) var(--pad-y);
+  background: var(--panel);
 }
 
 /* Head: place on a big number plate, the verdict beside it, the winner's kart at the end. */
@@ -267,8 +278,12 @@
   .standing-name {
     font-size: 15px;
   }
-  .results-panel .actions {
-    margin-top: 10px;
+  .results-panel > .actions {
+    padding-top: 8px;
+  }
+  /* A cup in progress: two tables share the height. */
+  .results-panel:has(.cup-standings:not(.hidden)) .standings {
+    max-height: 28vh;
   }
 }
 

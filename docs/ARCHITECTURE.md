@@ -30,6 +30,10 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 
 | Change | File(s) |
 |---|---|
+| A colour, radius or slant (design tokens) | `styles/01-base.css` `:root` — style rules: `docs/superpowers/specs/2026-11-17-ui-circuit-poster-design.md` |
+| A shared UI part (panel, button, chip, segmented control, stat blocks, plate, checker, key cap, toast) | `styles/02-components.css` |
+| An icon | `ui/icons.ts` (`icon(name)` → inline SVG; never an emoji or arrow glyph in a string) |
+| The wordmark / the controls legend | `ui/logo.ts` / `ui/controlsLegend.ts` |
 | A tuning number (speed, drift, items, slipstream matrix, start charge, retire time) | `core/balance.ts` (`?b.path=` URL override for live tests) |
 | Slipstream rule / bonus | `kart/assists/slipstream.ts` (+ `BALANCE.slipstream`) |
 | Magnet tow behaviour | `kart/assists/magnet.ts` |
@@ -40,7 +44,7 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 | Team rules / points table | `core/teams.ts` |
 | Race flow, retire rule, standings order | `game/RaceManager.ts` |
 | HUD widget (mirror, standings, tally, charge, draft) | `ui/hud/<Widget>.ts`; layout in `styles/12-hud-widgets.css` / `14-layout-overrides.css` |
-| HUD core (item slot, lap/timer, place, speedo, centre flashes) | `ui/HUD.ts`, `styles/07-hud.css` |
+| HUD core (standings + minimap column, item slot, lap/timer, place plate, speedo, centre flashes) | `ui/HUD.ts`, `styles/07-hud.css`; touch arrangement in `14-layout-overrides.css` |
 | Lobby / character / track select | `ui/MainMenu.ts`, `styles/04-menu.css`, `13-lobby-gate.css` |
 | Card thumbnails | `ui/kartThumbnails.ts`, `ui/trackThumbnails.ts` |
 | Results screen | `ui/ResultsScreen.ts`, `styles/06-pause-results.css` |
@@ -66,7 +70,7 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 |---|---|
 | `npm test` | vitest (physics with real Karts on `net/FakeTrack`, server.js harness, teams, model) |
 | `npm run typecheck && npm run build` | must stay clean; `grep -c '"@agent8/gameserver' dist/assets/*.js` → 0 |
-| `node tools/mobile-audit.mjs` | landscape phone screens + portrait gate → `marketing/.audit/` |
+| `node tools/mobile-audit.mjs [url] [--out dir] [--hud]` | every screen at phone 844×390 (touch) and PC 1280×720, ko + en, + portrait gate → `marketing/.audit/` (`--hud`: race HUD on bright and dark circuits) |
 | `node tools/kart-lineup.mjs` | all eight karts rendered from the real builder |
 | `node tools/promo-capture.mjs` | store video + thumbnail |
 

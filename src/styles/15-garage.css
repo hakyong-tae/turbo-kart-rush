@@ -232,8 +232,8 @@
   }
   /* All nine tabs on one line. */
   .garage-tab {
-    padding: 0 9px;
-    font-size: 11px;
+    padding: 0 7px;
+    font-size: 10.5px;
     letter-spacing: 0;
   }
 }
@@ -350,7 +350,7 @@
 /* Landscape phone: race standings plus a cup table is a lot of rows for 400 px of height. */
 @media (max-height: 480px) {
   .cup-standings {
-    max-height: 34vh;
+    max-height: 26vh;
     overflow-y: auto;
     margin-top: 6px;
     padding-top: 6px;
@@ -381,7 +381,7 @@
 }
 .daily-karts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 6px;
   margin-bottom: 12px;
 }
@@ -470,6 +470,6 @@
     --pad-y: 8px;
   }
   .daily-karts {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 }
