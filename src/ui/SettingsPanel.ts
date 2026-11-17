@@ -43,7 +43,7 @@ export class SettingsPanel {
     private readonly hooks: SettingsHooks,
   ) {
     this.rootNode = el('div', 'screen settings hidden', undefined, root);
-    const panel = el('div', 'glass panel settings-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel settings-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('settings.title'), panel);
 
     const nickField = el('label', 'settings-field', undefined, panel);

@@ -22,7 +22,7 @@ export class StandingsBoard {
   private mode: RaceMode = 'solo';
 
   constructor(parent: HTMLElement) {
-    this.root = el('div', 'hud-standings glass', undefined, parent);
+    this.root = el('div', 'hud-standings', undefined, parent);
   }
 
   setMode(mode: RaceMode): void {

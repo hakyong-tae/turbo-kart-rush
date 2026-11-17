@@ -17,7 +17,7 @@ export class PauseMenu {
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen pause hidden', undefined, root);
-    const panel = el('div', 'glass panel pause-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel pause-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('pause.kicker'), panel);
     el('h2', 'panel-title', t('pause.title'), panel);
     const actions = el('div', 'actions column', undefined, panel);

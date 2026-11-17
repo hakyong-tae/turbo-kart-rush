@@ -24,7 +24,7 @@ export class ItemGuide {
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen item-guide hidden', undefined, root);
-    const panel = el('div', 'glass panel item-guide-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel item-guide-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('guide.title'), panel);
     el('p', 'item-guide-intro', t('guide.intro'), panel);
     this.list = el('div', 'item-guide-list', undefined, panel);

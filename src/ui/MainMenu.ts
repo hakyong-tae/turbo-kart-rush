@@ -124,7 +124,7 @@ export class MainMenu {
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
     lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', () => this.onRecords?.());
     this.setLobby(0);
-    const legend = el('div', 'controls-legend glass', undefined, title);
+    const legend = el('div', 'controls-legend', undefined, title);
     const keys: [string, string][] = [
       ['W / ↑', t('legend.throttle')],
       ['S / ↓', t('legend.brake')],
@@ -161,7 +161,7 @@ export class MainMenu {
       charGrid.appendChild(card);
       this.charCards.push(card);
     });
-    const charFoot = el('footer', 'select-footer glass', undefined, chars);
+    const charFoot = el('footer', 'select-footer', undefined, chars);
     const charInfo = el('div', 'select-info', undefined, charFoot);
     this.charName = new TextField(el('div', 'select-info-name', '', charInfo));
     this.charTagline = new TextField(el('div', 'select-info-tagline', '', charInfo));
@@ -194,7 +194,7 @@ export class MainMenu {
       trackGrid.appendChild(card);
       this.trackCards.push(card);
     });
-    const trFoot = el('footer', 'select-footer glass', undefined, tr);
+    const trFoot = el('footer', 'select-footer', undefined, tr);
     // Race mode: solo / team points / team first-place.
     const modeWrap = el('div', 'difficulty race-mode', undefined, trFoot);
     el('div', 'difficulty-label', t('menu.mode'), modeWrap);
@@ -557,7 +557,7 @@ export class MainMenu {
   }
 
   private buildCharacterCard(c: CharacterDef): HTMLElement {
-    const card = el('div', 'card char-card glass');
+    const card = el('div', 'card char-card');
     card.tabIndex = -1;
     card.style.setProperty('--card-accent', cssHex(c.color));
     card.style.setProperty('--card-accent-2', cssHex(c.accent));
@@ -592,7 +592,7 @@ export class MainMenu {
       this.lockBadges.set(c.id, el('div', 'lock-badge', t('v8.locked'), card));
     }
     el('div', 'card-tag', tOr(`char.${c.id}.tagline`, c.tagline), card);
-    const pill = el('div', `pill weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
+    const pill = el('div', `chip weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
     pill.title = t('menu.weightClass');
     const stats = el('div', 'stats', undefined, card);
     for (const s of STAT_KEYS) {
@@ -607,7 +607,7 @@ export class MainMenu {
   }
 
   private buildTrackCard(t: TrackDefinition): HTMLElement {
-    const card = el('div', 'card track-card glass');
+    const card = el('div', 'card track-card');
     card.tabIndex = -1;
     const env = t.environment;
     card.style.setProperty('--card-accent', cssHex(env.skyHorizon));
@@ -621,7 +621,7 @@ export class MainMenu {
     thumb.className = 'track-thumb';
     thumb.getContext('2d')?.drawImage(buildTrackThumbnail(t), 0, 0);
     art.appendChild(thumb);
-    el('div', 'track-theme-pill pill', tt(`theme.${t.theme}` as StringKey), art);
+    el('div', 'track-theme-chip chip', tt(`theme.${t.theme}` as StringKey), art);
     const body = el('div', 'track-body', undefined, card);
     const nameRow = el('div', 'track-name-row', undefined, body);
     el('div', 'card-name', t.name.toUpperCase(), nameRow);
@@ -629,8 +629,8 @@ export class MainMenu {
     for (let i = 0; i < 3; i++) el('span', i < t.difficulty ? 'star on' : 'star', '★', stars);
     el('div', 'card-tag', tOr(`track.${t.id}.desc`, t.description), body);
     const meta = el('div', 'track-meta', undefined, body);
-    el('span', 'pill', tt('menu.laps', { n: t.laps }), meta);
-    el('span', 'pill', tt(TIER_KEYS[t.difficulty - 1] ?? 'tier.pro'), meta);
+    el('span', 'chip', tt('menu.laps', { n: t.laps }), meta);
+    el('span', 'chip', tt(TIER_KEYS[t.difficulty - 1] ?? 'tier.pro'), meta);
     return card;
   }
 }

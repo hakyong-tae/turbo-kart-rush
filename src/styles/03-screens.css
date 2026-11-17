@@ -1,7 +1,4 @@
 /* Full-viewport screen overlays */
-/* ----------------------------------------------------------------------------
-   Screens (full-viewport overlays)
-   --------------------------------------------------------------------------- */
 
 .screen {
   position: absolute;
@@ -12,17 +9,42 @@
   pointer-events: none;
 }
 
+/* Panels slide in a short way. Opaque from the first frame: nothing fades through the scene. */
 .panel-in {
-  animation: panel-in 0.55s var(--ease-out) both;
+  animation: panel-in 0.3s var(--ease-out) both;
 }
 
 @keyframes panel-in {
   from {
+    transform: translateY(14px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes fade-up {
+  from {
     opacity: 0;
-    transform: translateY(26px) scale(0.97);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-in {
+    animation: none;
   }
 }

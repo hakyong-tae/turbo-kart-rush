@@ -48,7 +48,7 @@ export class ResultsScreen {
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
     this.confetti = el('div', 'confetti', undefined, this.rootNode);
-    this.panel = el('div', 'glass panel results-panel', undefined, this.rootNode);
+    this.panel = el('div', 'panel results-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('results.kicker'), this.panel);
     // The winner's actual kart, garage look and all — the reward for building one is being seen.
     this.winnerShot = el('img', 'results-winner hidden', undefined, this.panel);

@@ -25,7 +25,7 @@ export class LockSheet {
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen lock-sheet hidden', undefined, root);
-    const panel = el('div', 'glass panel lock-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel lock-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('v8.lock.title'), panel);
     this.title = new TextField(el('h2', 'panel-title', '', panel));
     this.body = new TextField(el('p', 'lock-body', '', panel));

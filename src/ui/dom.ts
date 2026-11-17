@@ -1,6 +1,7 @@
 /**
  * Tiny DOM helpers shared by the UI layer (workstream A).
  */
+import { icon, type IconName } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -49,14 +50,37 @@ export class TextField {
   }
 }
 
-export function button(label: string, className: string, onClick: () => void): HTMLButtonElement {
-  const b = el('button', `btn ${className}`.trim(), label);
+/**
+ * A `.btn`. With `iconName` the icon sits before the label; the label goes in its own span so a
+ * narrow layout can drop it and keep the icon (`.btn-label`).
+ */
+export function button(label: string, className: string, onClick: () => void, iconName?: IconName): HTMLButtonElement {
+  const b = el('button', `btn ${className}`.trim());
   b.type = 'button';
+  setButtonContent(b, label, iconName);
   b.addEventListener('click', (ev) => {
     ev.stopPropagation();
     onClick();
   });
   return b;
+}
+
+/** Replace a button's icon + label in place (a button whose wording changes with state). */
+export function setButtonContent(b: HTMLElement, label: string, iconName?: IconName): void {
+  b.replaceChildren();
+  if (iconName) b.appendChild(icon(iconName));
+  if (label) el('span', 'btn-label', label, b);
+}
+
+/** A key cap. Arrow keys are drawn (`kbdIcon`), never typed as glyphs. */
+export function kbd(parent: HTMLElement, text: string): HTMLElement {
+  return el('kbd', '', text, parent);
+}
+
+export function kbdIcon(parent: HTMLElement, iconName: IconName): HTMLElement {
+  const k = el('kbd', 'kbd-icon', undefined, parent);
+  k.appendChild(icon(iconName));
+  return k;
 }
 
 /**

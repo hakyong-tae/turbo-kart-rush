@@ -119,7 +119,7 @@ export class GaragePanel {
   constructor(root: HTMLElement) {
     this.character = getCharacter('zippy');
     this.rootNode = el('div', 'screen garage hidden', undefined, root);
-    const panel = el('div', 'glass panel garage-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel garage-panel', undefined, this.rootNode);
 
     const head = el('div', 'garage-head', undefined, panel);
     el('div', 'panel-kicker', t('garage.title'), head);

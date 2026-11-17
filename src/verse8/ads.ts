@@ -42,7 +42,7 @@ function mockRewarded(): Promise<boolean> {
     const overlay = document.createElement('div');
     overlay.className = 'v8-mock';
     overlay.innerHTML = `
-      <div class="glass panel v8-mock-panel">
+      <div class="panel v8-mock-panel">
         <div class="panel-kicker">${t('v8.mockAd.title')}</div>
         <div class="actions">
           <button type="button" class="btn primary" data-mock="grant">${t('v8.mockAd.reward')}</button>

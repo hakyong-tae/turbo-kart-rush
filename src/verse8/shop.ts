@@ -71,7 +71,7 @@ function mockPurchase(): void {
   const overlay = document.createElement('div');
   overlay.className = 'v8-mock';
   overlay.innerHTML = `
-    <div class="glass panel v8-mock-panel">
+    <div class="panel v8-mock-panel">
       <div class="panel-kicker">${t('v8.shop.mockTitle')}</div>
       <h2 class="panel-title">${t('v8.shop.item')}</h2>
       <p class="v8-mock-price">${PRICE_LABEL}</p>

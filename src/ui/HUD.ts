@@ -117,10 +117,10 @@ export class HUD {
 
     // Top-right: lap + timer
     const topRight = el('div', 'hud-topright', undefined, this.rootNode);
-    const lapBox = el('div', 'hud-lap glass', undefined, topRight);
+    const lapBox = el('div', 'hud-lap', undefined, topRight);
     el('span', 'hud-lap-label', t('hud.lap'), lapBox);
     this.lapText = new TextField(el('span', 'hud-lap-value', '', lapBox));
-    this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
+    this.timerText = new TextField(el('div', 'hud-timer', '0:00.000', topRight));
     // Team tally (team modes only) + rear-view mirror PiP frame (bottom-left).
     this.teamTally = new TeamTally(this.rootNode);
     this.mirror = new MirrorPanel(this.rootNode);
@@ -159,7 +159,7 @@ export class HUD {
     this.charge = new ChargeGauge(this.rootNode);
 
     // Bottom-right: minimap
-    const mapWrap = el('div', 'hud-minimap glass', undefined, this.rootNode);
+    const mapWrap = el('div', 'hud-minimap', undefined, this.rootNode);
     this.minimap = new Minimap(mapWrap);
 
     // Centre overlays

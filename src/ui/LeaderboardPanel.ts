@@ -49,7 +49,7 @@ export class LeaderboardPanel {
     private readonly characters: readonly CharacterDef[],
   ) {
     this.rootNode = el('div', 'screen lb hidden', undefined, root);
-    const panel = el('div', 'glass panel lb-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel lb-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('lb.title'), panel);
     const tabRow = el('div', 'lb-tabs', undefined, panel);
     for (const tr of tracks) {

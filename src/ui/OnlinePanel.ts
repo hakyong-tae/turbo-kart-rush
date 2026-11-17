@@ -50,7 +50,7 @@ export class OnlinePanel {
     private readonly requestController: (mode: 'real' | 'loopback') => OnlineController,
   ) {
     this.rootNode = el('div', 'screen online hidden', undefined, root);
-    const panel = el('div', 'glass panel online-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel online-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('online.title'), panel);
 
     // ---- lobby view
