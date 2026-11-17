@@ -146,8 +146,8 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 
 | 항목 | 위치 | 내용 |
 |---|---|---|
-| **트랙 4개** | `src/track/tracks/*.ts` | `TrackDefinition`: controlPoints(x,y,z 폐루프) · halfWidth(s) · wallHalfWidthFactor · itemBoxRows[t] · boostPads[t] · voidRanges · environment(sky/fog/sun/ambient) · palette(road/curb/offroad/wall/ground). 새 트랙 = 파일 1개 + `tracks/index.ts` 배열 추가. DEV에서 `validate.ts`가 자동 검증 |
-| **캐릭터 8명** | `src/kart/roster.ts` | `id/name/weightClass/stats{speed,acceleration,handling,weight,miniTurbo ∈0..1}/color/tagline` |
+| **트랙 16개** | `src/track/tracks/*.ts` | `TrackDefinition`: controlPoints(x,y,z 폐루프) · halfWidth(s) · wallHalfWidthFactor · itemBoxRows[t] · boostPads[t] · voidRanges · environment(sky/fog/sun/ambient) · palette(road/curb/offroad/wall/ground). 새 트랙 = 파일 1개 + `tracks/index.ts` 배열 추가. DEV에서 `validate.ts`가 자동 검증 |
+| **캐릭터 16명**(레이스는 8대) | `src/kart/roster.ts` | `id/name/weightClass/stats{speed,acceleration,handling,weight,miniTurbo ∈0..1}/color/tagline` |
 | **글로벌 물리** | `src/core/constants.ts` | BASE_TOP_SPEED 22, GRAVITY 26, KART_RADIUS 0.85, FIXED_DT, CHECKPOINT_COUNT 12, ITEM_BOX_RESPAWN 3s, ROULETTE 1.6s |
 | **카트 핸들링** | `src/kart/Kart.ts:30-69` | ACCEL_BASE 9, BRAKE_DECEL 16, STEER_RATE 1.9, HOP_VELOCITY 4.5, DRIFT_SLIP_MAX 0.49, DRIFT_BOOST_STRENGTH 0.4(미니터보 1/2/3단 = 0.7/1.2/1.8s), OFFROAD 0.55, SHRUNK 0.65, STAR 1.2, LATERAL_GRIP_ROAD 8 |
 | **아이템 확률표** | `src/items/ItemManager.ts:109` `ITEM_TABLE[place-1]` | 1위: banana 35/green 35/red 15/triple_banana 10/bomb 5 … 8위: star 22/golden 22/lightning 17/blue 16. 총 ItemType 14종(단일 11 + triple 3, 자석은 gameplay-2 추가) |
@@ -186,6 +186,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | 9 | ~~폰 레이아웃 미검증~~ | ✅ **완료(onestore-mobile, 26-09-07)** 폰 브레이크포인트(≤700w / ≤480h): 선택 패널 스크롤+sticky 푸터, 레이서 2열, 세로 메뉴 카메라 프레이밍, 일시정지 HUD 페이드, 타이틀 키보드 안내 숨김. `tools/mobile-audit.mjs`로 40장 캡처 검증 | 실기기 30분 세션·기기명은 원스토어 폼 제출 전 직접 (`docs/ONESTORE-FORM.md`) |
 | 11 | 구조 정리(26-09-07) | ✅ `docs/ARCHITECTURE.md` 모듈 지도. style.css→`src/styles/` 14분할, Kart 어시스트(`kart/assists/`), HUD 위젯(`ui/hud/`), Game 보조(`TeamMarkers`/`OrientationGate`/`settingsStore`) 분리. 프레임당 할당 0 원칙 | 슬립스트림 보너스=체급 매트릭스 `BALANCE.slipstream.bonus` |
 | 12 | UI 개편 "서킷 포스터"(26-11-17) | ✅ 브랜치 `ui-circuit-poster`. 검정 아스팔트 + 레이스 옐로 하나, 평행사변형·체커·번호판, 선 아이콘(`ui/icons.ts`), 그라데이션·유리 패널·이모지 제거. 로비 배경은 출발 그리드. 조작법 표는 설정 + 첫 레이스 로딩으로 이동. 미니맵은 순위표 아래(터치는 상위 3명+나) | 스펙·판단 기록 `docs/superpowers/specs/2026-11-17-ui-circuit-poster-design.md`, 캡처 `node tools/mobile-audit.mjs --hud` |
+| 13 | 카트·서킷 확장 + 트랙 기믹(26-11-18) | ✅ 브랜치 `karts-circuits-gimmicks`. **레이서 16명**(새 8명 중 4명 프리미엄: coco·zorp·vera·brine), **서킷 16개**(Windmill Way·Tidal Run·Stunt Park·Tram Town·Canyon Rally·Glacier Gap·Ashfall Run·Skyline Loop), 컵 5개(스턴트·익스트림 추가, 챔피언십은 기존 8개 유지). **기믹**: 점프대·끊긴 다리(`ramps`), 얼음·진흙·부스트 띠(`zones`), 굴러오는 바위·눈덩이·용암, 건널목 전차(`movers`, 레이스 시간의 순수 함수라 온라인 동기화 불필요), 벽 물리기(`wallHalfWidthFactors`), 공중 묘기(공중에서 드리프트 → 착지 부스트). 기존 8개 서킷에도 기믹 추가. 선택 화면은 16장이 1000×700 이상에서 스크롤 없이 들어옴(폰 가로는 레이서 6열). 검증 도구 `tools/track-soak.mjs`(AI 8대 완주 검사)·`track-preview.mjs`(평면도)·`track-profile.mjs` | 기존 서킷 랩 타임이 달라져 서버의 기존 기록과 직접 비교 불가. 서킷 수가 바뀌어 오늘의 도전 서킷 배정이 전 날짜에서 바뀜. `server.js`의 `TRACKS`·`CUPS`·`CHARACTERS`·`PREMIUM`을 같이 배포해야 함. 스펙 `docs/superpowers/specs/2026-11-17-karts-circuits-gimmicks-design.md` |
 | 10 | ~~카트 8대가 색놀이~~ | ✅ **완료(kart-bodies, 26-09-07)** `kart/bodies.ts`에 캐릭터별 차체 스펙 8종(화살촉·버블카·사막버기·기준형·스텔스웨지·서프덱·몬스터·트럭). 바퀴/시트/드라이버/배기는 공통, 재질별 배치 병합 유지(카트당 ≤28 메시). 검증 `node tools/kart-lineup.mjs` | 물리·충돌 반경 변경 없음(비주얼만) |
 
 ---

@@ -40,6 +40,11 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 | Kart handling, collisions, boosts, star | `kart/Kart.ts` |
 | A racer's body shape / pipes / wheels | `kart/bodies.ts` (one `KartBodySpec` per id) |
 | Stats / premium flag / names | `kart/roster.ts` |
+| Add a racer | `kart/roster.ts` (append: order = plate number), `kart/bodies.ts` (`KartBodySpec` + `KART_BODIES`), `core/locales/*` (`char.<id>.tagline`), root `server.js` (`CHARACTERS`, and `PREMIUM` if locked). `serverLists.test.ts` fails until the server list matches |
+| Add a circuit | `track/tracks/<name>.ts` + `track/tracks/index.ts`, a cup in `core/cups.ts`, `core/locales/*` (`track.<id>.desc`), root `server.js` (`TRACKS`). `tracks.test.ts` runs the validator on it; then `track-preview`, `track-soak` |
+| Put a gimmick on a circuit (ramp, gap, ice / mud / boost strip, roller, tram, set-back walls) | the circuit's definition: `ramps` / `zones` / `movers` / `wallHalfWidthFactors` (types and units in `core/types.ts`; limits in `track/tracks/validate.ts`) |
+| A new kind of gimmick | `track/features.ts` (numbers), `track/builders/features.ts` (meshes), `track/Track.ts` (`query`), `kart/Kart.ts` (what it does to a kart), `ai/AIDriver.ts` (what the AI does about it), `validate.ts` |
+| Gimmick feel (ice grip, mud drag, trick boost, respawn run-up) | `BALANCE.track` in `core/balance.ts` |
 | Add an item | `core/types.ts` (append to `ALL_ITEM_TYPES` — never reorder: net codes), `items/ItemManager.ts` (`requestUse` case), `items/itemVisuals.ts` (icon + mesh), `ai/AIDriver.ts` (`decideItemUse`), `audio/sfx.ts`, `core/locales/*`, `BALANCE.itemTable` |
 | Team rules / points table | `core/teams.ts` |
 | Race flow, retire rule, standings order | `game/RaceManager.ts` |
@@ -74,7 +79,10 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 | `npm test` | vitest (physics with real Karts on `net/FakeTrack`, server.js harness, teams, model) |
 | `npm run typecheck && npm run build` | must stay clean; `grep -c '"@agent8/gameserver' dist/assets/*.js` → 0 |
 | `node tools/mobile-audit.mjs [url] [--out dir] [--hud] [--phone-fonts] [--lang en]` | every screen at phone 844×390 (touch) and PC 1280×720, ko + en, + portrait gate → `marketing/.audit/` (`--hud`: race HUD on bright and dark circuits; `--phone-fonts`: without Impact, as a phone renders it — run this before judging the English UI) |
-| `node tools/kart-lineup.mjs` | all eight karts rendered from the real builder |
+| `node tools/kart-lineup.mjs` | every kart in the roster rendered from the real builder |
+| `node tools/track-preview.mjs [--track id]` | a circuit from above (PNG): walls, road, lap-position labels, void, ramps / gaps, zones, movers, item rows, pads → `marketing/.audit/preview/` |
+| `node tools/track-profile.mjs [--track id]` | the lap as text, every 2 %: straight / turn radius and height — for deciding where a ramp or a tram can go |
+| `node tools/track-soak.mjs [--track id\|all] [--difficulty hard] [--shots 0.31,0.52]` | a whole race with eight AI karts, fast: finishers, times, respawns, spins (and how many by movers), longest air. `--shots` instead puts the camera kart just before each lap position and takes a picture. Run it after touching a circuit, the kart physics or the AI |
 | `node tools/restart-during-load-check.mjs [url]` | a race disposed while its shaders are still compiling must be harmless (exit 0 = pass) |
 | `node tools/promo-capture.mjs` | store video + thumbnail |
 
