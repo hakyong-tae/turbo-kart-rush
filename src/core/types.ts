@@ -127,7 +127,75 @@ export interface HazardInfo {
 // Track
 // ---------------------------------------------------------------------------
 
-export type SurfaceType = 'road' | 'offroad' | 'boost' | 'wall' | 'void';
+/** `ice` and `mud` are contract additions (track-gimmicks): painted zones on the road surface. */
+export type SurfaceType = 'road' | 'offroad' | 'boost' | 'wall' | 'void' | 'ice' | 'mud';
+
+/**
+ * Contract addition (track-gimmicks). A jump ramp: a wedge on the road that starts at `t` and
+ * rises to `height` over `length` metres, then stops. Karts leave the lip with whatever vertical
+ * speed the slope gave them. With `gap`, the road is missing for that many metres after the lip
+ * (only allowed inside a `voidRanges` section, where the terrain is carved away underneath).
+ */
+export interface RampDef {
+  t: number;
+  /** Metres from the foot to the lip (default 10). */
+  length?: number;
+  /** Lip height in metres. */
+  height: number;
+  /** Half width of the wedge; omitted = wall to wall. */
+  halfWidth?: number;
+  /** Lateral offset of the wedge centre (+ = right of travel). */
+  lateral?: number;
+  /** Metres of missing road straight after the lip. */
+  gap?: number;
+}
+
+/** Contract addition (track-gimmicks). A stretch of road with a different surface. */
+export interface SurfaceZoneDef {
+  from: number;
+  to: number;
+  /** `ice`: almost no side grip. `mud`: slow (unless boosting). `boost`: a long boost strip. */
+  kind: 'ice' | 'mud' | 'boost';
+  /** How the patch is painted. Defaults to the kind. */
+  look?: 'ice' | 'mud' | 'water' | 'sand' | 'ash';
+  /** Lateral extent [min, max] in metres; omitted = the full road width. */
+  lateral?: [number, number];
+}
+
+/**
+ * Contract addition (track-gimmicks). An obstacle that moves. Its position is a pure function of
+ * the race clock, so it is in the same place on every client without being sent over the wire.
+ */
+export type MoverDef =
+  | {
+      /** Rolls along the road from `from` to `to` (t), then starts again. `from > to` = toward the traffic. */
+      kind: 'roller';
+      from: number;
+      to: number;
+      /** Metres per second along the road. */
+      speed: number;
+      lateral?: number;
+      /** Side-to-side wander amplitude in metres. */
+      sway?: number;
+      radius?: number;
+      look?: 'boulder' | 'snowball' | 'lava';
+      /** 0..1 offset into the loop, to stagger several rollers. */
+      phase?: number;
+    }
+  | {
+      /** Crosses the road at `t` every `period` seconds, alternating direction. */
+      kind: 'crosser';
+      t: number;
+      period: number;
+      /** Metres per second across the road. */
+      speed: number;
+      /** Number of cars in the train (default 2). */
+      cars?: number;
+      radius?: number;
+      look?: 'tram' | 'cart';
+      phase?: number;
+    };
+
 
 export type TrackTheme = 'grassland' | 'desert' | 'snow' | 'beach' | 'volcano' | 'neon';
 
@@ -181,6 +249,18 @@ export interface TrackDefinition {
    * circuit, not the item game: same place every lap, same place on every client.
    */
   obstacles?: { t: number; lateral: number; radius?: number }[];
+  /** Contract addition (track-gimmicks): jump ramps, optionally with a gap in the road after them. */
+  ramps?: RampDef[];
+  /** Contract addition (track-gimmicks): ice / mud / long boost strips painted on the road. */
+  zones?: SurfaceZoneDef[];
+  /** Contract addition (track-gimmicks): moving obstacles, driven by the race clock. */
+  movers?: MoverDef[];
+  /**
+   * Contract addition (track-gimmicks): per-control-point override of `wallHalfWidthFactor`
+   * (same length as controlPoints). Pushing the wall out along a wiggle of road opens a straight
+   * line across the off-road — a shortcut that only pays with a boost.
+   */
+  wallHalfWidthFactors?: number[];
   environment: EnvironmentDef;
   /** Colours used by the track builder. */
   palette: {
@@ -258,6 +338,10 @@ export interface TrackObstacle {
   radius: number;
   /** Height of the standing part, for the mesh and for judging whether a jump clears it. */
   height: number;
+  /** Contract addition (track-gimmicks): set on moving obstacles, so the AI can lead them. */
+  velocity?: THREE.Vector3;
+  /** Contract addition (track-gimmicks): touching it spins the kart out instead of just bouncing. */
+  hit?: boolean;
 }
 
 export interface ITrack {
@@ -285,6 +369,16 @@ export interface ITrack {
   query(position: THREE.Vector3, hintT?: number, out?: SurfaceQuery): SurfaceQuery;
   /** Ground height at world XZ (terrain outside the road). */
   heightAt(x: number, z: number): number;
+  /**
+   * Contract addition (track-gimmicks): move the clock-driven obstacles to where they are at
+   * `seconds` of race time. Called every fixed step; a pure function of the argument.
+   */
+  setRaceTime?(seconds: number): void;
+  /**
+   * Contract addition (track-gimmicks): false when a kart put down at `t` could not carry enough
+   * speed into a jump just ahead (the run-up to a gap). Respawns look for a safe checkpoint.
+   */
+  isRespawnSafe?(t: number): boolean;
   /** Advance animated environment (water, flags, clouds). */
   update(dt: number, elapsed: number): void;
   dispose(): void;
@@ -379,6 +473,8 @@ export interface KartState {
   magnetTimer: number;
   /** Seconds the throttle has been held while frozen on the grid (rocket-start charge; HUD gauge). */
   startCharge: number;
+  /** Contract addition (track-gimmicks): seconds left in a mid-air trick spin (0 = none). */
+  trickTimer?: number;
   /** Overdrive item: seconds of unlimited nitro left (0 when not active). Written by the ItemManager. */
   overdriveTimer: number;
 

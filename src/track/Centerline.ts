@@ -60,6 +60,8 @@ export class Centerline {
 
     const cpCount = def.controlPoints.length;
     const hws = def.halfWidths && def.halfWidths.length === cpCount ? def.halfWidths : null;
+    const wfs = def.wallHalfWidthFactors && def.wallHalfWidthFactors.length === cpCount ? def.wallHalfWidthFactors : null;
+    const factor = new Float64Array(n);
     const tmp = new THREE.Vector3();
     let minX = Infinity;
     let maxX = -Infinity;
@@ -93,7 +95,19 @@ export class Centerline {
         hw = hws[k0] + (hws[k1] - hws[k0]) * f;
       }
       this.hw[i] = hw;
-      this.whw[i] = hw * Math.max(1, def.wallHalfWidthFactor);
+      // Wall distance factor: one number for the lap, or one per control point (shortcut aprons).
+      let wf = def.wallHalfWidthFactor;
+      if (wfs) {
+        const tau = this.curve.getUtoTmapping(u, 0);
+        const kf = tau * cpCount;
+        const k0 = Math.floor(kf) % cpCount;
+        const k1 = (k0 + 1) % cpCount;
+        let f = kf - Math.floor(kf);
+        f = f * f * (3 - 2 * f);
+        wf = wfs[k0] + (wfs[k1] - wfs[k0]) * f;
+      }
+      factor[i] = Math.max(1, wf);
+      this.whw[i] = hw * factor[i];
       if (hw > maxHW) maxHW = hw;
     }
     // Smooth the half width a little so per-control-point steps never produce visible seams.
@@ -103,12 +117,18 @@ export class Centerline {
       for (let k = -8; k <= 8; k++) acc += this.hw[(i + k + n) % n];
       smoothed[i] = acc / 17;
     }
+    // The wall factor is smoothed the same way, over a longer window: a wall that steps sideways
+    // is a wall you can drive into the end of.
+    let maxWHW = 0;
     for (let i = 0; i < n; i++) {
+      let acc = 0;
+      for (let k = -24; k <= 24; k++) acc += factor[(i + k + n) % n];
       this.hw[i] = smoothed[i];
-      this.whw[i] = smoothed[i] * Math.max(1, def.wallHalfWidthFactor);
+      this.whw[i] = smoothed[i] * (acc / 49);
+      if (this.whw[i] > maxWHW) maxWHW = this.whw[i];
     }
     this.maxHalfWidth = maxHW;
-    this.maxWallHalfWidth = maxHW * Math.max(1, def.wallHalfWidthFactor);
+    this.maxWallHalfWidth = maxWHW;
     this.minX = minX;
     this.maxX = maxX;
     this.minZ = minZ;

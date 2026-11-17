@@ -1010,6 +1010,10 @@ export class Game {
     const { track, karts, items } = r;
     const player = karts[r.localKartId];
 
+    // Moving obstacles sit where the race clock says: the host's clock on a client, so every
+    // machine sees the same boulder in the same place without it being sent.
+    track.setRaceTime?.(r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime);
+
     // Player input (or auto-drive after finishing).
     if (r.playerAutoDriver) {
       r.playerAutoDriver.update(dt, track, karts, items, null);

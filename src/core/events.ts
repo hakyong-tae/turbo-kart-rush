@@ -26,6 +26,8 @@ export interface GameEvents {
   'kart:boost': { kartId: number; strength: number; duration: number; source: BoostSource };
   'kart:hop': { kartId: number };
   'kart:land': { kartId: number; impact: number };
+  /** Contract addition (track-gimmicks): a mid-air trick was thrown; `landed` fires again on touchdown. */
+  'kart:trick': { kartId: number; landed: boolean };
   /** otherId is null for wall hits. */
   'kart:collision': { kartId: number; otherId: number | null; impulse: number; position: THREE.Vector3 };
   'kart:spin': { kartId: number; cause: ItemType | 'collision' | 'explosion'; sourceKartId: number };

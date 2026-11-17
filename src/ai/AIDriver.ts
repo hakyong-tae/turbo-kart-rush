@@ -34,6 +34,8 @@ const DODGE_CLEARANCE = 2.6;
 const STUCK_SECONDS = 1.5;
 const REVERSE_SECONDS = 0.8;
 const RECOVER_COOLDOWN = 2.5;
+/** Chance of throwing a trick off a jump. */
+const TRICK_CHANCE: Record<Difficulty, number> = { easy: 0.25, normal: 0.6, hard: 0.9 };
 
 
 // ---------------------------------------------------------------------------
@@ -118,6 +120,7 @@ export class AIDriver implements IAIDriver {
   private recoverCooldown = 0;
   private movedOnce = false;
   private driftWant = false;
+  private trickTried = false;
   private driftDir: -1 | 0 | 1 = 0;
   private driftHold = 0;
   private driftCooldown = 0;
@@ -317,6 +320,9 @@ export class AIDriver implements IAIDriver {
 
     // Fixed obstacles read as hazards that never move. Without this the bots drive straight into
     // the pylons every lap, which makes a circuit designed around them look broken rather than hard.
+    // Moving ones (boulders, trams) are led: what matters is where they will be when we arrive.
+    // Something crossing the road cannot be steered round, so that one is waited for instead.
+    let yieldDistance = Infinity;
     const obstacles = track.obstacles;
     if (obstacles) {
       for (let i = 0; i < obstacles.length; i++) {
@@ -324,14 +330,28 @@ export class AIDriver implements IAIDriver {
         const dx = o.position.x - s.position.x;
         const dz = o.position.z - s.position.z;
         const ahead = dx * _fwd.x + dz * _fwd.z;
-        if (ahead <= 0 || ahead >= B.ai.hazardLookahead) continue;
-        const lat = dx * _right.x + dz * _right.z;
+        const lookahead = o.velocity ? B.ai.hazardLookahead * 1.6 : B.ai.hazardLookahead;
+        if (ahead <= 0 || ahead >= lookahead) continue;
+        let lat = dx * _right.x + dz * _right.z;
+        if (o.velocity) {
+          const vAlong = o.velocity.x * _fwd.x + o.velocity.z * _fwd.z;
+          const vLat = o.velocity.x * _right.x + o.velocity.z * _right.z;
+          const arrive = ahead / Math.max(4, speed - vAlong);
+          const predicted = lat + vLat * arrive;
+          if (Math.abs(vLat) > 2.5) {
+            // Crossing traffic: yield if it will be in our lane, or still passing through it.
+            const sweepsLane = Math.sign(lat) !== Math.sign(predicted) || Math.abs(predicted) < o.radius + 2.2;
+            if (sweepsLane && ahead < yieldDistance) yieldDistance = ahead;
+            continue;
+          }
+          lat = predicted;
+        }
         // Wider than a banana: a pylon is solid, and brushing it costs the corner.
         if (Math.abs(lat) > o.radius + HAZARD_LATERAL || ahead >= nearestHazard) continue;
         nearestHazard = ahead;
         const obstacleTrackLat = kartLat + lat;
         const side = hw - obstacleTrackLat > hw + obstacleTrackLat ? 1 : -1;
-        const urgency = 0.55 + 0.45 * (1 - ahead / B.ai.hazardLookahead);
+        const urgency = 0.55 + 0.45 * (1 - ahead / lookahead);
         dodgeTarget = (side * (DODGE_CLEARANCE + o.radius) - lat) * urgency;
       }
     }
@@ -364,6 +384,13 @@ export class AIDriver implements IAIDriver {
     const latAccel = speed * speed * curvature;
     if (latAccel > prof.brakeLatAccel && speed > 0.6 * top && !s.isBoosting) throttle = prof.easeThrottle;
     if (s.wrongWay) throttle = 0.5;
+    // Waiting for crossing traffic: off the throttle, and on the brake once it is close enough to matter.
+    let brake = 0;
+    if (yieldDistance < Infinity) {
+      const stopping = (speed * speed) / (2 * B.kart.brakeDecel) + 5;
+      throttle = 0;
+      if (yieldDistance < stopping) brake = 1;
+    }
 
     // rubber-banding against the player
     let gap = 0;
@@ -434,6 +461,17 @@ export class AIDriver implements IAIDriver {
       }
     }
 
+    // ----- jump tricks -----------------------------------------------------------------
+    // One tap of the drift button in the air off a ramp. Better drivers remember to more often.
+    if (s.isAirborne && !s.isHopping) {
+      if (!this.trickTried && s.airTime > 0.22) {
+        this.trickTried = true;
+        if (!this.driftWant && this.rng() < TRICK_CHANCE[this.difficulty]) drift = true;
+      }
+    } else {
+      this.trickTried = false;
+    }
+
     // ----- items -----------------------------------------------------------------------
     if (s.item !== this.lastItem) {
       this.lastItem = s.item;
@@ -473,7 +511,7 @@ export class AIDriver implements IAIDriver {
     if (s.isAirborne && !s.isHopping) steer = 0;
 
     inp.throttle = clamp(throttle, 0, 1);
-    inp.brake = 0;
+    inp.brake = brake;
     inp.steer = steer;
     inp.drift = drift;
     this.kart.setInput(inp);

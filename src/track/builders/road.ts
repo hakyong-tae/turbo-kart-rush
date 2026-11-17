@@ -18,6 +18,8 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
   const { cl, def } = ctx;
   const n = cl.n;
   const theme = def.theme;
+  /** True for a LUT segment that falls in the missing road after a gap ramp. */
+  const inGap = (k: number): boolean => ctx.features.hasGap && ctx.features.inGap(((k + 0.5) / n) * cl.length);
 
   // ---------------------------------------------------------------- road ribbon
   const tiles = Math.max(1, Math.round(cl.length / ROAD_TILE_LENGTH));
@@ -67,6 +69,8 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
       uvs[k * 4 + 3] = v;
     }
     for (let k = 0; k < n; k++) {
+      // Missing road after a gap ramp: leave these indices at zero (degenerate triangles).
+      if (inGap(k)) continue;
       const a = k * 2;
       const b = a + 1;
       const c = a + 2;
@@ -146,6 +150,7 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
         uvs[(vi + 2) * 2 + 1] = v;
       }
       for (let k = 0; k < n; k++) {
+        if (inGap(k)) continue;
         const a = base + k * 3;
         const b = a + 3;
         // quad inner->outerTop, then outerTop->outerBottom (winding keeps normals up/outward)
@@ -235,6 +240,7 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
         uvs[(vi + 1) * 2 + 1] = s / 4;
       }
       for (let k = 0; k < n; k++) {
+        if (inGap(k)) continue;
         const a = base + k * 2;
         const b = a + 2;
         if (sgn > 0) {
