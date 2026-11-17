@@ -43,9 +43,8 @@
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  background: rgba(16, 17, 38, 0.35);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--line);
+  background: rgba(21, 22, 26, 0.5);
 }
 .touch-knob {
   position: absolute;
@@ -54,29 +53,33 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffffff 0%, var(--blue) 60%, var(--magenta) 100%);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  background: var(--yellow);
+  border: 3px solid var(--on-yellow);
 }
 
+/* DRIFT / ITEM: round, like the stick they are played with (the one place the UI keeps a
+   circle). Asphalt at 88% with a divider-colour ring; the ring turns yellow while held. */
 .touch-btn {
   position: absolute;
   right: calc(18px + env(safe-area-inset-right, 0px));
   pointer-events: auto;
   touch-action: none;
-  border: 2px solid rgba(255, 255, 255, 0.35);
+  border: 2px solid var(--line);
   border-radius: 50%;
-  background: rgba(16, 17, 38, 0.55);
+  background: var(--hud-bg);
   color: var(--ink);
   font-family: var(--display);
+  font-style: italic;
   font-size: 15px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 80ms var(--ease-out), background 80ms;
+  transition: transform 80ms var(--ease-out), border-color 80ms;
 }
 .touch-btn.held {
-  transform: scale(0.92);
-  background: rgba(55, 168, 255, 0.55);
+  transform: scale(0.94);
+  border-color: var(--yellow);
+  border-width: 4px;
 }
 .touch-drift {
   bottom: calc(22px + env(safe-area-inset-bottom, 0px));
@@ -93,46 +96,24 @@
 
 .touch-pause {
   position: absolute;
-  /* Sits to the right of the HUD item slot (which is 16px + ~84px wide). */
   left: calc(112px + env(safe-area-inset-left, 0px));
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(16, 17, 38, 0.55);
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: var(--hud-bg);
   color: var(--ink);
-  font-size: 14px;
+  font-size: 18px;
   pointer-events: auto;
   touch-action: none;
   cursor: pointer;
 }
 .touch-pause.held {
-  background: rgba(55, 168, 255, 0.55);
-}
-
-/* Touch mode: the DRIFT/ITEM buttons live bottom-right, so park a smaller minimap top-centre. */
-#ui.touch .hud-minimap {
-  right: auto;
-  bottom: auto;
-  top: var(--hud-pad);
-  left: 48%;
-  transform: translateX(-50%) scale(0.5);
-  transform-origin: top center;
-}
-
-/* Language toggle on the title screen */
-.panel-title-screen {
-  position: relative;
-}
-.lang-toggle {
-  position: absolute;
-  top: calc(16px + env(safe-area-inset-top, 0px));
-  right: calc(16px + env(safe-area-inset-right, 0px));
-  pointer-events: auto;
-  font-size: 13px;
-  padding: 8px 12px;
-  z-index: 2;
+  border-color: var(--yellow);
 }
 
 /* Korean: Impact has no Hangul, so glyphs fall through to a Gothic face; loosen uppercase tracking. */
@@ -145,9 +126,9 @@ html[lang='ko'] .panel-title,
 html[lang='ko'] .panel-kicker,
 html[lang='ko'] .card-name,
 html[lang='ko'] .card-tag,
-html[lang='ko'] .pill,
+html[lang='ko'] .chip,
 html[lang='ko'] .seg,
-html[lang='ko'] .difficulty-label,
+html[lang='ko'] .option-title,
 html[lang='ko'] .select-info-name,
 html[lang='ko'] .select-info-tagline,
 html[lang='ko'] .hud-msg,
@@ -169,7 +150,7 @@ html[lang='ko'] {
   --body: 'Noto Sans KR', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 /* Small display labels are too heavy in Black Han Sans — use bold Noto there. */
-html[lang='ko'] .pill,
+html[lang='ko'] .chip,
 html[lang='ko'] .stat-label,
 html[lang='ko'] .panel-kicker,
 html[lang='ko'] .hud-lap-label,
@@ -178,7 +159,7 @@ html[lang='ko'] .select-info-tagline,
 html[lang='ko'] .loading-tip-label,
 html[lang='ko'] .settings-label,
 html[lang='ko'] .lb-tab,
-html[lang='ko'] .difficulty-label {
+html[lang='ko'] .option-title {
   font-family: var(--body);
   font-weight: 700;
 }

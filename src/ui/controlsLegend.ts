@@ -37,7 +37,7 @@ export function buildControlsLegend(parent: HTMLElement, touch: boolean): HTMLEl
     row(t('touch.drift'), t('legend.touch.drift'));
     row(t('touch.item'), t('legend.touch.item'));
     const pause = el('span', 'chip');
-    pause.appendChild(icon('pause'));
+    pause.appendChild(icon('pause', 'filled'));
     row(pause, t('legend.pause'));
     return legend;
   }

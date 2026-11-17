@@ -17,15 +17,18 @@ export class Minimap {
   private readonly layer: HTMLCanvasElement;
   private track: ITrack | null = null;
   private timer = 0;
+  private fitTimer = 0;
+  /** Stroke / dot magnification so lines keep their on-screen weight when the map is shown small. */
+  private detail = 1;
   private readonly dpr: number;
 
   constructor(root: HTMLElement) {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas = el('canvas', 'minimap-canvas', undefined, root);
+    // Drawn at MINIMAP_SIZE and displayed at whatever the stylesheet says (`--map`): the desktop
+    // HUD shows it under the standings, the touch HUD shows a much smaller one.
     this.canvas.width = MINIMAP_SIZE * this.dpr;
     this.canvas.height = MINIMAP_SIZE * this.dpr;
-    this.canvas.style.width = `${MINIMAP_SIZE}px`;
-    this.canvas.style.height = `${MINIMAP_SIZE}px`;
     this.ctx = this.canvas.getContext('2d');
     this.layer = document.createElement('canvas');
     this.layer.width = this.canvas.width;
@@ -36,6 +39,7 @@ export class Minimap {
     this.track = track;
     this.renderStaticLayer();
     this.timer = REDRAW_INTERVAL; // force an immediate redraw
+    this.fitTimer = 1; // and re-check the displayed size on the next update
   }
 
   /** Dots are friend-or-foe coloured; the mode only decides who counts as an ally. */
@@ -43,7 +47,25 @@ export class Minimap {
     this.mode = mode;
   }
 
+  /**
+   * Match line weights to the displayed size. Reads layout, so it runs about once a second
+   * (and when the track changes), never per frame.
+   */
+  private fit(): void {
+    const shown = this.canvas.clientWidth;
+    if (shown <= 0) return;
+    const detail = Math.max(1, Math.min(2.6, MINIMAP_SIZE / shown));
+    if (Math.abs(detail - this.detail) < 0.05) return;
+    this.detail = detail;
+    this.renderStaticLayer();
+  }
+
   update(dt: number, karts: readonly IKart[], playerId: number): void {
+    this.fitTimer += dt;
+    if (this.fitTimer >= 1) {
+      this.fitTimer = 0;
+      this.fit();
+    }
     this.timer += dt;
     if (this.timer < REDRAW_INTERVAL) return;
     this.timer = 0;
@@ -56,6 +78,7 @@ export class Minimap {
     if (!track) return;
     const scale = size - PAD * 2 * this.dpr;
     const off = PAD * this.dpr;
+    const w = this.dpr * this.detail;
 
     // AI dots first so the player is always on top.
     for (let pass = 0; pass < 2; pass++) {
@@ -66,19 +89,19 @@ export class Minimap {
         const p = track.minimap.worldToMap(k.state.position.x, k.state.position.z);
         const x = off + p.x * scale;
         const y = off + p.y * scale;
-        const r = (isPlayer ? 6.5 : 4.5) * this.dpr;
+        const r = (isPlayer ? 6.5 : 4.5) * w;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fillStyle = cssHex(sideColor(k.state.id, playerId, this.mode));
         ctx.fill();
-        ctx.lineWidth = (isPlayer ? 2.5 : 1.2) * this.dpr;
-        ctx.strokeStyle = isPlayer ? '#ffffff' : 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = (isPlayer ? 2.5 : 1.2) * w;
+        ctx.strokeStyle = isPlayer ? '#ffffff' : '#15161a';
         ctx.stroke();
         if (isPlayer) {
           ctx.beginPath();
-          ctx.arc(x, y, r + 4 * this.dpr, 0, Math.PI * 2);
-          ctx.lineWidth = 1.5 * this.dpr;
-          ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+          ctx.arc(x, y, r + 4 * w, 0, Math.PI * 2);
+          ctx.lineWidth = 1.5 * w;
+          ctx.strokeStyle = '#ffd400';
           ctx.stroke();
         }
       }
@@ -102,6 +125,7 @@ export class Minimap {
     const off = PAD * this.dpr;
     const toX = (v: number) => off + v * scale;
     const toY = (v: number) => off + v * scale;
+    const k = this.dpr * this.detail;
 
     const tracePoly = (pts: readonly { x: number; y: number }[], close: boolean) => {
       if (pts.length === 0) return;
@@ -123,18 +147,18 @@ export class Minimap {
       for (let i = 1; i < left.length; i++) ctx.lineTo(toX(left[i].x), toY(left[i].y));
       for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(toX(right[i].x), toY(right[i].y));
       ctx.closePath();
-      ctx.fillStyle = 'rgba(20, 22, 40, 0.85)';
+      ctx.fillStyle = '#15161a';
       ctx.fill();
-      ctx.lineWidth = 1.5 * this.dpr;
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 1.5 * k;
+      ctx.strokeStyle = '#ffffff';
       ctx.stroke();
     } else if (mm.points.length > 1) {
       tracePoly(mm.points, true);
-      ctx.lineWidth = 9 * this.dpr;
-      ctx.strokeStyle = 'rgba(20, 22, 40, 0.9)';
+      ctx.lineWidth = 9 * k;
+      ctx.strokeStyle = '#15161a';
       ctx.stroke();
-      ctx.lineWidth = 11 * this.dpr;
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 11 * k;
+      ctx.strokeStyle = '#ffffff';
       ctx.globalCompositeOperation = 'destination-over';
       ctx.stroke();
       ctx.globalCompositeOperation = 'source-over';
@@ -143,9 +167,9 @@ export class Minimap {
     // Dashed centreline.
     if (mm.points.length > 1) {
       tracePoly(mm.points, true);
-      ctx.setLineDash([3 * this.dpr, 5 * this.dpr]);
-      ctx.lineWidth = 1 * this.dpr;
-      ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+      ctx.setLineDash([3 * k, 5 * k]);
+      ctx.lineWidth = 1 * k;
+      ctx.strokeStyle = '#7c8190';
       ctx.stroke();
       ctx.setLineDash([]);
 
@@ -157,21 +181,21 @@ export class Minimap {
       const len = Math.hypot(dx, dy) || 1;
       const nx = -dy / len;
       const ny = dx / len;
-      const half = 7 * this.dpr;
+      const half = 7 * k;
       const cx = toX(p0.x);
       const cy = toY(p0.y);
       ctx.beginPath();
       ctx.moveTo(cx - nx * half, cy - ny * half);
       ctx.lineTo(cx + nx * half, cy + ny * half);
-      ctx.lineWidth = 3 * this.dpr;
+      ctx.lineWidth = 3 * k;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(cx - nx * half, cy - ny * half);
       ctx.lineTo(cx + nx * half, cy + ny * half);
-      ctx.setLineDash([2 * this.dpr, 2 * this.dpr]);
-      ctx.lineWidth = 3 * this.dpr;
-      ctx.strokeStyle = '#111111';
+      ctx.setLineDash([2 * k, 2 * k]);
+      ctx.lineWidth = 3 * k;
+      ctx.strokeStyle = '#15161a';
       ctx.stroke();
       ctx.setLineDash([]);
     }
