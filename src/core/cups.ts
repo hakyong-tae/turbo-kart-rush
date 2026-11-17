@@ -10,7 +10,7 @@
 import type { RaceStanding } from './types';
 import { pointsFor } from './teams';
 
-export type CupId = 'rookie' | 'pro' | 'championship';
+export type CupId = 'rookie' | 'pro' | 'championship' | 'stunt' | 'extreme';
 
 export interface CupDef {
   id: CupId;
@@ -20,9 +20,12 @@ export interface CupDef {
 }
 
 /**
- * Rookie is the three gentler circuits, Pro the three that punish, Championship is every circuit
- * in the game — it grows when a track is added, which is the point of it.
- * Track ids must exist in `src/track/tracks`; `cups.test.ts` checks that they do.
+ * Rookie is the three gentler circuits, Pro the three that punish, Championship is the original
+ * eight end to end. The second wave of circuits has its own ladder: Stunt (the four easier ones,
+ * open after a Rookie podium) and Extreme (the four hard ones, open after a Pro podium). Every
+ * circuit is in at least one cup; `cups.test.ts` checks that, and that the ids exist.
+ *
+ * Order is display order. Root server.js keeps the same id list (`CUPS`).
  */
 export const CUPS: readonly CupDef[] = [
   { id: 'rookie', trackIds: ['sunny_circuit', 'coral_coast', 'dune_drift'] },
@@ -41,6 +44,8 @@ export const CUPS: readonly CupDef[] = [
     ],
     requires: 'pro',
   },
+  { id: 'stunt', trackIds: ['windmill_way', 'tidal_run', 'stunt_park', 'tram_town'], requires: 'rookie' },
+  { id: 'extreme', trackIds: ['canyon_rally', 'glacier_gap', 'ashfall_run', 'skyline_loop'], requires: 'pro' },
 ];
 
 /** Podium finish or better opens the next cup. */

@@ -30,6 +30,15 @@ const TRACKS = new Set([
   'magma_ridge',
   'switchback_pass',
   'prism_skyway',
+  // second wave (2026-11)
+  'windmill_way',
+  'tidal_run',
+  'stunt_park',
+  'tram_town',
+  'canyon_rally',
+  'glacier_gap',
+  'ashfall_run',
+  'skyline_loop',
 ]);
 const CHARACTERS = new Set([
   'zippy', 'pixel', 'fennec', 'max', 'juno', 'kai', 'bram', 'rosa',
@@ -51,7 +60,7 @@ const COS_MAX = 160;
 const COS_RE = /^[a-z0-9:,]*$/;
 
 /** Grand Prix cups (mirror of src/core/cups.ts) and the placing range a cup result may claim. */
-const CUPS = new Set(['rookie', 'pro', 'championship']);
+const CUPS = new Set(['rookie', 'pro', 'championship', 'stunt', 'extreme']);
 const MAX_PLACE = 8;
 
 /**

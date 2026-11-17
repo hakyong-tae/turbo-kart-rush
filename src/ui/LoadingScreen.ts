@@ -15,7 +15,7 @@ import { buildLogo } from './logo';
 import { t } from '../core/i18n';
 import type { StringKey } from '../core/i18n';
 
-const TIPS: readonly StringKey[] = ['tip.0', 'tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip.6', 'tip.7', 'tip.8', 'tip.9', 'tip.10', 'tip.11'];
+const TIPS: readonly StringKey[] = ['tip.0', 'tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip.6', 'tip.7', 'tip.8', 'tip.9', 'tip.10', 'tip.11', 'tip.12', 'tip.13', 'tip.14', 'tip.15'];
 
 const TIP_INTERVAL = 2.4;
 
