@@ -5,7 +5,8 @@ import { TrackFeatures, crosserCountdown, moverPose, rampProfile, ROLLER_FADE, t
 
 /** A 1000 m lap: t maps straight to metres. */
 const cl = { length: 1000, sOf: (t: number) => (((t % 1) + 1) % 1) * 1000 };
-const def = (extra: Partial<TrackDefinition>): TrackDefinition => ({ ...sunnyCircuit, ...extra });
+/** Sunny Circuit's layout with its own gimmicks stripped, plus whatever the test adds. */
+const def = (extra: Partial<TrackDefinition>): TrackDefinition => ({ ...sunnyCircuit, ramps: undefined, zones: undefined, movers: undefined, ...extra });
 const pose = (): MoverPose => ({ s: 0, lateral: 0, vAlong: 0, vLateral: 0, active: false });
 
 describe('ramps', () => {
