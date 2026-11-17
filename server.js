@@ -31,8 +31,12 @@ const TRACKS = new Set([
   'switchback_pass',
   'prism_skyway',
 ]);
-const CHARACTERS = new Set(['zippy', 'pixel', 'fennec', 'max', 'juno', 'kai', 'bram', 'rosa']);
-const PREMIUM = new Set(['fennec', 'bram', 'rosa']);
+const CHARACTERS = new Set([
+  'zippy', 'pixel', 'fennec', 'max', 'juno', 'kai', 'bram', 'rosa',
+  // second wave (2026-11)
+  'tubby', 'coco', 'rusty', 'zorp', 'vera', 'lou', 'dot', 'brine',
+]);
+const PREMIUM = new Set(['fennec', 'bram', 'rosa', 'coco', 'zorp', 'vera', 'brine']);
 const DIFFICULTIES = new Set(['easy', 'normal', 'hard']);
 const MIN_TIME_MS = 30000;
 const MAX_TIME_MS = 1200000;

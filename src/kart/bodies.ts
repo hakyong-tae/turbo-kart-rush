@@ -356,7 +356,358 @@ const rosa: KartBodySpec = {
   },
 };
 
-export const KART_BODIES: Readonly<Record<string, KartBodySpec>> = { zippy, pixel, fennec, max, juno, kai, bram, rosa };
+// --- second wave (2026-11): eight more silhouettes ------------------------------------------
+// Same rule as the first eight: the outline alone has to say which kart it is.
+
+/** Tubby Splash — a bathtub: deep tub with a rolled rim, tap up front, shower head for a spoiler. */
+const tubby: KartBodySpec = {
+  wheels: { front: { r: 0.9, w: 1 }, rear: { r: 0.9, w: 1 } },
+  lift: 0,
+  engine: false,
+  exhausts: twinPipes(0.2),
+  plates: { front: { y: 0.3, z: -0.87 }, side: { x: 0.43, y: 0.3, z: 0.05 } },
+  build(kit) {
+    kit.add(kit.body, kit.rb(0.8, 0.3, 1.62, 0.13), 0, 0.31, 0);
+    // Rolled rim.
+    kit.addMany(kit.accent, kit.rb(0.07, 0.07, 1.6, 0.03), [
+      [0.4, 0.47, 0, 0, 0, 0, 1, 1, 1],
+      [-0.4, 0.47, 0, 0, 0, 0, 1, 1, 1],
+    ]);
+    kit.addMany(kit.accent, kit.rb(0.86, 0.07, 0.07, 0.03), [
+      [0, 0.47, -0.8, 0, 0, 0, 1, 1, 1],
+      [0, 0.47, 0.8, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Claw feet.
+    kit.addMany(
+      kit.chrome,
+      kit.sphere(0.075, 10, 8),
+      [-1, 1].flatMap((sx) => [-0.66, 0.66].map((z) => [sx * 0.33, 0.12, z, 0, 0, 0, 1, 1, 1])),
+    );
+    // Tap on the nose: a riser, a spout curling back toward the driver, two handles.
+    kit.add(kit.chrome, kit.cyl(0.035, 0.045, 0.3, 10), 0, 0.64, -0.74);
+    const spout = kit.torus(0.1, 0.03, Math.PI / 2, 8, 10);
+    spout.rotateY(Math.PI / 2);
+    kit.add(kit.chrome, spout, 0, 0.78, -0.64);
+    kit.addMany(kit.accent, kit.sphere(0.05, 8, 6), [
+      [0.14, 0.56, -0.76, 0, 0, 0, 1, 1, 1],
+      [-0.14, 0.56, -0.76, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Shower pole and head at the back.
+    kit.add(kit.chrome, kit.tube(0.3, 0.45, 0.76, 0.3, 1.12, 0.76, 0.024));
+    kit.add(kit.chrome, kit.tube(0.3, 1.12, 0.76, 0.06, 1.16, 0.6, 0.024));
+    kit.add(kit.accent, kit.cyl(0.13, 0.05, 0.07, 14), 0.03, 1.12, 0.56, 0.6, 0, 0);
+    // Soap bubbles riding on the rim.
+    kit.addMany(kit.accent, kit.sphere(0.08, 10, 8), [
+      [-0.34, 0.56, 0.62, 0, 0, 0, 1, 1, 1],
+      [-0.26, 0.64, 0.74, 0, 0, 0, 0.7, 0.7, 0.7],
+      [-0.4, 0.6, 0.48, 0, 0, 0, 0.55, 0.55, 0.55],
+    ]);
+  },
+};
+
+/** Comet Coco (premium) — a rocket: tube fuselage, red nose cone, three tail fins, one big nozzle. */
+const coco: KartBodySpec = {
+  wheels: { front: { r: 0.85, w: 0.9 }, rear: { r: 0.9, w: 1 } },
+  lift: 0,
+  engine: false,
+  exhausts: [{ x: 0, y: 0.33, z: 0.86, rx: 0, length: 0.3 }],
+  plates: { front: { y: 0.2, z: -0.86 }, side: { x: 0.5, y: 0.24, z: 0.1 } },
+  build(kit) {
+    kit.add(kit.body, kit.cyl(0.27, 0.3, 1.5, 18), 0, 0.33, 0, Math.PI / 2, 0, 0, 1.12, 1, 1);
+    kit.add(kit.accent, kit.cone(0.27, 0.62, 18), 0, 0.33, -1.06, -Math.PI / 2, 0, 0, 1.12, 1, 1);
+    // Nozzle bell.
+    kit.add(kit.dark, kit.cyl(0.17, 0.27, 0.24, 16), 0, 0.33, 0.87, Math.PI / 2, 0, 0);
+    // Strap-on boosters over the wheel gap.
+    kit.addMany(kit.body, kit.cyl(0.1, 0.1, 0.72, 12), [
+      [0.43, 0.24, 0.02, Math.PI / 2, 0, 0, 1, 1, 1],
+      [-0.43, 0.24, 0.02, Math.PI / 2, 0, 0, 1, 1, 1],
+    ]);
+    kit.addMany(kit.accent, kit.cone(0.1, 0.2, 12), [
+      [0.43, 0.24, -0.44, -Math.PI / 2, 0, 0, 1, 1, 1],
+      [-0.43, 0.24, -0.44, -Math.PI / 2, 0, 0, 1, 1, 1],
+    ]);
+    // Three fins: two swept out to the sides, one straight up.
+    kit.add(kit.accent, kit.box(0.035, 0.46, 0.44), 0, 0.82, 0.62, -0.5, 0, 0);
+    kit.add(kit.accent, kit.box(0.035, 0.4, 0.4), 0.42, 0.52, 0.66, -0.5, 0, -1.05);
+    kit.add(kit.accent, kit.box(0.035, 0.4, 0.4), -0.42, 0.52, 0.66, -0.5, 0, 1.05);
+    // Portholes.
+    const port = kit.torus(0.075, 0.02, Math.PI * 2, 6, 14);
+    port.rotateY(Math.PI / 2);
+    kit.addMany(kit.chrome, port, [
+      [0.31, 0.37, -0.36, 0, 0, 0, 1, 1, 1],
+      [-0.31, 0.37, -0.36, 0, 0, 0, 1, 1, 1],
+    ]);
+    kit.add(kit.accent, kit.rb(0.62, 0.02, 0.1, 0.005), 0, 0.5, -0.62);
+  },
+};
+
+/** Rusty Piston — a hot rod: chrome engine out in the open, tiny front wheels, huge rears. */
+const rusty: KartBodySpec = {
+  wheels: { front: { r: 0.8, w: 0.8 }, rear: { r: 1.4, w: 1.7 } },
+  lift: 0,
+  engine: false,
+  exhausts: [
+    { x: -0.4, y: 0.2, z: 0.3, rx: -0.04, length: 0.62 },
+    { x: 0.4, y: 0.2, z: 0.3, rx: -0.04, length: 0.62 },
+  ],
+  plates: { front: { y: 0.28, z: -1.0 }, side: { x: 0.345, y: 0.3, z: 0.34 } },
+  build(kit) {
+    // Cabin tub at the back, frame rails and a narrow hood line up front.
+    kit.add(kit.body, kit.rb(0.66, 0.24, 0.96, 0.07), 0, 0.31, 0.32);
+    kit.add(kit.body, kit.sphere(0.36, 16, 10), 0, 0.34, 0.74, 0, 0, 0, 0.9, 0.62, 0.8);
+    kit.add(kit.body, kit.rb(0.44, 0.1, 0.9, 0.03), 0, 0.23, -0.5);
+    // Grille shell.
+    kit.add(kit.accent, kit.rb(0.4, 0.34, 0.07, 0.03), 0, 0.36, -0.94);
+    kit.addMany(
+      kit.dark,
+      kit.box(0.3, 0.018, 0.02),
+      [0, 1, 2, 3].map((i) => [0, 0.26 + i * 0.065, -0.98, 0, 0, 0, 1, 1, 1]),
+    );
+    // The engine: block, blower with a scoop, eight stacks.
+    kit.add(kit.chrome, kit.rb(0.34, 0.2, 0.44, 0.03), 0, 0.4, -0.5);
+    kit.add(kit.dark, kit.rb(0.22, 0.12, 0.3, 0.03), 0, 0.56, -0.5);
+    kit.add(kit.accent, kit.rb(0.24, 0.07, 0.2, 0.02), 0, 0.655, -0.54, 0.2, 0, 0);
+    kit.addMany(
+      kit.chrome,
+      kit.cyl(0.026, 0.026, 0.2, 8),
+      [-1, 1].flatMap((sx) => [-0.66, -0.56, -0.46, -0.36].map((z) => [sx * 0.23, 0.5, z, 0, 0, sx * -0.65, 1, 1, 1])),
+    );
+    // Headlamps on stalks.
+    kit.addMany(kit.chrome, kit.sphere(0.065, 10, 8), [
+      [0.3, 0.4, -0.9, 0, 0, 0, 1, 1, 1],
+      [-0.3, 0.4, -0.9, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Pinstripe and a short rear deck lip.
+    kit.add(kit.accent, kit.rb(0.05, 0.012, 0.8, 0.004), 0, 0.435, 0.34);
+    kit.add(kit.accent, kit.rb(0.6, 0.03, 0.14, 0.01), 0, 0.5, 0.86, -0.25, 0, 0);
+  },
+};
+
+/** Zorp Orbit (premium) — a flying saucer: flat disc, a ring round the rim, canopy hoops, antenna. */
+const zorp: KartBodySpec = {
+  wheels: { front: { r: 0.8, w: 0.9 }, rear: { r: 0.8, w: 0.9 } },
+  lift: 0,
+  engine: false,
+  exhausts: [{ x: 0, y: 0.25, z: 0.92, rx: -0.1, length: 0.22 }],
+  plates: { front: { y: 0.3, z: -1.0 }, side: { x: 0.8, y: 0.3, z: 0 } },
+  build(kit) {
+    kit.add(kit.body, kit.sphere(0.8, 28, 14), 0, 0.3, 0, 0, 0, 0, 1, 0.24, 1.2);
+    kit.add(kit.dark, kit.cyl(0.5, 0.36, 0.1, 20), 0, 0.14, 0, 0, 0, 0, 1, 1, 1.2);
+    const ring = kit.torus(0.8, 0.045, Math.PI * 2, 8, 36);
+    ring.rotateX(Math.PI / 2);
+    kit.add(kit.accent, ring, 0, 0.3, 0, 0, 0, 0, 1, 1, 1.2);
+    // Running lights round the rim.
+    const lights: number[][] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.31;
+      lights.push([Math.sin(a) * 0.66, 0.4, Math.cos(a) * 0.79, 0, 0, 0, 1, 1, 1]);
+    }
+    kit.addMany(kit.chrome, kit.sphere(0.045, 8, 6), lights);
+    // Canopy: two crossed hoops over the seat instead of a glass dome.
+    kit.add(kit.accent, kit.torus(0.44, 0.03, Math.PI, 8, 22), 0, 0.44, 0.16);
+    const hoop = kit.torus(0.44, 0.03, Math.PI, 8, 22);
+    hoop.rotateY(Math.PI / 2);
+    kit.add(kit.accent, hoop, 0, 0.44, 0.16, 0, 0, 0, 1, 1, 1.15);
+    // Antenna.
+    kit.add(kit.chrome, kit.tube(0, 0.42, 0.78, 0, 0.98, 0.84, 0.014));
+    kit.add(kit.accent, kit.sphere(0.055, 10, 8), 0, 1.0, 0.84);
+  },
+};
+
+/** Vera Apex (premium) — a formula car: needle monocoque, front wing, two-tier rear wing, airbox. */
+const vera: KartBodySpec = {
+  wheels: { front: { r: 1.0, w: 1.15 }, rear: { r: 1.1, w: 1.55 } },
+  lift: 0,
+  engine: true,
+  exhausts: [{ x: 0, ...REAR_PIPE }],
+  plates: { front: { y: 0.24, z: -1.02 }, side: { x: 0.505, y: 0.27, z: 0.14 } },
+  build(kit) {
+    const width = (z: number) => lerp(0.34, 1, smoothstep(-1.0, -0.2, z)) * lerp(1, 0.86, smoothstep(0.3, 0.86, z));
+    kit.add(kit.body, kit.profile(cigarShape(0.86), 0.46, width));
+    kit.add(kit.body, kit.rb(0.14, 0.08, 0.5, 0.03), 0, 0.2, -1.05);
+    // Side pods.
+    kit.addMany(kit.body, kit.rb(0.24, 0.17, 0.74, 0.05), [
+      [0.38, 0.25, 0.14, 0, 0, 0, 1, 1, 1],
+      [-0.38, 0.25, 0.14, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Front wing with end plates.
+    kit.add(kit.accent, kit.rb(1.2, 0.025, 0.2, 0.01), 0, 0.11, -1.2);
+    kit.addMany(kit.body, kit.box(0.025, 0.12, 0.24), [
+      [0.6, 0.15, -1.2, 0, 0, 0, 1, 1, 1],
+      [-0.6, 0.15, -1.2, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Wishbones to the front hubs.
+    for (const sx of [-1, 1]) {
+      kit.add(kit.dark, kit.tube(sx * 0.14, 0.26, -0.44, sx * 0.48, 0.22, -0.52, 0.014));
+      kit.add(kit.dark, kit.tube(sx * 0.14, 0.26, -0.62, sx * 0.48, 0.22, -0.52, 0.014));
+    }
+    // Two-tier rear wing between tall end plates.
+    kit.add(kit.accent, kit.rb(0.96, 0.03, 0.22, 0.012), 0, 0.82, 0.8, -0.24, 0, 0);
+    kit.add(kit.accent, kit.rb(0.96, 0.025, 0.16, 0.01), 0, 0.66, 0.82, -0.12, 0, 0);
+    kit.addMany(kit.dark, kit.box(0.025, 0.34, 0.3), [
+      [0.48, 0.72, 0.8, 0, 0, 0, 1, 1, 1],
+      [-0.48, 0.72, 0.8, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Airbox behind the driver's head, and a stripe down the nose.
+    kit.add(kit.body, kit.rb(0.2, 0.2, 0.34, 0.06), 0, 0.9, 0.6);
+    kit.add(kit.dark, kit.box(0.13, 0.11, 0.02), 0, 0.91, 0.425);
+    // Engine cover fin tying the airbox down to the tail.
+    kit.add(kit.body, kit.rb(0.07, 0.36, 0.5, 0.03), 0, 0.66, 0.66, -0.3, 0, 0);
+    kit.add(kit.accent, kit.box(0.05, 0.012, 0.9), 0, 0.42, -0.5, -0.17, 0, 0);
+  },
+};
+
+/** Loco Lou — a steam locomotive: boiler out front, funnel, brass dome, cowcatcher, cab roof. */
+const lou: KartBodySpec = {
+  wheels: { front: { r: 0.9, w: 1.1 }, rear: { r: 1.3, w: 1.3 } },
+  lift: 0.02,
+  engine: false,
+  // The funnel is the exhaust: boost flames come out of the top of it.
+  exhausts: [{ x: 0, y: 0.92, z: -0.74, rx: -Math.PI / 2, length: 0.16 }],
+  plates: { front: { y: 0.5, z: -1.0 }, side: { x: 0.385, y: 0.27, z: 0.1 } },
+  build(kit) {
+    kit.add(kit.body, kit.rb(0.74, 0.14, 1.72, 0.04), 0, 0.24, 0.0);
+    // Boiler and smokebox door.
+    kit.add(kit.body, kit.cyl(0.27, 0.27, 0.98, 18), 0, 0.5, -0.47, Math.PI / 2, 0, 0);
+    kit.add(kit.dark, kit.cyl(0.25, 0.25, 0.04, 18), 0, 0.5, -0.975, Math.PI / 2, 0, 0);
+    kit.add(kit.accent, kit.sphere(0.06, 10, 8), 0, 0.5, -1.0);
+    // Boiler bands.
+    kit.addMany(kit.accent, kit.torus(0.275, 0.018, Math.PI * 2, 6, 24), [
+      [0, 0.5, -0.2, 0, 0, 0, 1, 1, 1],
+      [0, 0.5, -0.52, 0, 0, 0, 1, 1, 1],
+      [0, 0.5, -0.84, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Funnel with a flared brass cap, steam dome behind it.
+    kit.add(kit.dark, kit.cyl(0.07, 0.09, 0.26, 12), 0, 0.87, -0.74);
+    kit.add(kit.accent, kit.cyl(0.13, 0.075, 0.08, 12), 0, 1.02, -0.74);
+    kit.add(kit.accent, kit.sphere(0.1, 12, 8), 0, 0.77, -0.38);
+    // Cowcatcher: a slatted wedge.
+    kit.add(kit.dark, kit.box(0.74, 0.04, 0.3), 0, 0.2, -1.08, 0.75, 0, 0);
+    kit.addMany(
+      kit.accent,
+      kit.box(0.03, 0.045, 0.32),
+      [-0.3, -0.15, 0, 0.15, 0.3].map((x) => [x, 0.21, -1.085, 0.75, 0, 0, 1, 1, 1]),
+    );
+    // Cab: side sheets, four posts, a roof.
+    kit.addMany(kit.body, kit.rb(0.05, 0.3, 0.6, 0.02), [
+      [0.38, 0.45, 0.42, 0, 0, 0, 1, 1, 1],
+      [-0.38, 0.45, 0.42, 0, 0, 0, 1, 1, 1],
+    ]);
+    for (const sx of [-1, 1]) {
+      kit.add(kit.dark, kit.tube(sx * 0.38, 0.58, 0.14, sx * 0.38, 1.24, 0.14, 0.02));
+      kit.add(kit.dark, kit.tube(sx * 0.38, 0.58, 0.7, sx * 0.38, 1.24, 0.7, 0.02));
+    }
+    kit.add(kit.accent, kit.rb(0.9, 0.05, 0.76, 0.02), 0, 1.27, 0.42);
+    // Coal bunker.
+    kit.add(kit.dark, kit.rb(0.62, 0.2, 0.22, 0.03), 0, 0.42, 0.78);
+  },
+};
+
+/** Dozer Dot — a bulldozer: blade out front on push arms, track pods over the wheels, roll frame. */
+const dot: KartBodySpec = {
+  wheels: { front: { r: 1.0, w: 1.3 }, rear: { r: 1.0, w: 1.3 } },
+  lift: 0.03,
+  engine: false,
+  exhausts: [{ x: 0.2, y: 0.56, z: -0.5, rx: -Math.PI / 2, length: 0.42 }],
+  plates: { front: { y: 0.34, z: -1.13 }, side: { x: 0.695, y: 0.3, z: 0 } },
+  build(kit) {
+    kit.add(kit.body, kit.rb(0.72, 0.3, 1.02, 0.05), 0, 0.39, 0.22);
+    kit.add(kit.body, kit.rb(0.56, 0.24, 0.52, 0.04), 0, 0.42, -0.5);
+    // Track pods: a guard over each side with a tread band under it.
+    kit.addMany(kit.dark, kit.rb(0.3, 0.1, 1.5, 0.04), [
+      [0.53, 0.44, 0, 0, 0, 0, 1, 1, 1],
+      [-0.53, 0.44, 0, 0, 0, 0, 1, 1, 1],
+    ]);
+    kit.addMany(kit.dark, kit.rb(0.04, 0.26, 1.46, 0.02), [
+      [0.67, 0.3, 0, 0, 0, 0, 1, 1, 1],
+      [-0.67, 0.3, 0, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Blade and push arms.
+    kit.add(kit.accent, kit.rb(1.36, 0.44, 0.07, 0.03), 0, 0.33, -1.08, -0.18, 0, 0);
+    kit.add(kit.dark, kit.box(1.36, 0.05, 0.1), 0, 0.1, -1.1);
+    for (const sx of [-1, 1]) {
+      kit.add(kit.dark, kit.tube(sx * 0.42, 0.3, -0.3, sx * 0.42, 0.26, -1.04, 0.03));
+      kit.add(kit.chrome, kit.tube(sx * 0.3, 0.52, -0.62, sx * 0.3, 0.42, -1.02, 0.02));
+    }
+    // Roll frame with a beacon.
+    for (const sx of [-1, 1]) {
+      kit.add(kit.dark, kit.tube(sx * 0.36, 0.52, 0.52, sx * 0.36, 1.2, 0.5, 0.03));
+      kit.add(kit.dark, kit.tube(sx * 0.36, 1.2, 0.5, sx * 0.36, 1.2, 0.02, 0.03));
+    }
+    kit.add(kit.dark, kit.tube(-0.36, 1.2, 0.5, 0.36, 1.2, 0.5, 0.03));
+    kit.add(kit.dark, kit.tube(-0.36, 1.2, 0.02, 0.36, 1.2, 0.02, 0.03));
+    kit.add(kit.accent, kit.cyl(0.06, 0.06, 0.09, 10), 0, 1.27, 0.26);
+    // Hazard chevrons on the back.
+    kit.addMany(
+      kit.accent,
+      kit.box(0.09, 0.3, 0.012),
+      [-0.24, -0.08, 0.08, 0.24].map((x) => [x, 0.39, 0.735, 0, 0, 0.6, 1, 1, 1]),
+    );
+  },
+};
+
+/** Side profile of a ship's hull: raised bow, low waist where the seat is, tall stern castle. */
+function hullShape(): THREE.Shape {
+  const s = new THREE.Shape();
+  s.moveTo(-0.8, 0.16);
+  s.lineTo(0.72, 0.16);
+  s.quadraticCurveTo(1.0, 0.2, 1.14, 0.52); // stem sweeping up to the prow
+  s.lineTo(0.98, 0.52);
+  s.quadraticCurveTo(0.8, 0.4, 0.5, 0.4); // foredeck
+  s.lineTo(0.1, 0.36);
+  s.lineTo(-0.36, 0.36); // waist
+  s.lineTo(-0.42, 0.6);
+  s.lineTo(-0.86, 0.66); // stern castle
+  s.quadraticCurveTo(-0.92, 0.4, -0.8, 0.16);
+  return s;
+}
+
+/** Captain Brine (premium) — a pirate ship: plank hull, mast and sail at the stern, bowsprit, guns. */
+const brine: KartBodySpec = {
+  wheels: { front: { r: 1.05, w: 1.2 }, rear: { r: 1.15, w: 1.3 } },
+  lift: 0.02,
+  engine: false,
+  // Stern chasers: boost flames come out of the two guns at the back.
+  exhausts: [
+    { x: -0.2, y: 0.4, z: 0.86, rx: -0.05, length: 0.22 },
+    { x: 0.2, y: 0.4, z: 0.86, rx: -0.05, length: 0.22 },
+  ],
+  plates: { front: { y: 0.3, z: -0.98 }, side: { x: 0.375, y: 0.28, z: 0.05 } },
+  build(kit) {
+    const width = (z: number) => lerp(0.12, 1, smoothstep(-1.16, -0.35, z)) * lerp(1, 0.9, smoothstep(0.4, 0.9, z));
+    kit.add(kit.body, kit.profile(hullShape(), 0.74, width));
+    // Gunwale stripe and the planking line below it.
+    kit.addMany(kit.accent, kit.rb(0.03, 0.05, 1.2, 0.01), [
+      [0.385, 0.37, 0.1, 0, 0, 0, 1, 1, 1],
+      [-0.385, 0.37, 0.1, 0, 0, 0, 1, 1, 1],
+    ]);
+    // Broadside guns.
+    kit.addMany(kit.dark, kit.cyl(0.045, 0.055, 0.2, 10), [
+      [0.44, 0.29, -0.2, 0, 0, Math.PI / 2, 1, 1, 1],
+      [-0.44, 0.29, -0.2, 0, 0, Math.PI / 2, 1, 1, 1],
+      [0.44, 0.29, 0.34, 0, 0, Math.PI / 2, 1, 1, 1],
+      [-0.44, 0.29, 0.34, 0, 0, Math.PI / 2, 1, 1, 1],
+    ]);
+    // Bowsprit.
+    kit.add(kit.dark, kit.tube(0, 0.5, -0.98, 0, 0.66, -1.42, 0.024));
+    // Mast at the stern (behind the driver, so the sail never hides the road), yard, sail, pennant.
+    kit.add(kit.dark, kit.tube(0, 0.6, 0.66, 0, 1.36, 0.66, 0.03));
+    kit.add(kit.dark, kit.tube(-0.36, 1.2, 0.66, 0.36, 1.2, 0.66, 0.02));
+    // A square sail, bellied forward a little by two angled halves.
+    kit.add(kit.accent, kit.box(0.34, 0.5, 0.02), 0.165, 0.93, 0.61, 0, 0.22, 0);
+    kit.add(kit.accent, kit.box(0.34, 0.5, 0.02), -0.165, 0.93, 0.61, 0, -0.22, 0);
+    kit.add(kit.dark, kit.tube(-0.33, 0.68, 0.66, 0.33, 0.68, 0.66, 0.016));
+    kit.add(kit.accent, kit.box(0.02, 0.09, 0.2), 0, 1.38, 0.78);
+    // Stern lantern and rail.
+    kit.add(kit.chrome, kit.sphere(0.055, 10, 8), 0, 0.75, 0.9);
+    kit.add(kit.accent, kit.rb(0.62, 0.035, 0.035, 0.01), 0, 0.69, 0.86);
+  },
+};
+
+export const KART_BODIES: Readonly<Record<string, KartBodySpec>> = {
+  zippy, pixel, fennec, max, juno, kai, bram, rosa,
+  tubby, coco, rusty, zorp, vera, lou, dot, brine,
+};
 
 export function getBodySpec(characterId: string): KartBodySpec {
   return KART_BODIES[characterId] ?? max;

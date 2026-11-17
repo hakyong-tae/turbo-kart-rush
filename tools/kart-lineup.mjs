@@ -1,4 +1,4 @@
-// Renders all eight karts from the real model builder in an isolated scene (4 × 2 grid) so
+// Renders every kart from the real model builder in an isolated scene (4 columns) so
 // body changes can be eyeballed without playing a race.
 //   node tools/kart-lineup.mjs [http://localhost:5178]   → marketing/.audit/kart-lineup.png
 import { createRequire } from 'node:module';
@@ -10,7 +10,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await puppeteer.launch({ headless: 'new', args: ['--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--use-gl=angle', '--use-angle=metal'] });
 const page = await browser.newPage();
-await page.setViewport({ width: 1600, height: 900, deviceScaleFactor: 1 });
+await page.setViewport({ width: 1600, height: 1800, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`${BASE}/?auto=1`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__turboKartRush);
@@ -20,7 +20,7 @@ for (const [name, yaw] of [['kart-lineup', Math.PI * 0.8], ['kart-lineup-front',
     const THREE = await import('/@id/three');
     const { CHARACTERS } = await import('/src/kart/roster.ts');
     const { buildKartModel } = await import('/src/kart/KartModel.ts');
-    const W = 1600, H = 900, COLS = 4, ROWS = 2;
+    const COLS = 4, ROWS = Math.ceil(CHARACTERS.length / COLS), W = 1600, H = 450 * ROWS;
     document.getElementById('ui').style.display = 'none';
     document.querySelectorAll('canvas').forEach((c) => (c.style.visibility = 'hidden'));
     document.querySelectorAll('.lineup-canvas').forEach((c) => c.remove());

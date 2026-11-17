@@ -114,10 +114,12 @@ function makeNumberTexture(num: number, accent: number, color: number): THREE.Ca
     ctx.strokeStyle = accentCss;
     ctx.stroke();
     ctx.fillStyle = '#' + dark.getHexString();
-    ctx.font = 'bold 88px system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+    // Two digits (karts 9..16) get a narrower numeral so they stay inside the border.
+    const px = num >= 10 ? 70 : 88;
+    ctx.font = `bold ${px}px system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(num), size / 2, size / 2 + 6);
+    ctx.fillText(String(num), size / 2, size / 2 + 6, size - 34);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
