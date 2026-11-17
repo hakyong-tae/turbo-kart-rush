@@ -1,43 +1,87 @@
-/* Lobby title menu + landscape rotate gate */
-/* ---- Lobby (title screen) ---- */
+/* Lobby (title screen buttons) + landscape rotate gate */
+
+/* ---- Lobby ----
+   One big RACE plate, then a two-column grid of small icon + label plates. The missions button
+   of the progression update joins the grid as one more cell. */
 .lobby {
   position: absolute;
   left: 50%;
-  bottom: clamp(40px, 9vh, 90px);
+  bottom: clamp(36px, 9vh, 90px);
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
-  width: min(360px, 78vw);
+  gap: 8px;
+  width: min(380px, 84vw);
   pointer-events: auto;
-  animation: fade-up 0.8s 0.35s var(--ease-out) both;
+  animation: fade-up 0.4s 0.12s var(--ease-out) both;
 }
-.lobby-btn {
-  font-size: clamp(16px, 1.6vw, 21px);
-  padding: 14px 22px;
-  letter-spacing: 0.12em;
+
+.lobby-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
-.lobby-btn.focused {
-  outline: 2px solid rgba(255, 255, 255, 0.85);
-  outline-offset: 3px;
+
+.lobby .lobby-btn {
+  width: 100%;
 }
+
+.lobby-grid .lobby-btn {
+  min-height: 48px;
+  /* Extra room on the left: the focus chevron sits there, clear of the icon. */
+  padding: 0 12px 0 28px;
+  font-size: clamp(14px, 1.25vw, 17px);
+  letter-spacing: 0.08em;
+}
+
+.lobby .btn.start {
+  min-height: clamp(58px, 9.5vh, 76px);
+  font-size: clamp(24px, 2.6vw, 34px);
+}
+
+/* Lobby sits right of the showcase kart on anything wider than a phone. */
+@media (min-width: 701px) {
+  .lobby {
+    left: auto;
+    right: clamp(28px, 6vw, 110px);
+    transform: none;
+    bottom: clamp(44px, 12vh, 110px);
+    width: min(400px, 38vw);
+  }
+}
+
 @media (max-height: 480px) {
-  /* Landscape phone: the logo is centred and the menu column is pinned right, and on a short
-     wide screen the two met in the middle — the buttons clipped the logo. Move the logo to its
-     own side instead of centring it across the whole frame. */
   .panel-title-screen {
-    align-items: flex-start;
-    padding-left: clamp(20px, 6vw, 80px);
+    padding-top: 8px;
+    padding-left: clamp(20px, 5vw, 64px);
+  }
+  .lobby-profile {
+    height: 26px;
+  }
+  .logo {
+    font-size: clamp(34px, 5.6vw, 52px);
+  }
+  .logo-sub {
+    margin-top: 6px;
+    font-size: 10px;
   }
   .lobby {
-    bottom: 16px;
-    gap: 8px;
-    width: min(300px, 60vw);
+    right: calc(18px + env(safe-area-inset-right, 0px));
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    gap: 6px;
+    width: min(330px, 44vw);
   }
-  .lobby-btn {
-    padding: 9px 16px;
-    font-size: 15px;
+  .lobby .btn.start {
+    min-height: 54px;
+    font-size: 24px;
+  }
+  .lobby-grid .lobby-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .version {
+    display: none;
   }
 }
 
@@ -50,8 +94,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: rgba(6, 6, 18, 0.96);
+  gap: 12px;
+  background: var(--asphalt);
   pointer-events: auto;
   text-align: center;
   padding: 24px;
@@ -60,19 +104,17 @@
   display: none;
 }
 .rotate-gate-icon {
-  font-size: 64px;
-  animation: rotate-hint 1.6s ease-in-out infinite;
+  font-size: 72px;
+  line-height: 1;
+  color: var(--yellow);
 }
 .rotate-gate-title {
   font-family: var(--display);
-  font-size: 24px;
-  letter-spacing: 0.08em;
+  font-style: italic;
+  font-size: 26px;
+  letter-spacing: 0.04em;
 }
 .rotate-gate-body {
   color: var(--ink-dim);
   font-size: 14px;
-}
-@keyframes rotate-hint {
-  0%, 20% { transform: rotate(0deg); }
-  60%, 100% { transform: rotate(-90deg); }
 }

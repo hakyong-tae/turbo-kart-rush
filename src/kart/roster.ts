@@ -1,5 +1,6 @@
 /**
- * Character roster - 8 original racers. Taglines are spec lines (no prose, no full stops):
+ * Character roster - 16 original racers (the first eight, then the 2026-11 second wave appended
+ * after them: the order is the plate number and the online AI fill order, so never reorder). Taglines are spec lines (no prose, no full stops):
  * the strongest stat, the weakest stat, and how the kart is meant to be driven. Stats are 0..1 and every free racer has one
  * clear speciality paid for by a clear weakness (stat total ≈ 2.6). The three premium
  * racers (rewarded ad / 100 VX) keep their class feel but drop the class penalty, so
@@ -13,6 +14,16 @@
  *   fennec (premium) light with real top speed and a perfect mini-turbo
  *   bram   (premium) heavy that actually accelerates and can shove anyone
  *   rosa   (premium) fastest kart in the game with a strong mini-turbo
+ *
+ * Second wave. Until now every heavy was premium; lou and dot are the free ones.
+ *   tubby  drift light           — big mini-turbo for a light, modest everywhere else
+ *   rusty  dragster medium       — launch and top speed, steers like a plank
+ *   lou    momentum heavy        — fast once rolling, slowest launch in the game
+ *   dot    brawler heavy         — heaviest free kart, turns well, slow and no turbo
+ *   coco   (premium) light with real top speed
+ *   zorp   (premium) the best-handling medium
+ *   vera   (premium) fastest medium, no weak stat
+ *   brine  (premium) heavy that is quick everywhere
  */
 import type { CharacterDef } from '../core/types';
 
@@ -102,6 +113,91 @@ export const CHARACTERS: CharacterDef[] = [
     weightClass: 'heavy',
     stats: { speed: 1.0, acceleration: 0.35, handling: 0.4, weight: 0.95, miniTurbo: 0.75 },
     tagline: 'Highest top speed · slowest launch · strongest at speed',
+  },
+  // --- second wave (2026-11) -------------------------------------------------
+  {
+    id: 'tubby',
+    name: 'Tubby Splash',
+    color: 0x7fe3c4,
+    accent: 0xffffff,
+    driverColor: 0xffe14a,
+    weightClass: 'light',
+    stats: { speed: 0.35, acceleration: 0.7, handling: 0.55, weight: 0.2, miniTurbo: 0.9 },
+    tagline: 'Big mini-turbo · modest top speed · lives in the drift',
+  },
+  {
+    id: 'coco',
+    premium: true,
+    name: 'Comet Coco',
+    color: 0xf1f4f8,
+    accent: 0xff3b30,
+    driverColor: 0xff3b30,
+    weightClass: 'light',
+    stats: { speed: 0.85, acceleration: 0.8, handling: 0.65, weight: 0.2, miniTurbo: 0.9 },
+    tagline: 'Fastest light kart · strong launch · gets pushed around',
+  },
+  {
+    id: 'rusty',
+    name: 'Rusty Piston',
+    color: 0xb5532a,
+    accent: 0xf3e2b8,
+    driverColor: 0x2a2a34,
+    weightClass: 'medium',
+    stats: { speed: 0.7, acceleration: 0.75, handling: 0.25, weight: 0.55, miniTurbo: 0.4 },
+    tagline: 'Launch and top speed · worst steering · straight-line bruiser',
+  },
+  {
+    id: 'zorp',
+    premium: true,
+    name: 'Zorp Orbit',
+    color: 0x9be83a,
+    accent: 0x8a4dff,
+    driverColor: 0xd9c7ff,
+    weightClass: 'medium',
+    stats: { speed: 0.6, acceleration: 0.7, handling: 1.0, weight: 0.45, miniTurbo: 0.75 },
+    tagline: 'Top cornering · quick launch · no weak stat',
+  },
+  {
+    id: 'vera',
+    premium: true,
+    name: 'Vera Apex',
+    color: 0xaeb8c6,
+    accent: 0x00b7a8,
+    driverColor: 0x00b7a8,
+    weightClass: 'medium',
+    stats: { speed: 0.95, acceleration: 0.7, handling: 0.8, weight: 0.4, miniTurbo: 0.55 },
+    tagline: 'Fastest medium · sharp steering · no weak stat',
+  },
+  {
+    id: 'lou',
+    name: 'Loco Lou',
+    color: 0x2a2d35,
+    accent: 0xd6a83c,
+    driverColor: 0xd6a83c,
+    weightClass: 'heavy',
+    stats: { speed: 0.8, acceleration: 0.2, handling: 0.3, weight: 0.95, miniTurbo: 0.4 },
+    tagline: 'High top speed · slowest launch · unstoppable once rolling',
+  },
+  {
+    id: 'dot',
+    name: 'Dozer Dot',
+    color: 0xb48cff,
+    accent: 0xffd400,
+    driverColor: 0xffffff,
+    weightClass: 'heavy',
+    stats: { speed: 0.45, acceleration: 0.45, handling: 0.6, weight: 1.0, miniTurbo: 0.2 },
+    tagline: 'Heaviest free kart · turns well · slow, weak mini-turbo',
+  },
+  {
+    id: 'brine',
+    premium: true,
+    name: 'Captain Brine',
+    color: 0x1f3170,
+    accent: 0xd92b3a,
+    driverColor: 0xf3e2b8,
+    weightClass: 'heavy',
+    stats: { speed: 0.85, acceleration: 0.55, handling: 0.55, weight: 0.95, miniTurbo: 0.6 },
+    tagline: 'Heavy and quick everywhere · wins contact · no weak stat',
   },
 ];
 

@@ -43,7 +43,7 @@ export class DailyPanel {
   ) {
     this.challenge = this.today();
     this.rootNode = el('div', 'screen daily hidden', undefined, root);
-    const panel = el('div', 'glass panel daily-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel daily-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('daily.title'), panel);
     this.summary = new TextField(el('h2', 'panel-title daily-track', '', panel));
     this.rule = new TextField(el('div', 'daily-rule', '', panel));
@@ -51,7 +51,7 @@ export class DailyPanel {
     this.kartRow = el('div', 'daily-karts', undefined, panel);
     this.table = el('div', 'daily-board', undefined, panel);
     const actions = el('div', 'actions', undefined, panel);
-    actions.appendChild(button(t('menu.back'), 'ghost', () => this.close()));
+    actions.appendChild(button(t('menu.back'), 'ghost', () => this.close(), 'chevron-left'));
   }
 
   get isVisible(): boolean {

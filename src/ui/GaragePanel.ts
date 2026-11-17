@@ -40,6 +40,7 @@ import {
 } from '../verse8/entitlements';
 import { badgeElement } from './badges';
 import { button, el } from './dom';
+import { icon } from './icons';
 import { GaragePreview } from './garage/GaragePreview';
 import { showToast } from './toast';
 
@@ -119,7 +120,7 @@ export class GaragePanel {
   constructor(root: HTMLElement) {
     this.character = getCharacter('zippy');
     this.rootNode = el('div', 'screen garage hidden', undefined, root);
-    const panel = el('div', 'glass panel garage-panel', undefined, this.rootNode);
+    const panel = el('div', 'panel garage-panel', undefined, this.rootNode);
 
     const head = el('div', 'garage-head', undefined, panel);
     el('div', 'panel-kicker', t('garage.title'), head);
@@ -140,12 +141,12 @@ export class GaragePanel {
     this.rows = el('div', 'garage-rows', undefined, controls);
 
     const actions = el('div', 'actions garage-actions', undefined, panel);
-    this.unlockBtn = button(t('garage.unlock'), 'primary garage-unlock', () => this.onUnlock?.());
+    this.unlockBtn = button(t('garage.unlock'), 'garage-unlock', () => this.onUnlock?.(), 'cart');
     actions.appendChild(this.unlockBtn);
     actions.appendChild(button(t('garage.reset'), 'garage-reset', () => this.reset()));
     this.saveBtn = button(t('garage.save'), 'primary garage-save', () => void this.save());
     actions.appendChild(this.saveBtn);
-    actions.appendChild(button(t('menu.back'), 'garage-close', () => this.close()));
+    actions.appendChild(button(t('menu.back'), 'ghost garage-close', () => this.close(), 'chevron-left'));
 
     // Entitlements land asynchronously inside the host. When they do — a purchase completing, or
     // just the first read finishing — the locks and the saved look have to catch up in place.
@@ -309,7 +310,11 @@ export class GaragePanel {
         if (glyph) b.appendChild(glyph);
       }
       el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
-      if (locked) el('span', 'garage-option-lock', t('garage.locked'), b);
+      if (locked) {
+        const lock = el('span', 'chip lock garage-option-lock', undefined, b);
+        lock.appendChild(icon('lock'));
+        lock.title = t('garage.locked');
+      }
       b.addEventListener('click', () => {
         if (locked) {
           this.auditionValue(field, entry.id);
@@ -333,8 +338,12 @@ export class GaragePanel {
       const b = el('button', `garage-option${locked ? ' locked' : ''}`, undefined, grid);
       b.type = 'button';
       el('span', 'garage-option-name', tk(`cos.preset.${preset.id}`), b);
-      if (locked) el('span', 'garage-option-lock', t('garage.locked'), b);
-      else if (preset.free) el('span', 'garage-option-free', t('garage.presetFree'), b);
+      if (locked) {
+        const lock = el('span', 'chip lock garage-option-lock', undefined, b);
+        lock.appendChild(icon('lock'));
+        lock.title = t('garage.locked');
+      }
+      else if (preset.free) el('span', 'chip garage-option-free', t('garage.presetFree'), b);
       b.addEventListener('click', () => {
         if (locked) {
           this.auditionLook({ ...preset.cos });

@@ -45,6 +45,9 @@ export const sunnyCircuit: TrackDefinition = {
   wallHalfWidthFactor: 1.55,
   itemBoxRows: [0.1, 0.4, 0.62, 0.83],
   boostPads: [0.3, 0.7, 0.95],
+  // One gentle ramp just past the crest of the hill straight: the landing is downhill, so even a
+  // slow kart gets a moment of air. The first jump a new player meets.
+  ramps: [{ t: 0.455, length: 10, height: 1.6 }],
   environment: {
     skyTop: 0x2f6fd8,
     skyHorizon: 0x9fd3ff,

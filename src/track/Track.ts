@@ -14,6 +14,8 @@ import { BOOST_PAD_LENGTH, buildBoostPads, buildGantry, buildGrandstands, buildS
 import { buildAnimatedProps } from './builders/animated';
 import { buildLandmarks } from './builders/landmarks';
 import { buildObstacles, computeObstacles } from './builders/obstacles';
+import { buildFeatures } from './builders/features';
+import { CAR_SPACING, TrackFeatures, moverPose, type MoverSlot } from './features';
 
 /** Half length (metres) of the 'boost' surface strip centred on each boost pad t (= the visible strip). */
 const BOOST_PAD_HALF_LENGTH = BOOST_PAD_LENGTH / 2;
@@ -73,9 +75,12 @@ export class Track implements ITrack {
   readonly startGrid: readonly StartSlot[];
   readonly itemBoxPositions: readonly THREE.Vector3[];
   readonly boostPads: readonly BoostPadInfo[];
+  /** Fixed pylons first, then one entry per moving-obstacle car (those move with `setRaceTime`). */
   readonly obstacles: readonly TrackObstacle[];
   readonly minimap: MinimapData;
 
+  private readonly features: TrackFeatures;
+  private readonly movers: MoverSlot[] = [];
   private readonly cl: Centerline;
   private readonly field: TerrainField;
   private readonly updaters: Updater[] = [];
@@ -92,6 +97,7 @@ export class Track implements ITrack {
     this.length = this.cl.length;
     this.field = new TerrainField(def, this.cl);
     this.boostPadTs = def.boostPads.map((t) => wrap01(t));
+    this.features = new TrackFeatures(def, this.cl);
 
     const ctx: BuildContext = {
       def,
@@ -101,13 +107,18 @@ export class Track implements ITrack {
       disposables: this.disposables,
       updaters: this.updaters,
       timeUniform: this.timeUniform,
+      features: this.features,
+      movers: this.movers,
     };
 
     // ------------------------------------------------------------ gameplay data
     this.checkpoints = this.buildCheckpoints();
     this.startGrid = this.buildStartGrid();
     this.itemBoxPositions = computeItemBoxPositions(ctx, ITEM_BOX_ROW_SIZE);
-    this.obstacles = computeObstacles(ctx);
+    const fixed = computeObstacles(ctx);
+    this.buildMovers();
+    this.obstacles = [...fixed, ...this.movers.map((m) => m.obstacle)];
+    this.setRaceTime(0);
     this.minimap = this.buildMinimap();
 
     // ------------------------------------------------------------ geometry
@@ -129,7 +140,9 @@ export class Track implements ITrack {
     this.boostPads = pads;
     this.boostPadHalfWidths = new Float64Array(this.boostPadTs.length);
     for (let i = 0; i < pads.length && i < this.boostPadHalfWidths.length; i++) this.boostPadHalfWidths[i] = pads[i].halfWidth;
-    const obstacleGroup = buildObstacles(ctx, this.obstacles);
+    const featureGroup = buildFeatures(ctx);
+    if (featureGroup) root.add(featureGroup);
+    const obstacleGroup = buildObstacles(ctx, fixed);
     if (obstacleGroup) root.add(obstacleGroup);
     root.add(buildAnimatedProps(ctx));
     this.object = root;
@@ -169,12 +182,38 @@ export class Track implements ITrack {
     if (a <= hw) surface = this.isBoostAt(t, a) ? 'boost' : 'road';
     else if (a <= whw) surface = 'offroad';
     else surface = isVoidT(this.def, t) ? 'void' : 'wall';
+
+    // Gimmicks: missing road after a gap ramp, painted zones, and the ramp wedge itself.
+    let rampY = 0;
+    let rampSlope = 0;
+    const f = this.features;
+    if (!f.empty) {
+      const s = t * this.length;
+      if (f.inGap(s)) {
+        if (a <= whw) surface = 'void';
+      } else {
+        if (surface === 'road') {
+          const zone = f.zoneAt(s, lateral);
+          if (zone) surface = zone;
+        }
+        if (a <= whw) {
+          rampY = f.rampHeight(s, lateral);
+          if (rampY > 0) rampSlope = f.lastRampSlope;
+        }
+      }
+    }
     q.surface = surface;
 
-    const roadY = _qs.position.y;
+    const roadY = _qs.position.y + rampY;
     if (a <= whw + OFFROAD_BLEND_START) {
       q.groundY = roadY;
       q.groundNormal.copy(_qs.normal);
+      if (rampSlope > 0) {
+        // Tip the normal back along the travel direction so the kart pitches up the wedge.
+        q.groundNormal.x -= _qs.tangent.x * rampSlope;
+        q.groundNormal.z -= _qs.tangent.z * rampSlope;
+        q.groundNormal.normalize();
+      }
     } else {
       const k = smoothstep(whw + OFFROAD_BLEND_START, whw + OFFROAD_BLEND_END, a);
       const terrain = this.field.heightAt(position.x, position.z);
@@ -194,6 +233,86 @@ export class Track implements ITrack {
 
   heightAt(x: number, z: number): number {
     return this.field.heightAt(x, z);
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Moving obstacles
+  // ---------------------------------------------------------------------------------------
+
+  setRaceTime(seconds: number): void {
+    const movers = this.movers;
+    for (let i = 0; i < movers.length; i++) {
+      const m = movers[i];
+      m.raceTime = seconds;
+      const pose = moverPose(m.def, m.car, seconds, this.length, m.sFrom, m.sTo, m.reach, m.pose);
+      const o = m.obstacle;
+      if (!pose.active) {
+        // Parked: nowhere near anything, so neither the collision test nor the AI sees it.
+        o.position.set(1e6, -1e4, 1e6);
+        o.velocity?.set(0, 0, 0);
+        continue;
+      }
+      this.cl.sample(pose.s / this.length, _gs);
+      o.position.set(
+        _gs.position.x + _gs.binormal.x * pose.lateral,
+        _gs.position.y,
+        _gs.position.z + _gs.binormal.z * pose.lateral,
+      );
+      o.velocity?.set(
+        _gs.tangent.x * pose.vAlong + _gs.binormal.x * pose.vLateral,
+        0,
+        _gs.tangent.z * pose.vAlong + _gs.binormal.z * pose.vLateral,
+      );
+      if (o.onTrack) {
+        o.onTrack.t = pose.s / this.length;
+        o.onTrack.lateral = pose.lateral;
+        o.onTrack.vAlong = pose.vAlong;
+        o.onTrack.vLateral = pose.vLateral;
+      }
+    }
+  }
+
+  isRespawnSafe(t: number): boolean {
+    return this.features.isRespawnSafe(wrap01(t) * this.length);
+  }
+
+  private buildMovers(): void {
+    for (const def of this.features.movers) {
+      const radius = def.radius ?? (def.kind === 'roller' ? 1.5 : 1.4);
+      const cars = def.kind === 'crosser' ? (def.cars ?? 2) : 1;
+      let sFrom: number;
+      let sTo: number;
+      let reach = 0;
+      if (def.kind === 'roller') {
+        sFrom = this.cl.sOf(def.from);
+        sTo = this.cl.sOf(def.to);
+      } else {
+        sFrom = this.cl.sOf(def.t);
+        sTo = sFrom;
+        this.cl.sample(def.t, _gs);
+        reach = _gs.wallHalfWidth + radius + 1.5;
+      }
+      for (let car = 0; car < cars; car++) {
+        this.movers.push({
+          def,
+          car,
+          radius,
+          sFrom,
+          sTo,
+          reach,
+          pose: { s: 0, lateral: 0, vAlong: 0, vLateral: 0, active: false },
+          raceTime: 0,
+          obstacle: {
+            position: new THREE.Vector3(),
+            radius: def.kind === 'crosser' ? radius * (CAR_SPACING / 2) : radius,
+            height: def.kind === 'roller' ? radius * 2 : 2.6,
+            velocity: new THREE.Vector3(),
+            hit: true,
+            onTrack: { t: 0, lateral: 0, vAlong: 0, vLateral: 0 },
+          },
+        });
+      }
+    }
   }
 
   /** True if (t, |lateral|) lies on a pad's visible strip (length and width match the rendered strip). */

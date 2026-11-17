@@ -148,6 +148,28 @@ export interface Balance {
     hazardLookahead: number;
     boxSeekDistance: number;
   };
+  /** Track gimmicks: surface zones, jump tricks, gaps. */
+  track: {
+    /** Side grip on ice (road is `kart.lateralGripRoad`). Lower = longer slides. */
+    iceGrip: number;
+    /** Steering authority on ice, as a fraction of normal. */
+    iceSteer: number;
+    /** Top-speed factor in mud / shallow water / ash (ignored while boosting or under a star). */
+    mudFactor: number;
+    /** Acceleration factor in mud. */
+    mudAccel: number;
+    /** Seconds in the air (not a hop) before a trick can be thrown. */
+    trickMinAir: number;
+    /** How long the trick spin takes. */
+    trickSeconds: number;
+    /** Landing boost for a completed trick. */
+    trickBoost: number;
+    trickBoostSeconds: number;
+    /** Metres below the road surface past which an airborne kart keeps falling instead of landing. */
+    underRoadDrop: number;
+    /** Metres before a gap ramp inside which a kart must not be respawned. */
+    respawnRunup: number;
+  };
   race: {
     /**
      * Rocket start charge (seconds the throttle is held before GO): ≥ good = medium boost,
@@ -304,6 +326,18 @@ export function createDefaultBalance(): Balance {
       lookaheadMax: 30,
       hazardLookahead: 25,
       boxSeekDistance: 60,
+    },
+    track: {
+      iceGrip: 1.6,
+      iceSteer: 0.75,
+      mudFactor: 0.72,
+      mudAccel: 0.6,
+      trickMinAir: 0.15,
+      trickSeconds: 0.55,
+      trickBoost: 0.3,
+      trickBoostSeconds: 1.0,
+      underRoadDrop: 1.5,
+      respawnRunup: 45,
     },
     race: {
       startChargeGood: 0.4,

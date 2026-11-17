@@ -1,13 +1,19 @@
-/* Race HUD core: item slot, lap/timer, place, speedometer, minimap, centre messages */
-/* ----------------------------------------------------------------------------
-   HUD
-   --------------------------------------------------------------------------- */
+/* Race HUD core: left column (standings + minimap), right column (item slot, lap, timer),
+   place plate, speedometer, centre messages, mute indicator.
+
+   HUD boxes are the one place a surface may be see-through: asphalt at 88% (--hud-bg), so the
+   road stays visible behind them. Free-standing type (count-in, speed, finish) carries a hard
+   asphalt outline instead of a soft shadow, so it reads on a bright circuit and a dark one. */
 
 .hud {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  --hud-pad: clamp(16px, 2.4vw, 34px);
+  --hud-pad: clamp(12px, 2.4vw, 34px);
+  /* Height of the place plate; the rear-view mirror stacks on top of it. */
+  --place-h: clamp(64px, 12vh, 108px);
+  /* Displayed size of the minimap. */
+  --map: clamp(96px, 20vh, 170px);
 }
 
 .hud.hit-shake {
@@ -22,73 +28,139 @@
   80% { transform: translate(3px, -2px); }
 }
 
-/* Item slot (top-left) */
-.hud-item {
+/* Left column: standings, minimap under it ------------------------------------ */
+.hud-left {
   position: absolute;
   top: var(--hud-pad);
   left: var(--hud-pad);
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hud-standings {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 150px;
+  padding: 5px 8px 5px 4px;
+  border-radius: var(--radius);
+  background: var(--hud-bg);
+}
+
+.hud-standing {
+  display: grid;
+  grid-template-columns: 1.4em 10px 1fr;
   align-items: center;
+  gap: 7px;
+  padding: 2px 6px 2px 3px;
+  border-left: 3px solid transparent;
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: var(--ink-dim);
+}
+
+.hud-standing.you {
+  color: var(--ink);
+  border-left-color: var(--yellow);
+}
+
+/* Allies get their blue as the edge band, so a glance separates the two sides. */
+.hud-standing.ally {
+  border-left-color: var(--ally);
+}
+
+.hud-standing.dnf {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+
+.hud-standing.done .hud-standing-place {
+  color: var(--gold);
+}
+
+.hud-standing-place {
+  text-align: right;
+}
+
+.hud-standing-chip {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius);
+}
+
+.hud-standing-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 11em;
+  /* Room for the italic overhang of the last glyph. */
+  padding-right: 0.25em;
+}
+
+.hud-minimap {
+  padding: 4px;
+  border-radius: var(--radius);
+  background: var(--hud-bg);
+}
+
+.minimap-canvas {
+  display: block;
+  width: var(--map);
+  height: var(--map);
+}
+
+/* Right column: item slot, lap, timer ------------------------------------------ */
+.hud-right {
+  position: absolute;
+  top: var(--hud-pad);
+  right: var(--hud-pad);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
 }
 
+.hud-item {
+  display: flex;
+}
+
+/* Empty: a dashed outline and nothing else. Holding an item: opaque, yellow border. */
 .item-frame {
   position: relative;
-  width: clamp(84px, 8.5vw, 118px);
+  width: clamp(72px, 7.6vw, 104px);
   aspect-ratio: 1;
-  border-radius: 26px;
-  background: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.16), rgba(16, 17, 38, 0.75) 60%);
-  border: 3px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius);
+  border: 2px dashed var(--line);
   display: grid;
   place-items: center;
-  overflow: visible;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  overflow: hidden;
 }
 
-.item-frame::before {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: inherit;
-  background: conic-gradient(from 0deg, var(--blue), var(--magenta), var(--orange), var(--blue));
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.item-frame.has-item::before {
-  opacity: 0.9;
-}
-
-.item-frame.spinning::before {
-  opacity: 1;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.item-frame.has-item,
+.item-frame.spinning {
+  background: var(--panel);
+  border: 3px solid var(--yellow);
 }
 
 .item-frame.pop {
-  animation: item-pop 0.45s var(--ease-pop) both;
+  animation: item-pop 0.35s var(--ease-pop) both;
 }
 
 @keyframes item-pop {
-  0% { transform: scale(0.7); }
-  60% { transform: scale(1.18); }
+  0% { transform: scale(0.8); }
+  60% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
 
 .item-icon {
-  width: 72%;
-  height: 72%;
+  width: 74%;
+  height: 74%;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
 }
 
 .item-icon-canvas {
@@ -102,58 +174,55 @@
 }
 
 @keyframes icon-flick {
-  from { transform: translateY(-4px) scale(0.92); opacity: 0.85; }
-  to { transform: translateY(4px) scale(1); opacity: 1; }
+  from { transform: translateY(-4px) scale(0.92); }
+  to { transform: translateY(4px) scale(1); }
 }
 
+/* Triples read as a fan of overlapping icons (3, 2, 1) instead of a number. */
 .item-count {
-  position: absolute;
-  right: -8px;
-  bottom: -8px;
-  font-family: var(--display);
-  font-size: 18px;
-  letter-spacing: 0.04em;
-  padding: 4px 9px 3px;
-  border-radius: 999px;
-  background: var(--accent-grad);
-  color: #fff;
-  border: 2px solid #fff;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
-  min-width: 30px;
-  text-align: center;
-}
-
-.item-count:empty {
   display: none;
 }
+.item-icon.stacked {
+  position: relative;
+}
+.item-icon.stacked .item-icon-canvas {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.15s var(--ease-out);
+}
+.item-icon.stacked .stack-0 { transform: translate(-9px, 7px) rotate(-10deg); }
+.item-icon.stacked .stack-1 { transform: translate(0, -2px); }
+.item-icon.stacked .stack-2 { transform: translate(9px, 7px) rotate(10deg); }
 
-.item-label {
-  font-family: var(--display);
-  font-size: 13px;
-  letter-spacing: 0.24em;
-  color: var(--ink-dim);
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-  min-height: 1em;
+/* Overdrive window: a yellow bar along the bottom of the slot drains while it is open. */
+.item-frame.overdrive::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 7px;
+  width: var(--od, 100%);
+  background: var(--yellow);
 }
 
-/* Lap + timer (top-right) */
 .hud-topright {
-  position: absolute;
-  top: var(--hud-pad);
-  right: var(--hud-pad);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 5px;
 }
 
+/* Lap and timer: slanted boxes, yellow label, white italic figures. */
 .hud-lap,
 .hud-timer {
-  padding: 8px 16px;
-  border-radius: 14px;
+  --slant: 9px;
+  padding: 5px 20px 5px 22px;
+  background: var(--hud-bg);
+  color: var(--ink);
   font-family: var(--display);
-  letter-spacing: 0.08em;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  font-style: italic;
+  letter-spacing: 0.06em;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
 }
 
 .hud-lap {
@@ -163,76 +232,69 @@
 }
 
 .hud-lap-label {
-  font-size: 15px;
-  letter-spacing: 0.3em;
-  color: var(--ink-dim);
+  font-size: 14px;
+  letter-spacing: 0.24em;
+  color: var(--yellow);
 }
 
 .hud-lap-value {
-  font-size: clamp(28px, 2.8vw, 38px);
+  font-size: clamp(26px, 2.8vw, 38px);
+  line-height: 1;
 }
 
 .hud-timer {
-  font-size: clamp(20px, 2vw, 26px);
+  font-size: clamp(19px, 2vw, 26px);
   font-variant-numeric: tabular-nums;
   min-width: 8ch;
   text-align: right;
 }
 
-/* Place (bottom-left) */
+/* Place (bottom-left): a number plate. White, or the podium metal for 1 / 2 / 3. */
 .hud-place {
   position: absolute;
   left: var(--hud-pad);
   bottom: var(--hud-pad);
-  font-family: var(--display);
-  line-height: 0.85;
-  color: #fff;
+  height: var(--place-h);
   display: flex;
   align-items: baseline;
+  padding: 0 calc(var(--place-h) * 0.16) 0 calc(var(--place-h) * 0.12);
+  background: #fff;
+  color: #111;
+  border: 3px solid #111;
+  border-radius: var(--radius);
+  font-family: var(--display);
+  font-style: italic;
+  line-height: calc(var(--place-h) - 6px);
   transform-origin: left bottom;
-  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.45)) drop-shadow(0 14px 30px rgba(0, 0, 0, 0.5));
 }
 
 .place-num {
-  font-size: clamp(96px, 13vw, 168px);
-  letter-spacing: -0.02em;
-  -webkit-text-stroke: 3px rgba(0, 0, 0, 0.35);
-  background: linear-gradient(180deg, #ffffff 0%, #e6ecff 55%, #b8c6ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: calc(var(--place-h) * 0.86);
+  letter-spacing: -0.01em;
 }
 
 .place-suffix {
-  font-size: clamp(34px, 4.6vw, 60px);
-  letter-spacing: 0.02em;
-  margin-left: 4px;
-  color: rgba(255, 255, 255, 0.85);
+  font-size: calc(var(--place-h) * 0.36);
+  margin-left: 3px;
 }
 
-.hud-place.gold .place-num {
-  background: linear-gradient(180deg, #fffbe6 0%, #ffd23f 55%, #ff9a3c 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
+.hud-place.gold {
+  background: var(--gold);
 }
-.hud-place.silver .place-num {
-  background: linear-gradient(180deg, #ffffff 0%, #d7dce8 55%, #97a2ba 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
+.hud-place.silver {
+  background: var(--silver);
 }
-.hud-place.bronze .place-num {
-  background: linear-gradient(180deg, #ffe4cf 0%, #e08a4a 55%, #a2561f 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
+.hud-place.bronze {
+  background: var(--bronze);
 }
 
 .hud-place.punch {
-  animation: punch 0.5s var(--ease-pop) both;
+  animation: punch 0.4s var(--ease-pop) both;
 }
 
 @keyframes punch {
-  0% { transform: scale(0.8) rotate(-4deg); }
-  55% { transform: scale(1.14) rotate(2deg); }
+  0% { transform: scale(0.82); }
+  55% { transform: scale(1.12); }
   100% { transform: none; }
 }
 
@@ -242,7 +304,7 @@
   left: 50%;
   bottom: calc(var(--hud-pad) * 0.6);
   transform: translateX(-50%);
-  width: clamp(120px, 12vw, 170px);
+  width: clamp(104px, 12vw, 164px);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
@@ -254,63 +316,50 @@
   width: 100%;
   height: 100%;
   transform: rotate(150deg);
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
 }
 
 .gauge circle {
   fill: none;
-  stroke-width: 7;
-  stroke-linecap: round;
+  stroke-width: 8;
+  stroke-linecap: butt;
 }
 
 .gauge-bg {
-  stroke: rgba(255, 255, 255, 0.16);
+  stroke: var(--hud-bg);
 }
 
 .gauge-fill {
-  stroke: var(--blue);
-  transition: stroke 0.3s;
+  stroke: var(--yellow);
+  transition: stroke 0.2s;
 }
 
 .hud.boosting .gauge-fill {
-  stroke: var(--orange);
-  filter: drop-shadow(0 0 8px rgba(255, 122, 47, 0.9));
+  stroke: var(--ink);
 }
 
 .speed-inner {
   text-align: center;
   font-family: var(--display);
-  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45), 0 8px 20px rgba(0, 0, 0, 0.5);
+  font-style: italic;
+  color: var(--ink);
+  -webkit-text-stroke: 5px var(--asphalt);
+  paint-order: stroke fill;
   transform: translateY(6%);
 }
 
 .speed-value {
-  font-size: clamp(34px, 3.6vw, 52px);
+  font-size: clamp(32px, 3.6vw, 50px);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 .speed-unit {
   font-size: 12px;
-  letter-spacing: 0.3em;
-  color: var(--ink-dim);
+  letter-spacing: 0.24em;
+  -webkit-text-stroke-width: 3px;
 }
 
-/* Minimap (bottom-right) */
-.hud-minimap {
-  position: absolute;
-  right: var(--hud-pad);
-  bottom: var(--hud-pad);
-  padding: 6px;
-  border-radius: 20px;
-}
-
-.minimap-canvas {
-  display: block;
-  border-radius: 14px;
-}
-
-/* Centre messages */
+/* Centre messages ---------------------------------------------------------------- */
 .hud-center {
   position: absolute;
   inset: 0;
@@ -329,32 +378,28 @@
   width: fit-content;
   margin: 0 auto;
   font-family: var(--display);
+  font-style: italic;
   text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
   --ttl: 1s;
 }
 
+/* 3 · 2 · 1 in white, GO in yellow, both with a hard asphalt outline. */
 .hud-count {
   inset: 0;
   height: fit-content;
   margin: auto;
   font-size: clamp(120px, 20vw, 260px);
   line-height: 1;
-  color: #fff;
-  -webkit-text-stroke: 6px #1a0a2e;
+  color: var(--ink);
+  -webkit-text-stroke: 10px var(--asphalt);
   paint-order: stroke fill;
-  filter: drop-shadow(0 10px 0 rgba(0, 0, 0, 0.35)) drop-shadow(0 20px 50px rgba(55, 168, 255, 0.45));
   animation: count-in var(--ttl) var(--ease-out) both;
 }
 
 .hud-go {
-  color: transparent;
-  background: linear-gradient(180deg, #fffbe6 0%, #ffd23f 45%, #ff7a2f 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-stroke: 0;
-  filter: drop-shadow(0 10px 0 #4a1140) drop-shadow(0 20px 50px rgba(255, 122, 47, 0.5));
+  color: var(--yellow);
 }
 
 @keyframes count-in {
@@ -364,57 +409,66 @@
   100% { opacity: 0; transform: scale(1.3); }
 }
 
+/* Banner (final lap, lap N, engine overheat): a slanted strip that drives through. */
 .hud-banner {
-  top: 22%;
-  font-size: clamp(44px, 7vw, 96px);
-  letter-spacing: 0.12em;
-  padding: 10px 40px;
-  color: #fff;
-  -webkit-text-stroke: 3px #1a0a2e;
-  paint-order: stroke fill;
-  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.4));
+  --slant: 18px;
+  top: 16%;
+  font-size: clamp(36px, 6vw, 84px);
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  padding: 6px 54px 8px;
+  background: var(--asphalt);
+  color: var(--ink);
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
   animation: banner-in var(--ttl) var(--ease-out) both;
 }
 
-.hud-banner::before {
-  content: '';
-  position: absolute;
-  inset: 8% -40vw;
-  background: linear-gradient(90deg, transparent, rgba(255, 58, 184, 0.55), rgba(255, 122, 47, 0.55), transparent);
-  z-index: -1;
-  transform: skewX(-12deg);
+.hud-banner.final {
+  background: var(--yellow);
+  color: var(--on-yellow);
 }
 
-.hud-banner.lap::before {
-  background: linear-gradient(90deg, transparent, rgba(55, 168, 255, 0.5), transparent);
+.hud-banner.down {
+  background: var(--red);
+  color: #fff;
 }
 
 @keyframes banner-in {
-  0% { opacity: 0; transform: translateX(-60vw) skewX(-10deg); }
-  15% { opacity: 1; transform: translateX(0) skewX(0); }
+  0% { opacity: 0; transform: translateX(-60vw); }
+  15% { opacity: 1; transform: translateX(0); }
   82% { opacity: 1; transform: translateX(0); }
-  100% { opacity: 0; transform: translateX(60vw) skewX(10deg); }
+  100% { opacity: 0; transform: translateX(60vw); }
 }
 
+/* Place change: one second, only when the place changes. Up is yellow, down is red on asphalt. */
 .hud-posflash {
-  top: 34%;
-  font-size: clamp(28px, 3.6vw, 48px);
-  letter-spacing: 0.2em;
-  padding: 6px 22px;
-  border-radius: 999px;
-  background: rgba(16, 17, 38, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  --slant: 8px;
+  top: 38%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(24px, 3.2vw, 42px);
+  letter-spacing: 0.1em;
+  padding: 4px 26px 5px;
+  background: var(--asphalt);
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
   animation: pos-in var(--ttl) var(--ease-out) both;
 }
 
+.hud-posflash .icon {
+  width: 0.8em;
+  height: 0.8em;
+  stroke-width: 3.5;
+  vertical-align: 0;
+}
+
 .hud-posflash.up {
-  color: var(--green);
-  text-shadow: 0 0 20px rgba(92, 255, 138, 0.6);
+  background: var(--yellow);
+  color: var(--on-yellow);
 }
 
 .hud-posflash.down {
   color: var(--red);
-  text-shadow: 0 0 20px rgba(255, 77, 94, 0.6);
 }
 
 @keyframes pos-in {
@@ -429,122 +483,128 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: clamp(80px, 13vw, 180px);
+  font-size: clamp(72px, 12vw, 168px);
   line-height: 1;
-  color: transparent;
-  background: linear-gradient(180deg, #ffffff 0%, #ffe9a8 35%, #ff9a3c 65%, #ff3ab8 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  filter: drop-shadow(0 8px 0 #4a1140) drop-shadow(0 20px 50px rgba(255, 58, 184, 0.45));
+  color: var(--ink);
+  -webkit-text-stroke: 10px var(--asphalt);
+  paint-order: stroke fill;
   animation: finish-in var(--ttl) var(--ease-out) both;
 }
 
+.hud-finish.retired {
+  color: var(--red);
+}
+
 .hud-finish-place {
-  font-size: clamp(26px, 3.4vw, 46px);
-  letter-spacing: 0.3em;
+  margin-top: 8px;
+  padding: 2px 22px 3px;
+  font-size: clamp(22px, 3vw, 40px);
+  letter-spacing: 0.2em;
+  background: var(--yellow);
+  color: var(--on-yellow);
+  -webkit-text-stroke: 0;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.hud-finish.retired .hud-finish-place {
+  background: var(--red);
   color: #fff;
-  background: none;
-  -webkit-background-clip: border-box;
-  background-clip: border-box;
-  -webkit-text-fill-color: #fff;
-  filter: none;
-  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
-  margin-top: 4px;
 }
 
 @keyframes finish-in {
-  0% { opacity: 0; transform: scale(0.5) rotate(-6deg); }
-  12% { opacity: 1; transform: scale(1.05) rotate(1deg); }
+  0% { opacity: 0; transform: scale(0.5); }
+  12% { opacity: 1; transform: scale(1.05); }
   20% { transform: scale(1); }
   88% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-30px); }
 }
 
-/* Wrong way */
+/* Wrong way: a red warning plate that blinks between red and asphalt (never see-through). */
 .hud-wrongway {
+  --slant: 10px;
   position: absolute;
   left: 50%;
-  top: 26%;
+  top: 31%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 26px;
-  border-radius: 14px;
-  background: rgba(255, 77, 94, 0.18);
-  border: 2px solid rgba(255, 77, 94, 0.8);
+  gap: 12px;
+  padding: 8px 30px;
+  background: var(--red);
   color: #fff;
   font-family: var(--display);
-  font-size: clamp(26px, 3vw, 40px);
-  letter-spacing: 0.2em;
-  opacity: 0;
+  font-style: italic;
+  font-size: clamp(24px, 3vw, 40px);
+  letter-spacing: 0.16em;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
   visibility: hidden;
-  transition: opacity 0.2s;
 }
 
 .hud-wrongway.visible {
-  opacity: 1;
   visibility: visible;
-  animation: wrongway-pulse 0.7s ease-in-out infinite;
+  animation: wrongway-blink 0.7s steps(1, end) infinite;
+}
+
+/* A place change while the wrong-way plate is up drops below it instead of landing on it. */
+.hud:has(.hud-wrongway.visible) .hud-posflash {
+  top: 48%;
+}
+
+/* Crossing the line often changes the place too; the finish banner already says the place. */
+.hud-center:has(.hud-finish) .hud-posflash {
+  display: none;
 }
 
 .wrongway-arrow {
-  font-size: 1.3em;
-  color: var(--red);
-  animation: spin 1.6s linear infinite reverse;
-  display: inline-block;
+  display: inline-flex;
 }
 
-@keyframes wrongway-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 94, 0.5); background: rgba(255, 77, 94, 0.18); }
-  50% { box-shadow: 0 0 30px 6px rgba(255, 77, 94, 0.35); background: rgba(255, 77, 94, 0.32); }
+.wrongway-arrow .icon {
+  width: 1.1em;
+  height: 1.1em;
+  stroke-width: 3;
 }
 
-/* Vignettes */
+@keyframes wrongway-blink {
+  0%, 100% { background: var(--red); color: #fff; }
+  50% { background: var(--asphalt); color: var(--red); }
+}
+
+/* Hit feedback: a hard red frame around the screen (opacity driven from HUD.ts). */
 .hud-vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(70% 70% at 50% 50%, rgba(255, 30, 60, 0) 40%, rgba(255, 30, 60, 0.55) 100%);
+  border: clamp(8px, 1.4vw, 16px) solid var(--red);
   opacity: 0;
   pointer-events: none;
 }
 
+/* The boost glow overlay is gone: the speed lines and exhaust flames already say "boost". */
 .hud-boostglow {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(80% 80% at 50% 50%, rgba(255, 140, 40, 0) 55%, rgba(255, 140, 40, 0.28) 100%);
-  opacity: 0;
-  transition: opacity 0.25s;
-  pointer-events: none;
+  display: none;
 }
 
-.hud-boostglow.on {
-  opacity: 1;
-  animation: boost-flicker 0.25s ease-in-out infinite alternate;
-}
-
-@keyframes boost-flicker {
-  from { opacity: 0.75; }
-  to { opacity: 1; }
-}
-
-/* Mute indicator + toasts */
+/* Mute indicator */
 .mute-indicator {
   position: absolute;
-  top: 14px;
+  top: 12px;
   left: 50%;
   transform: translate(-50%, -20px);
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(16, 17, 38, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 14px;
+  border-radius: var(--radius);
+  background: var(--asphalt);
   font-family: var(--display);
+  font-style: italic;
   font-size: 13px;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   color: var(--ink-dim);
   opacity: 0;
   transition: opacity 0.2s, transform 0.25s var(--ease-out);
   pointer-events: none;
+  z-index: 60;
 }
 
 .mute-indicator.visible {
@@ -552,43 +612,33 @@
   transform: translate(-50%, 0);
 }
 
-.toast-host {
-  position: fixed;
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.toast {
-  padding: 10px 18px;
-  border-radius: 12px;
-  background: rgba(16, 17, 38, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
-  font-size: 13px;
-  color: var(--ink);
-  max-width: 70vw;
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.3s var(--ease-out), transform 0.3s var(--ease-out);
-}
-
-.toast-error {
-  border-color: rgba(255, 77, 94, 0.6);
-  box-shadow: 0 12px 30px rgba(255, 77, 94, 0.2);
-}
-
-.toast-in {
-  opacity: 1;
-  transform: none;
-}
-
-.toast-out {
-  opacity: 0;
-  transform: translateY(8px);
+/* Short windows and landscape phones */
+@media (max-height: 480px) {
+  .hud {
+    --hud-pad: 12px;
+    --place-h: 54px;
+    --map: 84px;
+  }
+  .hud-standing {
+    font-size: 11px;
+    padding: 1px 5px 1px 3px;
+  }
+  .hud-standings {
+    min-width: 118px;
+  }
+  .hud-lap-label {
+    font-size: 11px;
+  }
+  .hud-lap-value {
+    font-size: 24px;
+  }
+  .hud-timer {
+    font-size: 17px;
+  }
+  .hud-speed {
+    width: 96px;
+  }
+  .speed-value {
+    font-size: 30px;
+  }
 }

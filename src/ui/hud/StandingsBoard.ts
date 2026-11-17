@@ -2,6 +2,10 @@
  * Left-hand standings board: every racer by current place, the player highlighted, team colours
  * in team modes. Re-renders only when the order / finish flags change (numeric signature, no
  * per-frame allocations — the sort buffer is reused).
+ *
+ * The touch layout shows the top three plus the player (four rows). That is done in the
+ * stylesheet (14-layout-overrides: rows past the third are hidden unless they are `.you`), so the
+ * board itself always renders all eight and never has to know which layout it is in.
  */
 import type { IKart, RaceMode } from '../../core/types';
 import { sideColor, sideOf } from '../../core/teams';
@@ -22,7 +26,7 @@ export class StandingsBoard {
   private mode: RaceMode = 'solo';
 
   constructor(parent: HTMLElement) {
-    this.root = el('div', 'hud-standings glass', undefined, parent);
+    this.root = el('div', 'hud-standings', undefined, parent);
   }
 
   setMode(mode: RaceMode): void {

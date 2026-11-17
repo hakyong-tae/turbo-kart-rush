@@ -23,7 +23,7 @@ function hasWebGL2(): boolean {
 function showFatal(root: HTMLElement, title: string, body: string): void {
   root.replaceChildren();
   const wrap = el('div', 'fatal', undefined, root);
-  const panel = el('div', 'glass panel fatal-panel', undefined, wrap);
+  const panel = el('div', 'panel fatal-panel', undefined, wrap);
   el('div', 'panel-kicker', GAME_TITLE, panel);
   el('h2', 'panel-title', title, panel);
   el('p', 'fatal-body', body, panel);

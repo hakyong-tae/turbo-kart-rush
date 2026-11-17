@@ -1,33 +1,48 @@
 /* Design tokens, resets, canvas/#ui layers */
 /* =============================================================================
-   TURBO KART RUSH — UI stylesheet (workstream A)
-   Dark navy base, electric-blue → magenta → orange accents, glass panels,
-   condensed display type via system fonts only (no webfont downloads).
+   DRIFT DASH GP — UI stylesheet. Style: "circuit poster".
+   Black asphalt, one accent (race yellow), slanted plates, checker strips and
+   number plates. Opaque surfaces, no gradients, no blur, no glow.
+   Spec: docs/superpowers/specs/2026-11-17-ui-circuit-poster-design.md
    ============================================================================ */
 
 :root {
-  --bg: #0b0b1a;
-  --bg-2: #12122a;
-  --ink: #f4f6ff;
-  --ink-dim: rgba(244, 246, 255, 0.62);
-  --ink-faint: rgba(244, 246, 255, 0.34);
-  --blue: #37a8ff;
-  --magenta: #ff3ab8;
-  --orange: #ff7a2f;
+  /* Surfaces */
+  --asphalt: #15161a; /* screen ground, behind panels */
+  --panel: #26282f; /* panels, default buttons, cards */
+  --panel-hi: #32353e; /* hover, unselected tabs */
+  --line: #3d4049; /* dividers, empty stat blocks, empty slot borders */
+  /* Type */
+  --ink: #ffffff;
+  --ink-dim: #b9bdc7;
+  --ink-faint: #7c8190;
+  /* The one accent: primary action, selection, focus, progress. */
+  --yellow: #ffd400;
+  --on-yellow: #15161a;
+  /* Locks, warnings, retirement — nothing else. */
+  --red: #e8352b;
+  /* Places 1 / 2 / 3. */
   --gold: #ffd23f;
   --silver: #d7dce8;
   --bronze: #e08a4a;
-  --green: #5cff8a;
-  --red: #ff4d5e;
-  --accent-grad: linear-gradient(100deg, var(--blue) 0%, var(--magenta) 55%, var(--orange) 100%);
-  --glass-bg: rgba(16, 17, 38, 0.62);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', 'Arial Black', system-ui,
+  /* Friend or foe in the race HUD (decided 2026-09-09; unchanged). */
+  --ally: #6fa3ff;
+  --rival: #ff6b74;
+  /* Race HUD boxes only: asphalt at 88% so the road stays visible behind them. */
+  --hud-bg: rgba(21, 22, 26, 0.88);
+
+  /* Shape */
+  --slant: 14px; /* parallelogram lean; about 12° on a 66 px tall plate */
+  --radius: 2px;
+  /* Checker: one square is --sq; a strip is two rows, 2 x --sq tall (see .checker in 02-components). */
+  --sq: 4px;
+
+  /* Display face. Impact on desktops; phones have none, so Anton (a web font cut to the same
+     proportions) draws the Latin there. Hangul falls through both to Black Han Sans. The system
+     faces at the end are only reached offline. */
+  --display: 'Impact', 'Haettenschweiler', 'Anton', 'Black Han Sans', 'Arial Narrow Bold', 'Arial Black', system-ui,
     sans-serif;
   --body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --radius: 18px;
-  --radius-sm: 10px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -45,7 +60,7 @@ body {
   overflow: hidden;
   /* Panning is allowed (menus scroll); double-tap / pinch zoom is not. */
   touch-action: pan-x pan-y;
-  background: var(--bg);
+  background: var(--asphalt);
   color: var(--ink);
   font-family: var(--body);
   -webkit-font-smoothing: antialiased;
@@ -60,7 +75,7 @@ button {
 #app {
   position: fixed;
   inset: 0;
-  background: var(--bg);
+  background: var(--asphalt);
 }
 
 .game-canvas {

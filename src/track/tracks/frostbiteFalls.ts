@@ -41,6 +41,17 @@ export const frostbiteFalls: TrackDefinition = {
   itemBoxRows: [0.08, 0.36, 0.62, 0.9],
   boostPads: [0.22, 0.66, 0.935],
   voidRanges: [[0.315, 0.545]],
+  // Sheet ice through two sweepers where there are walls to catch a slide (never on the open causeway).
+  zones: [
+    { from: 0.12, to: 0.16, kind: 'ice' },
+    { from: 0.665, to: 0.725, kind: 'ice' },
+  ],
+  // Snowballs roll down the climb off the lake, against the traffic.
+  movers: [
+    // One keeps left, one keeps right, half a run apart: there is always a clear side.
+    { kind: 'roller', from: 0.635, to: 0.555, speed: 9, lateral: -3.2, sway: 1.2, radius: 1.6, look: 'snowball' },
+    { kind: 'roller', from: 0.635, to: 0.555, speed: 9, lateral: 3.2, sway: 1.2, radius: 1.6, look: 'snowball', phase: 0.5 },
+  ],
   environment: {
     skyTop: 0x1e3f7a,
     skyHorizon: 0x9ccbf0,

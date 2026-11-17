@@ -30,17 +30,26 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 
 | Change | File(s) |
 |---|---|
+| A colour, radius or slant (design tokens) | `styles/01-base.css` `:root` — style rules: `docs/superpowers/specs/2026-11-17-ui-circuit-poster-design.md` |
+| A shared UI part (panel, button, chip, segmented control, stat blocks, plate, checker, key cap, toast) | `styles/02-components.css` |
+| An icon | `ui/icons.ts` (`icon(name)` → inline SVG; never an emoji or arrow glyph in a string) |
+| The wordmark / the controls legend | `ui/logo.ts` / `ui/controlsLegend.ts` |
 | A tuning number (speed, drift, items, slipstream matrix, start charge, retire time) | `core/balance.ts` (`?b.path=` URL override for live tests) |
 | Slipstream rule / bonus | `kart/assists/slipstream.ts` (+ `BALANCE.slipstream`) |
 | Magnet tow behaviour | `kart/assists/magnet.ts` |
 | Kart handling, collisions, boosts, star | `kart/Kart.ts` |
 | A racer's body shape / pipes / wheels | `kart/bodies.ts` (one `KartBodySpec` per id) |
 | Stats / premium flag / names | `kart/roster.ts` |
+| Add a racer | `kart/roster.ts` (append: order = plate number), `kart/bodies.ts` (`KartBodySpec` + `KART_BODIES`), `core/locales/*` (`char.<id>.tagline`), root `server.js` (`CHARACTERS`, and `PREMIUM` if locked). `serverLists.test.ts` fails until the server list matches |
+| Add a circuit | `track/tracks/<name>.ts` + `track/tracks/index.ts`, a cup in `core/cups.ts`, `core/locales/*` (`track.<id>.desc`), root `server.js` (`TRACKS`). `tracks.test.ts` runs the validator on it; then `track-preview`, `track-soak` |
+| Put a gimmick on a circuit (ramp, gap, ice / mud / boost strip, roller, tram, set-back walls) | the circuit's definition: `ramps` / `zones` / `movers` / `wallHalfWidthFactors` (types and units in `core/types.ts`; limits in `track/tracks/validate.ts`) |
+| A new kind of gimmick | `track/features.ts` (numbers), `track/builders/features.ts` (meshes), `track/Track.ts` (`query`), `kart/Kart.ts` (what it does to a kart), `ai/AIDriver.ts` (what the AI does about it), `validate.ts` |
+| Gimmick feel (ice grip, mud drag, trick boost, respawn run-up) | `BALANCE.track` in `core/balance.ts` |
 | Add an item | `core/types.ts` (append to `ALL_ITEM_TYPES` — never reorder: net codes), `items/ItemManager.ts` (`requestUse` case), `items/itemVisuals.ts` (icon + mesh), `ai/AIDriver.ts` (`decideItemUse`), `audio/sfx.ts`, `core/locales/*`, `BALANCE.itemTable` |
 | Team rules / points table | `core/teams.ts` |
 | Race flow, retire rule, standings order | `game/RaceManager.ts` |
 | HUD widget (mirror, standings, tally, charge, draft) | `ui/hud/<Widget>.ts`; layout in `styles/12-hud-widgets.css` / `14-layout-overrides.css` |
-| HUD core (item slot, lap/timer, place, speedo, centre flashes) | `ui/HUD.ts`, `styles/07-hud.css` |
+| HUD core (standings + minimap column, item slot, lap/timer, place plate, speedo, centre flashes) | `ui/HUD.ts`, `styles/07-hud.css`; touch arrangement in `14-layout-overrides.css` |
 | Lobby / character / track select | `ui/MainMenu.ts`, `styles/04-menu.css`, `13-lobby-gate.css` |
 | Card thumbnails | `ui/kartThumbnails.ts`, `ui/trackThumbnails.ts` |
 | Results screen | `ui/ResultsScreen.ts`, `styles/06-pause-results.css` |
@@ -59,6 +68,9 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 - Particles: fixed pools, `take()` accumulators; never `new` inside emitters.
 - Geometry/material caches live in `itemVisuals.ts` and per-kart in `KartModel.ts` (`dispose()` frees).
 - Thumbnails are rendered once per session (`kartThumbnails.ts` / `trackThumbnails.ts`) and cached.
+- Shader warm-up: `Game.warmShaders()` calls `renderer.compile()` and the loading loop asks each frame whether the
+  programs are ready (`pollShaders`). Do not switch to three's `compileAsync`: its own timer outlives the race, and
+  disposing a race mid-compile then throws from inside three.
 
 ## 4. Verification tools
 
@@ -66,8 +78,12 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 |---|---|
 | `npm test` | vitest (physics with real Karts on `net/FakeTrack`, server.js harness, teams, model) |
 | `npm run typecheck && npm run build` | must stay clean; `grep -c '"@agent8/gameserver' dist/assets/*.js` → 0 |
-| `node tools/mobile-audit.mjs` | landscape phone screens + portrait gate → `marketing/.audit/` |
-| `node tools/kart-lineup.mjs` | all eight karts rendered from the real builder |
+| `node tools/mobile-audit.mjs [url] [--out dir] [--hud] [--phone-fonts] [--lang en]` | every screen at phone 844×390 (touch) and PC 1280×720, ko + en, + portrait gate → `marketing/.audit/` (`--hud`: race HUD on bright and dark circuits; `--phone-fonts`: without Impact, as a phone renders it — run this before judging the English UI) |
+| `node tools/kart-lineup.mjs` | every kart in the roster rendered from the real builder |
+| `node tools/track-preview.mjs [--track id]` | a circuit from above (PNG): walls, road, lap-position labels, void, ramps / gaps, zones, movers, item rows, pads → `marketing/.audit/preview/` |
+| `node tools/track-profile.mjs [--track id]` | the lap as text, every 2 %: straight / turn radius and height — for deciding where a ramp or a tram can go |
+| `node tools/track-soak.mjs [--track id\|all] [--difficulty hard] [--shots 0.31,0.52]` | a whole race with eight AI karts, fast: finishers, times, respawns, spins (and how many by movers), longest air. `--shots` instead puts the camera kart just before each lap position and takes a picture. Run it after touching a circuit, the kart physics or the AI |
+| `node tools/restart-during-load-check.mjs [url]` | a race disposed while its shaders are still compiling must be harmless (exit 0 = pass) |
 | `node tools/promo-capture.mjs` | store video + thumbnail |
 
 Headless Chrome needs `--use-gl=angle --use-angle=metal --ignore-gpu-blocklist` for WebGL2.

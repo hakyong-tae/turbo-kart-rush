@@ -16,7 +16,7 @@ export class TeamTally {
   private localKartId = 0;
 
   constructor(parent: HTMLElement) {
-    this.root = el('div', 'hud-team glass', undefined, parent);
+    this.root = el('div', 'hud-team', undefined, parent);
     this.ours = new TextField(el('span', 'hud-team-us', '', this.root));
     this.mid = new TextField(el('span', 'hud-team-mid', '', this.root));
     this.theirs = new TextField(el('span', 'hud-team-them', '', this.root));

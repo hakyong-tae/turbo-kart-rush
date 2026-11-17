@@ -99,7 +99,7 @@ export function createKartSave(): KartSave {
   return {
     state: {},
     numbers: new Float64Array(11),
-    flags: [false, false],
+    flags: [false, false, false, false],
     groundNormal: new THREE.Vector3(0, 1, 0),
     collisionCooldown: new Float32Array(32),
     slipstream: [0, null],
@@ -154,6 +154,10 @@ export class Kart implements IKart {
   private absCharge = 0;
   private hopTimer = 0;
   private prevDriftHeld = false;
+  /** Dropped well below the road while over a void (a gap, or off a cliff edge): keep falling. */
+  private fellBelow = false;
+  /** One trick per flight: set when it is thrown, cleared on landing. */
+  private trickThrown = false;
   private padCooldown = 0;
   private wallCooldown = 0;
   private readonly collisionCooldown = new Float32Array(32);
@@ -219,6 +223,7 @@ export class Kart implements IKart {
       magnetTargetId: -1,
       magnetTimer: 0,
       startCharge: 0,
+      trickTimer: 0,
       overdriveTimer: 0,
       lap: 0,
       checkpointIndex: 0,
@@ -329,7 +334,7 @@ export class Kart implements IKart {
 
     // Lateral grip.
     if (!s.isAirborne) {
-      const grip = s.surface === 'offroad' ? B.kart.lateralGripOffroad : B.kart.lateralGripRoad;
+      const grip = s.surface === 'offroad' ? B.kart.lateralGripOffroad : s.surface === 'ice' ? B.track.iceGrip : B.kart.lateralGripRoad;
       this.lateralVel = damp(this.lateralVel, 0, grip, dt);
     }
 
@@ -424,7 +429,9 @@ export class Kart implements IKart {
     if (this.netSmooth.lengthSq() < 1e-6) this.netSmooth.set(0, 0, 0);
     this.visSpinHop = spinHop;
     v.position.set(this.netSmooth.x, spinHop + this.netSmooth.y, this.netSmooth.z);
-    _euler.set(this.visPitch, this.visYawOffset + spinYaw, this.visRoll, 'YXZ');
+    // Trick: one full barrel roll over the trick's duration.
+    const trick = s.trickTimer !== undefined && s.trickTimer > 0 ? (1 - s.trickTimer / B.track.trickSeconds) * TAU : 0;
+    _euler.set(this.visPitch, this.visYawOffset + spinYaw, this.visRoll + trick, 'YXZ');
     v.quaternion.setFromEuler(_euler);
 
     // Driver: look into the turn, lean with steering and acceleration.
@@ -637,6 +644,8 @@ export class Kart implements IKart {
     n[10] = this.wallCooldown;
     out.flags[0] = this.hasGroundSample;
     out.flags[1] = this.prevDriftHeld;
+    out.flags[2] = this.fellBelow;
+    out.flags[3] = this.trickThrown;
     out.groundNormal.copy(this.groundNormal);
     out.collisionCooldown.set(this.collisionCooldown);
     out.slipstream = this.slipstream.save();
@@ -657,6 +666,8 @@ export class Kart implements IKart {
     this.frozenThrottleTime = n[8];
     this.hasGroundSample = src.flags[0];
     this.prevDriftHeld = src.flags[1];
+    this.fellBelow = src.flags[2] ?? false;
+    this.trickThrown = src.flags[3] ?? false;
     this.groundNormal.copy(src.groundNormal);
     this.collisionCooldown.set(src.collisionCooldown);
     this.padCooldown = n[9];
@@ -752,6 +763,9 @@ export class Kart implements IKart {
     s.isHopping = false;
     this.hopTimer = 0;
     this.prevDriftHeld = true;
+    this.fellBelow = false;
+    this.trickThrown = false;
+    s.trickTimer = 0;
     if (s.isDrifting) this.endDrift(false);
     s.isBoosting = false;
     s.boostTimer = 0;
@@ -784,6 +798,7 @@ export class Kart implements IKart {
     let v = this.baseTopSpeed();
     const protectedSpeed = s.isBoosting || s.isInvincible;
     if (s.surface === 'offroad' && !protectedSpeed) v *= B.status.offroadFactor;
+    else if (s.surface === 'mud' && !protectedSpeed) v *= B.track.mudFactor;
     if (s.isShrunk) v *= B.status.shrunkFactor;
     v *= this.slipstream.bonus(this.assistHost);
     // Star and boost both lift the ceiling, and the holder gets the better of the two rather than
@@ -854,6 +869,7 @@ export class Kart implements IKart {
       }
     }
     if (this.padCooldown > 0) this.padCooldown -= dt;
+    if (s.trickTimer !== undefined && s.trickTimer > 0) s.trickTimer = Math.max(0, s.trickTimer - dt);
     if (this.wallCooldown > 0) this.wallCooldown -= dt;
     const cc = this.collisionCooldown;
     for (let i = 0; i < cc.length; i++) if (cc[i] > 0) cc[i] -= dt;
@@ -900,7 +916,8 @@ export class Kart implements IKart {
       return;
     }
 
-    const maxAccel = B.kart.accelBase * (0.5 + s.character.stats.acceleration);
+    let maxAccel = B.kart.accelBase * (0.5 + s.character.stats.acceleration);
+    if (s.surface === 'mud') maxAccel *= B.track.mudAccel;
     const throttle = s.isBoosting ? 1 : inp.throttle;
     const brake = inp.brake;
 
@@ -951,6 +968,11 @@ export class Kart implements IKart {
 
     if (driftPressed && !s.isAirborne && Math.abs(s.speed) > 0.3 * base) {
       this.hop();
+    } else if (driftPressed && s.isAirborne && !s.isHopping && !this.trickThrown && !this.fellBelow && s.airTime >= B.track.trickMinAir) {
+      // Thrown off a ramp or a crest (a hop is not a jump): one trick per flight, paid on landing.
+      this.trickThrown = true;
+      s.trickTimer = B.track.trickSeconds;
+      events.emit('kart:trick', { kartId: s.id, landed: false });
     }
 
     if (!s.isDrifting && driftHeld && s.isHopping && this.hopTimer >= B.drift.hopDriftDelay) {
@@ -1045,6 +1067,7 @@ export class Kart implements IKart {
       if (s.isSquished) yawRate *= 0.6;
     }
     if (s.isAirborne) yawRate *= s.isHopping ? 0.45 : 0.15;
+    else if (s.surface === 'ice') yawRate *= B.track.iceSteer;
     s.heading = wrapAngle(s.heading - yawRate * dt);
   }
 
@@ -1053,14 +1076,23 @@ export class Kart implements IKart {
     const q = track.query(s.position, s.trackT, _query);
     s.trackT = q.t;
 
+    // A kart that has dropped well below the road while over a void keeps falling, even when its
+    // shadow reaches road again: otherwise the far lip of a gap would lift it back up from the pit.
+    if (q.surface === 'void') {
+      if (this.freeY < q.groundY - B.track.underRoadDrop) this.fellBelow = true;
+    } else if (this.fellBelow) {
+      q.surface = 'void';
+    }
+
     if (q.surface !== s.surface) {
       const from = s.surface;
       s.surface = q.surface;
       events.emit('kart:surfaceChange', { kartId: s.id, from, to: q.surface });
-      if (q.surface === 'boost' && this.padCooldown <= 0) {
-        this.padCooldown = 1.0;
-        this.applyBoost(0.45, 1.3, 'pad');
-      }
+    }
+    // Not only on entry: a long boost strip keeps feeding the boost for as long as the kart is on it.
+    if (q.surface === 'boost' && this.padCooldown <= 0 && !s.isAirborne) {
+      this.padCooldown = 1.0;
+      this.applyBoost(0.45, 1.3, 'pad');
     }
 
     const isVoid = q.surface === 'void';
@@ -1118,7 +1150,10 @@ export class Kart implements IKart {
         s.position.x += nx * pen;
         s.position.z += nz * pen;
         const vel = s.velocity;
-        const vIn = -(vel.x * nx + vel.z * nz);
+        // Closing speed, counting the obstacle's own motion: a boulder rolling into a parked kart
+        // still hits it.
+        const ov = o.velocity;
+        const vIn = -((vel.x - (ov ? ov.x : 0)) * nx + (vel.z - (ov ? ov.z : 0)) * nz);
         if (vIn > 0) {
           vel.x += nx * vIn * (1 + B.kart.wallRestitution);
           vel.z += nz * vIn * (1 + B.kart.wallRestitution);
@@ -1127,6 +1162,8 @@ export class Kart implements IKart {
             vel.z *= 0.55;
             this.wallCooldown = 0.3;
             events.emit('kart:collision', { kartId: s.id, otherId: null, impulse: vIn, position: s.position });
+            // Moving obstacles are hazards, not walls: being struck spins the kart (a star shrugs it off).
+            if (o.hit) this.applyHit('collision', -1);
           }
         }
       }
@@ -1200,6 +1237,14 @@ export class Kart implements IKart {
     }
     const driftHeld = !s.isSpinning && !s.isFrozen && this.input.drift;
     if (driftHeld && !s.isDrifting && (wasHopping || s.airTime < 0.6)) this.tryStartDrift();
+    if (this.trickThrown) {
+      this.trickThrown = false;
+      s.trickTimer = 0;
+      if (!s.isSpinning && !s.isFrozen) {
+        this.applyBoost(B.track.trickBoost, B.track.trickBoostSeconds, 'trick');
+        events.emit('kart:trick', { kartId: s.id, landed: true });
+      }
+    }
   }
 
   private resolveKarts(others: readonly IKart[]): void {

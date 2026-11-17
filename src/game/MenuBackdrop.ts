@@ -1,13 +1,13 @@
 /**
- * Live 3D backdrop behind the menus: a frozen kart slowly turning on a small
- * glossy podium under a gradient sky, floor fading into the sky with fog, thin
- * rotating light rings, drifting dust, and a slowly orbiting camera. The
- * framing mode decides where the kart sits on screen so the DOM menus can be
- * composed around it.
+ * Live 3D backdrop behind the menus: a frozen kart slowly turning on a low turntable that sits on
+ * a start grid — dark asphalt, yellow grid boxes, a white start line and a checker band — under a
+ * flat asphalt-coloured sky the floor fogs into. The camera orbits slowly. The framing mode
+ * decides where the kart sits on screen so the DOM menus can be composed around it.
+ *
+ * Deliberately plain: no bokeh, no stars, no glowing rings. The kart is the only thing lit.
  */
 import * as THREE from 'three';
 import type { CharacterDef, IKart } from '../core/types';
-import { LAYER_BLOOM } from '../core/constants';
 import { damp } from '../core/math';
 import { Kart } from '../kart/Kart';
 import type { KartCosmetics } from '../core/cosmetics';
@@ -45,82 +45,18 @@ const PORTRAIT_FRAMINGS: Record<MenuFraming, FramingSpec> = {
 const PORTRAIT_MIN_ASPECT = 0.45;
 
 const PODIUM_RADIUS = 1.55;
-const PODIUM_HEIGHT = 0.32;
-/** Height of the kart's visual centre above the podium top. */
+const PODIUM_HEIGHT = 0.14;
+/** Height of the kart's visual centre above the turntable top. */
 const KART_FOCUS_Y = 0.42;
 const ORBIT_SPEED = 0.11;
 const KART_SPIN = 0.22;
 const FRAMING_LAMBDA = 3.2;
-const FOG_COLOR = 0x1a1136;
-const DUST_COUNT = 420;
-const DUST_RADIUS = 7;
-const DUST_HEIGHT = 4.5;
-
-const SKY_VERT = /* glsl */ `
-varying vec3 vWorldPos;
-void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorldPos = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}`;
-
-const SKY_FRAG = /* glsl */ `
-uniform vec3 uTop;
-uniform vec3 uMid;
-uniform vec3 uGlow;
-uniform float uTime;
-varying vec3 vWorldPos;
-void main() {
-  vec3 d = normalize(vWorldPos);
-  float h = d.y;
-  // Above the horizon: horizon colour → zenith. Below: stay at the horizon colour so the
-  // fogged floor (same colour) meets it without a seam.
-  vec3 c = h > 0.0 ? mix(uMid, uTop, pow(h, 0.5)) : uMid;
-  // Soft glow hugging the horizon, slowly breathing.
-  float glow = exp(-abs(h) * 6.0) * (0.55 + 0.1 * sin(uTime * 0.35 + d.x * 2.0));
-  c += uGlow * glow;
-  // Faint aurora band.
-  float band = exp(-pow((h - 0.22 + 0.03 * sin(uTime * 0.25 + d.x * 3.0)) * 10.0, 2.0));
-  c += vec3(0.05, 0.03, 0.14) * band * (0.6 + 0.4 * sin(uTime * 0.4 + d.z * 4.0));
-  gl_FragColor = vec4(c, 1.0);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}`;
-
-const DUST_VERT = /* glsl */ `
-attribute float aSeed;
-uniform float uTime;
-uniform float uHeight;
-varying float vAlpha;
-void main() {
-  vec3 p = position;
-  float t = uTime * (0.08 + 0.06 * aSeed);
-  p.y = mod(p.y + t, uHeight);
-  p.x += sin(uTime * 0.3 + aSeed * 12.0) * 0.25;
-  p.z += cos(uTime * 0.27 + aSeed * 9.0) * 0.25;
-  // Fade in near the floor and out near the top.
-  float fade = smoothstep(0.0, 0.5, p.y) * (1.0 - smoothstep(uHeight - 1.2, uHeight, p.y));
-  vAlpha = fade * (0.35 + 0.65 * fract(aSeed * 7.31));
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_PointSize = (2.0 + 4.0 * fract(aSeed * 3.17)) * (220.0 / max(1.0, -mv.z));
-  gl_Position = projectionMatrix * mv;
-}`;
-
-const DUST_FRAG = /* glsl */ `
-varying float vAlpha;
-void main() {
-  vec2 uv = gl_PointCoord - 0.5;
-  float d = length(uv) * 2.0;
-  float a = smoothstep(1.0, 0.2, d) * vAlpha * 0.55;
-  gl_FragColor = vec4(vec3(0.75, 0.82, 1.0) * a, a);
-}`;
-
-interface Ring {
-  mesh: THREE.Object3D;
-  material: THREE.MeshBasicMaterial;
-  speed: number;
-  baseOpacity: number;
-}
+/** `--asphalt` in the stylesheet. Sky, fog and the far floor are all this one colour. */
+const ASPHALT = 0x15161a;
+const RACE_YELLOW = '#ffd400';
+/** Painted start grid: a strip of track this wide and long (metres), centred on the kart. */
+const GRID_WIDTH = 12;
+const GRID_LENGTH = 48;
 
 export class MenuBackdrop {
   readonly group = new THREE.Group();
@@ -128,12 +64,9 @@ export class MenuBackdrop {
   private kart: IKart | null = null;
   private currentId: string | null = null;
   private readonly kartHolder = new THREE.Group();
-  private readonly skyMaterial: THREE.ShaderMaterial;
-  private readonly dustMaterial: THREE.ShaderMaterial;
-  private readonly rings: Ring[] = [];
   private readonly disposables: { dispose(): void }[] = [];
-  private readonly fog = new THREE.FogExp2(FOG_COLOR, 0.03);
-  private readonly background = new THREE.Color(FOG_COLOR);
+  private readonly fog = new THREE.FogExp2(ASPHALT, 0.03);
+  private readonly background = new THREE.Color(ASPHALT);
   private envTexture: THREE.Texture | null = null;
 
   private framing: MenuFraming = 'title';
@@ -154,73 +87,42 @@ export class MenuBackdrop {
   constructor() {
     this.group.name = 'MenuBackdrop';
 
-    // Sky dome ----------------------------------------------------------------
-    const skyGeo = new THREE.SphereGeometry(220, 32, 16);
-    this.skyMaterial = new THREE.ShaderMaterial({
-      vertexShader: SKY_VERT,
-      fragmentShader: SKY_FRAG,
-      side: THREE.BackSide,
-      depthWrite: false,
-      fog: false,
-      uniforms: {
-        uTop: { value: new THREE.Color(0x05040f) },
-        uMid: { value: new THREE.Color(FOG_COLOR) },
-        uGlow: { value: new THREE.Color(0x2a1550) },
-        uTime: { value: 0 },
-      },
-    });
-    const sky = new THREE.Mesh(skyGeo, this.skyMaterial);
-    sky.frustumCulled = false;
-    this.group.add(sky);
-    this.disposables.push(skyGeo, this.skyMaterial);
-
-    // Star field ----------------------------------------------------------------
-    const starCount = 420;
-    const starPos = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(1 - Math.random() * 0.75);
-      const r = 190;
-      starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      starPos[i * 3 + 1] = r * Math.cos(phi) + 12;
-      starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-    }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-    const starMat = new THREE.PointsMaterial({
-      color: 0xdfe6ff,
-      size: 1.4,
-      sizeAttenuation: false,
-      transparent: true,
-      opacity: 0.6,
-      depthWrite: false,
-      fog: false,
-    });
-    const stars = new THREE.Points(starGeo, starMat);
-    stars.frustumCulled = false;
-    this.group.add(stars);
-    this.disposables.push(starGeo, starMat);
-
-    // Floor: dark, glossy, fades into the sky colour through the fog -------------
+    // Floor: matte asphalt that fogs into the flat sky colour -----------------------
     const floorGeo = new THREE.CircleGeometry(140, 72);
-    const gridTex = this.makeGridTexture();
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.3,
-      metalness: 0.75,
-      map: gridTex,
-      envMapIntensity: 1.2,
-    });
+    const asphaltTex = this.makeAsphaltTexture();
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x5c5f66, roughness: 0.94, metalness: 0, map: asphaltTex, envMapIntensity: 0.2 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.005;
     floor.receiveShadow = true;
     this.group.add(floor);
-    this.disposables.push(floorGeo, floorMat, gridTex);
+    this.disposables.push(floorGeo, floorMat, asphaltTex);
 
-    // Podium ----------------------------------------------------------------------
-    const podiumMat = new THREE.MeshStandardMaterial({ color: 0x15142c, metalness: 0.8, roughness: 0.22, envMapIntensity: 1.4 });
-    const podiumGeo = new THREE.CylinderGeometry(PODIUM_RADIUS, PODIUM_RADIUS + 0.12, PODIUM_HEIGHT, 72);
+    // Start grid painted on the asphalt: yellow boxes, white start line, checker band ---
+    const gridGeo = new THREE.PlaneGeometry(GRID_WIDTH, GRID_LENGTH);
+    const gridTex = this.makeStartGridTexture();
+    const gridMat = new THREE.MeshStandardMaterial({
+      color: 0x8e9198,
+      map: gridTex,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.85,
+      metalness: 0,
+      envMapIntensity: 0.25,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const grid = new THREE.Mesh(gridGeo, gridMat);
+    grid.rotation.x = -Math.PI / 2;
+    grid.position.y = 0.002;
+    grid.receiveShadow = true;
+    this.group.add(grid);
+    this.disposables.push(gridGeo, gridMat, gridTex);
+
+    // Turntable: a low matte disc, just enough to lift the kart off the paint ----------
+    const podiumMat = new THREE.MeshStandardMaterial({ color: 0x17181c, metalness: 0.1, roughness: 0.8, envMapIntensity: 0.3 });
+    const podiumGeo = new THREE.CylinderGeometry(PODIUM_RADIUS, PODIUM_RADIUS + 0.06, PODIUM_HEIGHT, 72);
     const podium = new THREE.Mesh(podiumGeo, podiumMat);
     podium.position.y = PODIUM_HEIGHT / 2;
     podium.castShadow = true;
@@ -228,48 +130,8 @@ export class MenuBackdrop {
     this.group.add(podium);
     this.disposables.push(podiumGeo, podiumMat);
 
-    const stepGeo = new THREE.CylinderGeometry(PODIUM_RADIUS + 0.75, PODIUM_RADIUS + 0.85, 0.1, 72);
-    const step = new THREE.Mesh(stepGeo, podiumMat);
-    step.position.y = 0.05;
-    step.receiveShadow = true;
-    this.group.add(step);
-    this.disposables.push(stepGeo);
-
-    // Thin light rings (slightly over 1.0 so bloom just kisses them) ---------------
-    this.addRing(PODIUM_RADIUS + 0.03, PODIUM_HEIGHT + 0.01, 0.016, new THREE.Color(0.45, 1.05, 1.45), 1, 0, 0.95);
-    this.addRing(PODIUM_RADIUS + 0.86, 0.105, 0.014, new THREE.Color(1.3, 0.4, 1.0), 3, 0.22, 0.85);
-    this.addRing(PODIUM_RADIUS + 1.9, 0.012, 0.012, new THREE.Color(0.35, 0.65, 1.3), 2, -0.14, 0.6);
-
-    // Dust motes -------------------------------------------------------------------
-    const dustPos = new Float32Array(DUST_COUNT * 3);
-    const dustSeed = new Float32Array(DUST_COUNT);
-    for (let i = 0; i < DUST_COUNT; i++) {
-      const r = Math.sqrt(Math.random()) * DUST_RADIUS;
-      const a = Math.random() * Math.PI * 2;
-      dustPos[i * 3] = Math.cos(a) * r;
-      dustPos[i * 3 + 1] = Math.random() * DUST_HEIGHT;
-      dustPos[i * 3 + 2] = Math.sin(a) * r;
-      dustSeed[i] = Math.random();
-    }
-    const dustGeo = new THREE.BufferGeometry();
-    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-    dustGeo.setAttribute('aSeed', new THREE.BufferAttribute(dustSeed, 1));
-    this.dustMaterial = new THREE.ShaderMaterial({
-      vertexShader: DUST_VERT,
-      fragmentShader: DUST_FRAG,
-      uniforms: { uTime: { value: 0 }, uHeight: { value: DUST_HEIGHT } },
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      fog: false,
-    });
-    const dust = new THREE.Points(dustGeo, this.dustMaterial);
-    dust.frustumCulled = false;
-    this.group.add(dust);
-    this.disposables.push(dustGeo, this.dustMaterial);
-
     // Lights -----------------------------------------------------------------------
-    const key = new THREE.DirectionalLight(0xfff0dc, 2.6);
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(3.2, 6.5, 4.2);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -283,16 +145,18 @@ export class MenuBackdrop {
     key.shadow.normalBias = 0.02;
     this.group.add(key, key.target);
 
-    const top = new THREE.SpotLight(0xffffff, 60, 0, 0.55, 0.7, 2);
+    const top = new THREE.SpotLight(0xffffff, 9, 0, 0.55, 0.7, 2);
     top.position.set(0, 6.5, 0.5);
     top.target.position.set(0, PODIUM_HEIGHT, 0);
     this.group.add(top, top.target);
 
-    const hemi = new THREE.HemisphereLight(0x3d48a8, 0x0b0716, 0.55);
+    // White key + a weak yellow fill. Same five lights as before (the count is what the kart's
+    // shaders were compiled against), only their colours changed.
+    const hemi = new THREE.HemisphereLight(0x8a8f9c, 0x101114, 0.55);
     this.group.add(hemi);
-    const rimA = new THREE.PointLight(0x37a8ff, 38, 22, 2);
+    const rimA = new THREE.PointLight(0xffffff, 10, 22, 2);
     rimA.position.set(-4.2, 1.9, -3.2);
-    const rimB = new THREE.PointLight(0xff3ab8, 38, 22, 2);
+    const rimB = new THREE.PointLight(0xffe9a0, 10, 22, 2);
     rimB.position.set(4.2, 1.5, -3.2);
     this.group.add(rimA, rimB);
 
@@ -356,15 +220,6 @@ export class MenuBackdrop {
     this.time += dt;
     this.angle += dt * ORBIT_SPEED;
     this.kartHolder.rotation.y += dt * KART_SPIN;
-    this.skyMaterial.uniforms.uTime.value = this.time;
-    this.dustMaterial.uniforms.uTime.value = this.time;
-
-    const pulse = 0.9 + 0.1 * Math.sin(this.time * 1.7);
-    for (let i = 0; i < this.rings.length; i++) {
-      const r = this.rings[i];
-      r.mesh.rotation.z += dt * r.speed;
-      r.material.opacity = r.baseOpacity * pulse;
-    }
 
     if (this.kart) {
       this.kart.updateVisuals(dt);
@@ -410,7 +265,6 @@ export class MenuBackdrop {
     this.disposeKart();
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
-    this.rings.length = 0;
     if (this.envTexture) {
       this.envTexture.dispose();
       this.envTexture = null;
@@ -437,65 +291,32 @@ export class MenuBackdrop {
   }
 
   /**
-   * Thin glowing ring made of `segments` evenly spaced arcs (1 = full circle),
-   * spinning at `speed` rad/s.
+   * Small PMREM environment (flat dark sky + three soft light cards) for the kart's paint.
+   * The cards are grey, not white: white ones put highlights on the chrome hot enough to bloom.
    */
-  private addRing(
-    radius: number,
-    y: number,
-    tube: number,
-    color: THREE.Color,
-    segments: number,
-    speed: number,
-    opacity: number,
-  ): void {
-    const mat = new THREE.MeshBasicMaterial({ color, toneMapped: false, transparent: true, opacity, fog: false });
-    const holder = new THREE.Group();
-    holder.rotation.x = Math.PI / 2;
-    holder.position.y = y;
-    const arc = segments === 1 ? Math.PI * 2 : (Math.PI * 2 * 0.62) / segments;
-    for (let i = 0; i < segments; i++) {
-      const geo = new THREE.TorusGeometry(radius, tube, 8, Math.max(24, Math.round(96 * (arc / (Math.PI * 2)))), arc);
-      const seg = new THREE.Mesh(geo, mat);
-      seg.rotation.z = (i / segments) * Math.PI * 2;
-      seg.layers.enable(LAYER_BLOOM);
-      holder.add(seg);
-      this.disposables.push(geo);
-    }
-    this.disposables.push(mat);
-    this.group.add(holder);
-    this.rings.push({ mesh: holder, material: mat, speed, baseOpacity: opacity });
-  }
-
-  /** Small PMREM environment (gradient sky + two soft light cards) for glossy reflections. */
   private buildEnvironment(renderer: THREE.WebGLRenderer): void {
     let pmrem: THREE.PMREMGenerator | null = null;
     try {
       pmrem = new THREE.PMREMGenerator(renderer);
       const envScene = new THREE.Scene();
-      const skyMat = this.skyMaterial.clone();
-      skyMat.uniforms.uTime = { value: 0 };
-      const sky = new THREE.Mesh(new THREE.SphereGeometry(100, 24, 12), skyMat);
-      envScene.add(sky);
+      envScene.background = new THREE.Color(ASPHALT);
       const cardMat = (c: number) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide, fog: false });
       const cardGeo = new THREE.PlaneGeometry(12, 5);
-      const cardA = new THREE.Mesh(cardGeo, cardMat(0x9ad8ff));
+      const cardA = new THREE.Mesh(cardGeo, cardMat(0x8f9299));
       cardA.position.set(-6, 9, 4);
       cardA.lookAt(0, 0, 0);
-      const cardB = new THREE.Mesh(cardGeo, cardMat(0xff8fd8));
+      const cardB = new THREE.Mesh(cardGeo, cardMat(0x9c8f62));
       cardB.position.set(7, 7, -3);
       cardB.lookAt(0, 0, 0);
-      const cardC = new THREE.Mesh(cardGeo, cardMat(0xffffff));
+      const cardC = new THREE.Mesh(cardGeo, cardMat(0xa4a7ae));
       cardC.position.set(0, 12, 0);
       cardC.lookAt(0, 0, 0);
       envScene.add(cardA, cardB, cardC);
-      const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 24), new THREE.MeshBasicMaterial({ color: 0x08071a, fog: false }));
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 24), new THREE.MeshBasicMaterial({ color: 0x0e0f12, fog: false }));
       floor.rotation.x = -Math.PI / 2;
       envScene.add(floor);
       const rt = pmrem.fromScene(envScene, 0.04, 0.5, 300);
       this.envTexture = rt.texture;
-      sky.geometry.dispose();
-      skyMat.dispose();
       cardGeo.dispose();
       (cardA.material as THREE.Material).dispose();
       (cardB.material as THREE.Material).dispose();
@@ -510,29 +331,91 @@ export class MenuBackdrop {
     }
   }
 
-  private makeGridTexture(): THREE.Texture {
+  /** Tiling asphalt: a dark base with fine aggregate speckle. */
+  private makeAsphaltTexture(): THREE.Texture {
     const size = 256;
     const c = document.createElement('canvas');
     c.width = size;
     c.height = size;
     const ctx = c.getContext('2d');
     if (ctx) {
-      ctx.fillStyle = '#0b0a19';
+      ctx.fillStyle = '#2b2d33';
       ctx.fillRect(0, 0, size, size);
-      ctx.strokeStyle = 'rgba(90, 100, 220, 0.55)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, 1);
-      ctx.lineTo(size, 1);
-      ctx.moveTo(1, 0);
-      ctx.lineTo(1, size);
-      ctx.stroke();
+      // Deterministic speckle so the floor looks the same on every visit.
+      let seed = 1337;
+      const rnd = (): number => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      for (let i = 0; i < 5200; i++) {
+        const v = rnd();
+        const shade = v < 0.5 ? 30 + Math.floor(v * 30) : 52 + Math.floor(v * 34);
+        ctx.fillStyle = `rgb(${shade},${shade},${shade + 3})`;
+        const r = 0.6 + rnd() * 1.1;
+        ctx.fillRect(rnd() * size, rnd() * size, r, r);
+      }
     }
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(70, 70);
+    tex.repeat.set(90, 90);
     tex.anisotropy = 4;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  /**
+   * The paint on the asphalt, on a transparent canvas: white lane edges, a white start line with
+   * a checker band ahead of it, the kart's own yellow grid box, and staggered boxes behind it.
+   * Canvas x spans GRID_WIDTH, canvas y spans GRID_LENGTH; the kart stands at the centre.
+   */
+  private makeStartGridTexture(): THREE.Texture {
+    const w = 512;
+    const h = 2048;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      const px = w / GRID_WIDTH; // pixels per metre (same on both axes)
+      const X = (m: number): number => w / 2 + m * px;
+      const Y = (m: number): number => h / 2 + m * px;
+      const rect = (x0: number, y0: number, x1: number, y1: number): void => {
+        ctx.fillRect(X(x0), Y(y0), (x1 - x0) * px, (y1 - y0) * px);
+      };
+      const lane = 4.6; // half width of the painted lane
+      const line = 0.15;
+
+      // Lane edges.
+      ctx.fillStyle = '#e9ebef';
+      rect(-lane - line, -GRID_LENGTH / 2, -lane, GRID_LENGTH / 2);
+      rect(lane, -GRID_LENGTH / 2, lane + line, GRID_LENGTH / 2);
+
+      // Checker band, then the start line, ahead of the kart (negative y).
+      const sq = 0.46;
+      const cols = Math.round((lane * 2) / sq);
+      const cw = (lane * 2) / cols;
+      for (let row = 0; row < 2; row++) {
+        for (let i = 0; i < cols; i++) {
+          ctx.fillStyle = (i + row) % 2 === 0 ? '#f4f5f7' : '#101114';
+          rect(-lane + i * cw, -4.4 + row * sq, -lane + (i + 1) * cw, -4.4 + (row + 1) * sq);
+        }
+      }
+      ctx.fillStyle = '#f4f5f7';
+      rect(-lane, -3.3, lane, -2.95);
+
+      // Grid boxes: a bar across the front and two short sides, open at the back.
+      ctx.fillStyle = RACE_YELLOW;
+      const box = (cx: number, front: number, half: number, depth: number): void => {
+        rect(cx - half, front, cx + half, front + line);
+        rect(cx - half, front, cx - half + line, front + depth);
+        rect(cx + half - line, front, cx + half, front + depth);
+      };
+      box(0, -2.2, 1.95, 1.5); // the kart's own box, around the turntable
+      for (let k = 0; k < 7; k++) box(k % 2 === 0 ? -2.35 : 2.35, 3.2 + k * 2.7, 1.6, 1.2);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 8;
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }

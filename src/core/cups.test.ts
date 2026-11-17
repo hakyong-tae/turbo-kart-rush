@@ -30,10 +30,22 @@ describe('cup definitions', () => {
     for (const cup of CUPS) for (const id of cup.trackIds) expect(ids.has(id), `${cup.id}: ${id}`).toBe(true);
   });
 
-  it('the championship runs every track and each cup has at least three', () => {
-    const champ = CUPS.find((c) => c.id === 'championship');
-    expect(champ?.trackIds.length).toBe(TRACKS.length);
-    for (const cup of CUPS) expect(cup.trackIds.length, cup.id).toBeGreaterThanOrEqual(3);
+  it('every track is raced in some cup, and each cup has at least three', () => {
+    const raced = new Set(CUPS.flatMap((c) => c.trackIds));
+    for (const t of TRACKS) expect(raced.has(t.id), t.id).toBe(true);
+    for (const cup of CUPS) {
+      expect(cup.trackIds.length, cup.id).toBeGreaterThanOrEqual(3);
+      expect(new Set(cup.trackIds).size, cup.id).toBe(cup.trackIds.length);
+    }
+  });
+
+  it('a cup only waits on a cup that exists and is listed before it', () => {
+    CUPS.forEach((cup, i) => {
+      if (!cup.requires) return;
+      const at = CUPS.findIndex((c) => c.id === cup.requires);
+      expect(at, cup.id).toBeGreaterThanOrEqual(0);
+      expect(at, cup.id).toBeLessThan(i);
+    });
   });
 });
 
@@ -46,6 +58,10 @@ describe('unlocking', () => {
     expect(isCupUnlocked('pro', { rookie: 3 })).toBe(true);
     expect(isCupUnlocked('championship', { rookie: 1 })).toBe(false);
     expect(isCupUnlocked('championship', { rookie: 1, pro: 2 })).toBe(true);
+    expect(isCupUnlocked('stunt', none)).toBe(false);
+    expect(isCupUnlocked('stunt', { rookie: 3 })).toBe(true);
+    expect(isCupUnlocked('extreme', { rookie: 1, stunt: 1 })).toBe(false);
+    expect(isCupUnlocked('extreme', { rookie: 1, pro: 3 })).toBe(true);
   });
 
   it('keeps the best placing and never regresses', () => {

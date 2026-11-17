@@ -56,6 +56,7 @@ import { LoadingScreen } from '../ui/LoadingScreen';
 import { TouchControls } from '../ui/TouchControls';
 import { t } from '../core/i18n';
 import { el } from '../ui/dom';
+import { icon } from '../ui/icons';
 import { showToast } from '../ui/toast';
 import { createEmptyInput } from '../core/types';
 import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
@@ -184,6 +185,7 @@ export class Game {
   private pauseMenu: PauseMenu;
   private loading: LoadingScreen;
   private readonly muteIndicator: HTMLElement;
+  private readonly muteLabel: HTMLElement;
 
   private state: GameState = 'boot';
   private prePauseState: GameState = 'racing';
@@ -193,6 +195,10 @@ export class Game {
   private loadingFrames = 0;
   private loadingProgress = 0;
   private shadersReady = false;
+  /** Materials of the race being loaded whose programs are still compiling; null when none. */
+  private compiling: Set<THREE.Material> | null = null;
+  /** One of each item mesh, parked in the scene so the warm-up compile sees them. */
+  private warmGroup: THREE.Group | null = null;
 
   private rafId = 0;
   private lastTime = -1;
@@ -284,7 +290,9 @@ export class Game {
     this.garage = this.buildGarage();
     this.daily = this.buildDaily();
     this.onlinePanel = this.buildOnlinePanel();
-    this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
+    this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
+    this.muteIndicator.appendChild(icon('mute'));
+    this.muteLabel = el('span', '', t('mute'), this.muteIndicator);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
     // Phones must play in landscape (src/game/OrientationGate.ts).
@@ -787,7 +795,7 @@ export class Game {
     // Keep the mute indicator / touch layer above the rebuilt overlays.
     this.uiRoot.appendChild(this.muteIndicator);
     this.uiRoot.appendChild(this.touch.rootElement);
-    this.muteIndicator.textContent = t('mute');
+    this.muteLabel.textContent = t('mute');
     if (wasMenu) this.mainMenu.show(panel);
   }
 
@@ -894,6 +902,7 @@ export class Game {
       }
       this.warmShaders();
     }
+    this.pollShaders();
 
     // Fake progress creeps toward 90% while shaders compile off-thread, then snaps to 100%.
     const ready = this.race !== null && (this.shadersReady || this.loadingElapsed > MAX_COMPILE_WAIT_SECONDS);
@@ -908,16 +917,20 @@ export class Game {
         const hs = this.online?.hostSession;
         const hostWaiting =
           this.race.online?.role === 'host' && hs !== undefined && hs !== null && !hs.allLoaded && this.loadingElapsed < MIN_LOADING_SECONDS + 10;
-        if (!hostWaiting) this.enterCountdown();
+        if (!hostWaiting) {
+          // Leaving on the timeout rather than on a finished compile: stop waiting all the same.
+          this.endWarm();
+          this.enterCountdown();
+        }
       }
     }
   }
 
   /** Kick off parallel shader compilation for the freshly built race scene. */
   private warmShaders(): void {
-    const r = this.race;
+    this.endWarm();
     this.shadersReady = false;
-    if (!r) return;
+    if (!this.race) return;
     // Items appear mid-race (shells, bananas, bombs…), so their materials used to compile on first use:
     // the one or two hitches QA saw only in the first race of a session. Put one of each in the scene,
     // hidden behind the camera, for the compile pass, and draw every HUD item icon once.
@@ -930,31 +943,52 @@ export class Game {
       warm.add(mesh);
     }
     this.scene.add(warm);
-    const dropWarm = (): void => { this.scene.remove(warm); };
-    const renderer = this.renderer as { compileAsync?: (s: THREE.Object3D, c: THREE.Camera) => Promise<unknown> };
-    if (typeof renderer.compileAsync !== 'function') {
-      this.renderer.compile(this.scene, this.camera);
-      dropWarm();
-      this.shadersReady = true;
-      return;
-    }
-    let promise: Promise<unknown>;
+    this.warmGroup = warm;
     try {
-      promise = renderer.compileAsync.call(this.renderer, this.scene, this.camera);
+      // The synchronous half only: every program is created and starts compiling off-thread.
+      // Whether they have finished is asked from the loading loop (pollShaders), not by three's
+      // compileAsync — see there for why.
+      this.compiling = this.renderer.compile(this.scene, this.camera);
     } catch (err) {
-      console.warn('[Game] compileAsync threw; falling back to synchronous compile', err);
-      dropWarm();
+      console.warn('[Game] shader warm-up failed; programs will compile on first use', err);
+      this.endWarm();
       this.shadersReady = true;
-      return;
     }
-    const done = (): void => {
-      dropWarm();
-      if (this.race === r) this.shadersReady = true;
-    };
-    promise.then(done, (err: unknown) => {
-      console.warn('[Game] compileAsync failed; falling back to synchronous compile', err);
-      done();
-    });
+  }
+
+  /**
+   * Has every program of the race being loaded finished compiling? Called each loading frame.
+   *
+   * This wait used to be three's `compileAsync`, which asks the same question on a timer of its
+   * own — and goes on asking after the race it was started for is gone. Disposing that race
+   * before the compile settled (a second start arriving, the host leaving an online room while
+   * everyone loads) left the timer reading the program of a disposed material: an uncaught
+   * "reading 'isReady'" error, a promise that never resolved, and the warm-up item meshes left in
+   * the scene for good. Asking from here ties the wait to the race: `disposeRace` drops it.
+   */
+  private pollShaders(): void {
+    const pending = this.compiling;
+    if (!pending) return;
+    const properties = this.renderer.properties;
+    for (const material of pending) {
+      const program = properties.has(material)
+        ? (properties.get(material) as { currentProgram?: { isReady?: () => boolean } }).currentProgram
+        : undefined;
+      // No program means the material was disposed meanwhile: nothing left to wait for.
+      if (!program || typeof program.isReady !== 'function' || program.isReady()) pending.delete(material);
+    }
+    if (pending.size > 0) return;
+    this.endWarm();
+    this.shadersReady = true;
+  }
+
+  /** Stop waiting on the warm-up compile and take the warm-up meshes back out of the scene. */
+  private endWarm(): void {
+    this.compiling = null;
+    if (this.warmGroup) {
+      this.scene.remove(this.warmGroup);
+      this.warmGroup = null;
+    }
   }
 
   private simulate(dt: number, input: InputState): void {
@@ -975,6 +1009,10 @@ export class Game {
   private step(dt: number, r: RaceContext, input: InputState, useItem: boolean): void {
     const { track, karts, items } = r;
     const player = karts[r.localKartId];
+
+    // Moving obstacles sit where the race clock says: the host's clock on a client, so every
+    // machine sees the same boulder in the same place without it being sent.
+    track.setRaceTime?.(r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime);
 
     // Player input (or auto-drive after finishing).
     if (r.playerAutoDriver) {
@@ -1180,8 +1218,8 @@ export class Game {
     this.loadingFrames = 0;
     this.loadingProgress = 0;
     this.shadersReady = false;
-    this.loading.show(trackDef);
-    this.scene.background = new THREE.Color(0x0b0b1a);
+    this.loading.show(trackDef, this.touch.isEnabled);
+    this.scene.background = new THREE.Color(0x15161a);
     this.scene.fog = null;
     this.setState('loading');
   }
@@ -1528,6 +1566,8 @@ export class Game {
   }
 
   private disposeRace(): void {
+    // Before anything is freed: nothing may go on waiting for this race's shaders.
+    this.endWarm();
     const r = this.race;
     if (!r) return;
     this.race = null;

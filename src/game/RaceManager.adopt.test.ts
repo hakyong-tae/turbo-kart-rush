@@ -6,12 +6,13 @@ import { CHARACTERS } from '../kart/roster';
 import { Kart } from '../kart/Kart';
 import { FakeTrack } from '../net/FakeTrack';
 import { RaceManager } from './RaceManager';
+import { KART_COUNT } from '../core/constants';
 
 describe('RaceManager.adoptFromKarts', () => {
   it('continues a mirrored race: keeps laps/finishes, unfreezes, and can still finish the race', () => {
     events.clear();
     const track = new FakeTrack();
-    const karts = CHARACTERS.map((c, id) => new Kart(id, c, id === 1));
+    const karts = CHARACTERS.slice(0, KART_COUNT).map((c, id) => new Kart(id, c, id === 1));
     const rm = new RaceManager(track, karts, { characterId: 'pixel', trackId: 'sunny_circuit', difficulty: 'normal', laps: 3 });
     // Mirror-like state written by snapshots: kart 0 finished 1st, kart 1 (us) on lap 3 near the line, others lap 2.
     karts[0].state.finished = true;
@@ -49,7 +50,7 @@ describe('RaceManager.adoptFromKarts', () => {
   it('countdown adoption restarts the local 3-2-1 sequence', () => {
     events.clear();
     const track = new FakeTrack();
-    const karts = CHARACTERS.map((c, id) => new Kart(id, c, id === 0));
+    const karts = CHARACTERS.slice(0, KART_COUNT).map((c, id) => new Kart(id, c, id === 0));
     const rm = new RaceManager(track, karts, { characterId: 'zippy', trackId: 'sunny_circuit', difficulty: 'easy', laps: 3 });
     rm.adoptFromKarts(0, 'countdown');
     expect(rm.currentPhase).toBe('countdown');

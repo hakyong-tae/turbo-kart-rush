@@ -8,8 +8,7 @@ function show(): void {
   el.setAttribute('aria-hidden', 'true');
   Object.assign(el.style, {
     position: 'fixed', right: '6px', bottom: '6px', zIndex: '2147483000', pointerEvents: 'none',
-    font: '11px/1 system-ui, -apple-system, sans-serif', color: 'rgba(255,255,255,0.85)',
-    background: 'rgba(8,10,20,0.7)', padding: '4px 7px 3px', borderRadius: '6px', transition: 'opacity 0.6s',
+    font: '11px/1 system-ui, -apple-system, sans-serif', color: '#7c8190', letterSpacing: '0.04em', transition: 'opacity 0.6s',
   });
   document.body.appendChild(el);
   // Stays until the player first touches or presses a key in the game (a timer hid it before anyone looked:

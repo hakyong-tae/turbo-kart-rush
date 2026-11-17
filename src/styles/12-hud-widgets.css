@@ -1,37 +1,51 @@
-/* HUD widgets: rear mirror PiP, slipstream meter, start charge, team tally/results */
-/* Rear-view mirror — appearance only; the PiP block further down owns where it sits.
-   Frame and image only: no label, no icon. What the frame says, it says in colour. */
+/* HUD widgets: rear mirror PiP, slipstream meter, start charge gauge, team tally.
+   Colours are tokens; friend-or-foe keeps its own two (ally blue / rival red). */
+
+/* Rear-view mirror: picture-in-picture, bottom-left, above the place plate.
+   Frame and image only: no label, no icon. What the frame says, it says in colour.
+   The view box is transparent: the game draws the rear camera into that rectangle. */
 .hud-mirror {
   display: none;
-  border-radius: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
+  position: absolute;
+  left: var(--hud-pad);
+  bottom: calc(var(--hud-pad) + var(--place-h) + 10px);
+  width: clamp(170px, 21vw, 300px);
+  border: 3px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: rgba(21, 22, 26, 0.35);
+  /* The left thumb stick lives in this corner; the mirror must never swallow a touch. */
+  pointer-events: none;
 }
 .hud-mirror.visible {
   display: flex;
 }
+.hud-mirror-view {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: transparent;
+}
+/* A kart closing in: yellow, steady. Right behind: yellow, pulsing. */
 .hud-mirror.warn {
-  border-color: rgba(255, 210, 63, 0.7);
-  box-shadow: 0 0 14px rgba(255, 210, 63, 0.35);
+  border-color: var(--yellow);
 }
 .hud-mirror.warn-near {
-  border-color: #ffd23f;
-  box-shadow: 0 0 20px rgba(255, 210, 63, 0.6);
+  border-color: var(--yellow);
   animation: mirror-pulse 0.5s ease-in-out infinite;
 }
 .hud-mirror.danger {
-  border-color: #ff4040;
-  box-shadow: 0 0 24px rgba(255, 64, 64, 0.65);
+  border-color: var(--red);
   animation: mirror-pulse 0.32s ease-in-out infinite;
 }
-/* Our own shot in flight, or one of ours that just landed. Green reads as good news, and it does
+/* Our own shot in flight, or one of ours that just landed. White reads as calm, and it does
    not pulse: the mirror is open to be watched, not to demand anything. */
 .hud-mirror.mine {
-  border-color: rgba(64, 226, 138, 0.85);
-  box-shadow: 0 0 18px rgba(64, 226, 138, 0.45);
+  border-color: var(--ink);
 }
+/* The blue shell keeps its own colour: it is the item's identity, and the one warning that
+   means "nothing you do will dodge this". */
 .hud-mirror.blue {
   border-color: #3f7fff;
-  box-shadow: 0 0 24px rgba(63, 127, 255, 0.7);
   animation: mirror-pulse 0.4s ease-in-out infinite;
 }
 .hud-mirror.rumble {
@@ -48,18 +62,20 @@
   60% { transform: translate(-2px, -2px); }
   80% { transform: translate(2px, 2px); }
 }
+@media (max-height: 480px) {
+  .hud-mirror {
+    width: 150px;
+  }
+}
 
-/* Slipstream meter under the speedometer */
+/* Slipstream meter above the speedometer: a thin bar, white while charging, yellow once the
+   tow is active. */
 .hud-draft {
   position: absolute;
   left: 50%;
-  top: -34px;
+  top: -22px;
   transform: translateX(-50%);
   width: 150px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
   opacity: 0;
   transition: opacity 0.2s;
   pointer-events: none;
@@ -67,38 +83,21 @@
 .hud-draft.visible {
   opacity: 1;
 }
-.hud-draft-label {
-  font-family: var(--display);
-  font-size: 13px;
-  letter-spacing: 0.14em;
-  color: rgba(180, 225, 255, 0.7);
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-  transition: color 0.15s, text-shadow 0.15s;
-}
-.hud-draft.active .hud-draft-label {
-  color: #bfe8ff;
-  text-shadow: 0 0 10px rgba(120, 200, 255, 0.9);
-  animation: draft-flicker 0.5s ease-in-out infinite;
-}
 .hud-draft-bar {
   width: 100%;
-  height: 5px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.12);
+  height: 6px;
+  border-radius: var(--radius);
+  background: var(--hud-bg);
   overflow: hidden;
 }
 .hud-draft-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, #6fc3ff, #dff4ff);
+  background: var(--ink);
   transition: width 0.08s linear;
 }
 .hud-draft.active .hud-draft-fill {
-  box-shadow: 0 0 10px rgba(150, 220, 255, 0.9);
-}
-@keyframes draft-flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  background: var(--yellow);
 }
 
 /* Rocket-start charge gauge */
@@ -121,90 +120,53 @@
 }
 .hud-charge-label {
   font-family: var(--display);
+  font-style: italic;
   font-size: 18px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
-  letter-spacing: 0.18em;
-  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.16em;
+  color: var(--ink);
+  -webkit-text-stroke: 4px var(--asphalt);
+  paint-order: stroke fill;
 }
 .hud-charge-bar {
   position: relative;
   width: 100%;
   height: 16px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius);
+  background: var(--hud-bg);
+  border: 2px solid var(--line);
   overflow: hidden;
 }
 .hud-charge-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, #9fb4c8, #cfe6ff);
+  background: var(--ink-dim);
   transition: width 0.05s linear;
 }
-.hud-charge.good .hud-charge-fill { background: linear-gradient(90deg, #3ec6ff, #7fe3ff); box-shadow: 0 0 12px rgba(62, 198, 255, 0.8); }
-.hud-charge.perfect .hud-charge-fill { background: linear-gradient(90deg, #ffb020, #ffe14a); box-shadow: 0 0 16px rgba(255, 210, 63, 0.9); }
-.hud-charge.danger .hud-charge-fill { background: linear-gradient(90deg, #ff6a3a, #ff2d2d); box-shadow: 0 0 18px rgba(255, 64, 64, 0.9); }
+.hud-charge.good .hud-charge-fill { background: var(--ink); }
+.hud-charge.perfect .hud-charge-fill { background: var(--yellow); }
+.hud-charge.danger .hud-charge-fill { background: var(--red); }
 .hud-charge.danger { animation: charge-shake 0.12s linear infinite; }
-.hud-charge.stall .hud-charge-fill { background: #555; }
-.hud-charge.perfect .hud-charge-label { color: #ffe14a; }
-.hud-charge.danger .hud-charge-label { color: #ff5a5a; }
+.hud-charge.stall .hud-charge-fill { background: var(--line); }
+.hud-charge.perfect .hud-charge-label { color: var(--yellow); }
+.hud-charge.danger .hud-charge-label { color: var(--red); }
 .hud-charge-tick {
   position: absolute;
   top: -1px;
   bottom: -1px;
   width: 2px;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--ink-dim);
 }
 .hud-charge-tick.perfect {
-  background: rgba(255, 225, 74, 0.9);
+  background: var(--yellow);
 }
 @keyframes charge-shake {
   0%, 100% { transform: translateX(-50%); }
   50% { transform: translateX(calc(-50% + 3px)); }
 }
 
-/* Rear-view mirror as a picture-in-picture (bottom-left, above the place numeral).
-   The view box is transparent: the game draws the rear camera into that rectangle. */
-.hud-mirror {
-  position: absolute;
-  left: var(--hud-pad);
-  bottom: calc(var(--hud-pad) + 132px);
-  top: auto;
-  right: auto;
-  width: clamp(190px, 21vw, 300px);
-  border-width: 3px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: rgba(8, 10, 22, 0.35);
-  /* The left thumb stick lives in this corner; the mirror must never swallow a touch. */
-  pointer-events: none;
-}
-.hud-mirror-view {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background: transparent;
-}
-.hud-mirror.rumble {
-  animation: mirror-rumble 0.35s linear, mirror-pulse 0.32s ease-in-out infinite;
-}
-/* Touch layout used to move the mirror to the TOP-left, where it sat on the standings board and
-   read as a second mirror. It belongs in the same corner as everywhere else: bottom-left, above
-   the place numeral. Kept narrow because a phone has little room to spare. */
-#ui.touch .hud-mirror {
-  left: var(--hud-pad);
-  top: auto;
-  bottom: calc(var(--hud-pad) + 90px + env(safe-area-inset-bottom, 0px));
-  width: 150px;
-}
-@media (max-height: 480px) {
-  .hud-mirror {
-    width: 150px;
-    bottom: calc(var(--hud-pad) + 90px);
-  }
-}
-
-/* Team modes: live tally (top-centre) and result styling */
+/* Team modes: live tally, top-centre. The leading side is underlined in its own colour. */
 .hud-team {
+  --slant: 8px;
   position: absolute;
   top: var(--hud-pad);
   left: 50%;
@@ -212,57 +174,26 @@
   display: none;
   align-items: center;
   gap: 10px;
-  padding: 6px 14px;
-  border-radius: 999px;
+  padding: 5px 22px;
+  background: var(--hud-bg);
   font-family: var(--display);
+  font-style: italic;
   font-size: 18px;
   letter-spacing: 0.06em;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
 }
 .hud-team.visible {
   display: flex;
 }
-.hud-team-us { color: #6fa3ff; }
-.hud-team-them { color: #ff6b74; }
+.hud-team-us { color: var(--ally); }
+.hud-team-them { color: var(--rival); }
 .hud-team-mid { color: var(--ink-dim); font-size: 14px; }
 .hud-team.lead-us .hud-team-us,
 .hud-team.lead-them .hud-team-them {
-  text-shadow: 0 0 12px currentColor;
+  box-shadow: inset 0 -3px 0 currentColor;
 }
-#ui.touch .hud-team {
-  top: calc(var(--hud-pad) + 96px);
-  font-size: 15px;
-}
-.race-mode .segmented .seg {
-  font-size: 12px;
-}
-.standing-row.side-ally .standing-place { color: #6fa3ff; }
-.standing-row.side-rival .standing-place { color: #ff6b74; }
-.standing-points {
-  font-family: var(--display);
-  font-size: 16px;
-  letter-spacing: 0.05em;
-  color: var(--gold);
-  min-width: 4.2em;
-  text-align: right;
-}
-.standing-points.zero {
-  color: var(--ink-faint);
-}
-.results-panel.team-us .results-title { color: #6fa3ff; }
-.results-panel.team-them .results-title { color: #ff6b74; }
-.hud-finish.retired {
-  color: #ff6b74;
-}
-.standings.points .standing-row {
-  grid-template-columns: 58px 16px 1fr auto auto;
-}
-@media (max-width: 700px) {
-  .standings.points .standing-row {
-    grid-template-columns: 44px 14px 1fr auto auto;
-    gap: 8px;
-  }
-  .standing-points {
-    min-width: 3.2em;
-    font-size: 14px;
+@media (max-height: 480px) {
+  .hud-team {
+    font-size: 15px;
   }
 }

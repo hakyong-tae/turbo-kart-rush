@@ -1,57 +1,27 @@
 /* ----------------------------------------------------------------------------
    Desktop windows that are wide but not tall (the Verse8 PC frame is ~1000×700):
-   the racer / track select panels scroll and keep their BACK / PAINT / NEXT row
-   pinned to the bottom, like on phones — the row used to fall below the frame.
+   the racer / circuit select panels scroll and keep their strip (detail, options,
+   BACK / NEXT / START) pinned to the bottom, like on phones — the row used to
+   fall below the frame.
    --------------------------------------------------------------------------- */
 @media (min-width: 701px) and (max-height: 860px) {
   .panel-select {
+    pointer-events: auto;
     overflow-y: auto;
     justify-content: flex-start;
     gap: 10px;
     padding-top: 2vh;
-    padding-bottom: 0;
+    padding-bottom: 10px;
   }
-  .panel-chars .char-grid {
-    gap: 10px;
+  /* The grid still fills the height when there is room, but never shrinks below its cards:
+     past that point the panel scrolls. */
+  .card-grid {
+    flex: 1 0 auto;
   }
-  .char-card .stats {
-    gap: 2px;
-  }
-  .select-footer {
+  .panel-select .select-footer {
     position: sticky;
     bottom: 0;
-    z-index: 2;
+    z-index: 3;
     margin-top: auto;
-    padding-top: 8px;
-    padding-bottom: 10px;
-    background: linear-gradient(180deg, rgba(12, 12, 30, 0) 0%, rgba(12, 12, 30, 0.92) 28%);
-  }
-}
-@media (min-width: 701px) and (max-height: 760px) {
-  .char-card.has-thumb .char-swatch {
-    height: 64px;
-  }
-  .char-card .card-name {
-    font-size: 15px;
-  }
-}
-
-/* Gradient buttons: the background is painted from the padding box and repeats into the 1px transparent
-   border, so a sliver of the far end of the gradient (orange on the left, blue on the right) rimmed every
-   pill — the "rough edge" QA saw. Start the gradient at the border box instead. */
-/* (tripled class: `.btn.primary { background: … }` resets the origin and would otherwise win) */
-.btn.btn.btn {
-  background-origin: border-box;
-}
-
-/* Track select on PC: the "2/2 · choose circuit" header was absolutely placed for the old six-card grid
-   that sat in the lower half; with eight circuits the grid reaches the top and covered it, at any window
-   height. Keep the header in the flow, above the grid. */
-@media (min-width: 701px) {
-  .panel-tracks {
-    align-items: stretch;
-  }
-  .panel-tracks .select-header {
-    position: static;
   }
 }

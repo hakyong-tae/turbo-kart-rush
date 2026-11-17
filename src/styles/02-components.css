@@ -1,69 +1,119 @@
-/* Shared glass panels, typography, buttons */
-/* ----------------------------------------------------------------------------
-   Shared: glass panels, typography, buttons
-   --------------------------------------------------------------------------- */
+/* Shared parts: panel, titles, buttons, chip, segmented control, stat blocks, plate, checker,
+   lock, key cap, toast, icon. Every screen is assembled from these. */
 
-.glass {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border-radius: var(--radius);
+/* ----------------------------------------------------------------------------
+   Checker
+   Two rows of squares, drawn by two repeating gradients (the one use of a
+   gradient the style allows besides the circuit thumbnails' sky). The gradients
+   read --sq where they are used, so a part can resize its squares locally.
+   --------------------------------------------------------------------------- */
+.checker,
+.panel::before {
+  background-image:
+    repeating-linear-gradient(90deg, #fff 0 var(--sq), #15161a var(--sq) calc(var(--sq) * 2)),
+    repeating-linear-gradient(90deg, #15161a 0 var(--sq), #fff var(--sq) calc(var(--sq) * 2));
+  background-size: 100% 50%;
+  background-position: 0 0, 0 100%;
+  background-repeat: no-repeat;
 }
 
+.checker {
+  height: calc(var(--sq) * 2);
+  flex: none;
+}
+
+/* ----------------------------------------------------------------------------
+   Icon (src/ui/icons.ts)
+   --------------------------------------------------------------------------- */
+.icon {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+  vertical-align: -0.2em;
+}
+
+.icon.filled {
+  fill: currentColor;
+}
+
+/* ----------------------------------------------------------------------------
+   Panel
+   A rectangle, because its content scrolls: yellow band down the left edge,
+   checker strip across the head, top-right corner cut by --slant.
+   The strip is sticky so scrolled content passes under it, not over it.
+   --------------------------------------------------------------------------- */
 .panel {
+  --pad-x: clamp(18px, 3vw, 36px);
+  --pad-y: clamp(14px, 2.6vh, 26px);
   pointer-events: auto;
-  padding: clamp(20px, 3vh, 36px) clamp(24px, 3.5vw, 48px);
+  position: relative;
   min-width: 320px;
   max-width: min(92vw, 760px);
-  position: relative;
-  overflow: hidden;
+  max-height: calc(100dvh - 20px);
+  padding: 0 var(--pad-x) var(--pad-y);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  background: var(--panel);
+  border-left: 6px solid var(--yellow);
+  clip-path: polygon(0 0, calc(100% - var(--slant)) 0, 100% var(--slant), 100% 100%, 0 100%);
 }
 
 .panel::before {
   content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--accent-grad);
-  opacity: 0.9;
+  display: block;
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: calc(var(--sq) * 2);
+  margin: 0 calc(-1 * var(--pad-x)) var(--pad-y);
 }
 
 .panel-kicker {
   font-family: var(--display);
-  font-size: clamp(11px, 1.2vw, 13px);
-  letter-spacing: 0.32em;
-  color: var(--ink-dim);
+  font-style: italic;
+  font-size: clamp(13px, 1.3vw, 16px);
+  letter-spacing: 0.14em;
+  color: var(--yellow);
   text-transform: uppercase;
 }
 
 .panel-title {
   margin: 4px 0 6px;
   font-family: var(--display);
+  font-style: italic;
   font-weight: 400;
-  font-size: clamp(34px, 5vw, 60px);
-  line-height: 0.95;
-  letter-spacing: 0.02em;
+  font-size: clamp(30px, 4.6vw, 54px);
+  line-height: 1;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, #d7e3ff 60%, #9cb8ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35)) drop-shadow(0 10px 24px rgba(55, 168, 255, 0.25));
+  color: var(--ink);
 }
 
 .panel-hint {
-  margin-top: 18px;
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 14px;
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   color: var(--ink-faint);
-  text-transform: uppercase;
+}
+
+.panel-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
   margin-top: 18px;
@@ -73,150 +123,447 @@
 .actions.column {
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* ----------------------------------------------------------------------------
+   Button
+   A parallelogram cut with clip-path (never transform: skew — that blurs the
+   label and moves the touch area). The label stays upright; only the typeface
+   leans. clip-path also cuts outlines, so focus is shown by fill, not by a ring.
+   --------------------------------------------------------------------------- */
 .btn {
+  --slant: 10px;
   pointer-events: auto;
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 30px;
+  border: 0;
+  border-radius: 0;
+  background: var(--panel-hi);
   color: var(--ink);
   font-family: var(--display);
+  font-style: italic;
   font-size: clamp(15px, 1.4vw, 19px);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
   text-transform: uppercase;
-  padding: 13px 26px;
-  border-radius: 999px;
+  white-space: nowrap;
   cursor: pointer;
-  position: relative;
-  transition:
-    transform 0.16s var(--ease-out),
-    background 0.16s var(--ease-out),
-    border-color 0.16s var(--ease-out),
-    box-shadow 0.2s var(--ease-out);
   outline: none;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
+  transition:
+    background 0.12s var(--ease-out),
+    color 0.12s var(--ease-out),
+    transform 0.08s var(--ease-out);
 }
 
-.btn:hover,
-.btn.focused {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 0 0 2px rgba(55, 168, 255, 0.35), 0 12px 30px rgba(55, 168, 255, 0.22);
-}
-
-.btn.focused {
-  border-color: #fff;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 0 6px rgba(55, 168, 255, 0.45), 0 12px 30px rgba(55, 168, 255, 0.3);
-  transform: translateY(-2px) scale(1.04);
+.btn:hover {
+  background: var(--line);
 }
 
 .btn:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(2px);
 }
 
-.btn:focus-visible {
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55);
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
+/* The main action. One per screen. */
 .btn.primary {
-  background: var(--accent-grad);
-  border-color: transparent;
-  color: #fff;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-  box-shadow: 0 10px 30px rgba(255, 58, 184, 0.28);
+  background: var(--yellow);
+  color: var(--on-yellow);
 }
 
-.btn.primary:hover,
-.btn.primary.focused {
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5), 0 16px 40px rgba(255, 58, 184, 0.4);
-  filter: brightness(1.08);
+.btn.primary:hover {
+  background: var(--yellow);
 }
 
-.btn.primary.focused {
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 0 0 6px rgba(255, 58, 184, 0.5), 0 16px 40px rgba(255, 58, 184, 0.45);
+/* The big plate of the primary action (RACE, START RACE). */
+.btn.start {
+  --slant: 14px;
+  min-height: 60px;
+  padding: 0 44px;
+  font-size: clamp(20px, 2vw, 28px);
+  letter-spacing: 0.12em;
 }
 
 .btn.ghost {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--asphalt);
+  box-shadow: inset 0 -2px 0 var(--line);
 }
 
-.btn.danger:hover,
-.btn.danger.focused {
-  box-shadow: 0 0 0 2px rgba(255, 77, 94, 0.45), 0 12px 30px rgba(255, 77, 94, 0.25);
-  border-color: rgba(255, 77, 94, 0.7);
+.btn.ghost:hover {
+  background: var(--panel);
 }
 
-.btn.start {
-  padding: 15px 42px;
-  font-size: clamp(18px, 1.8vw, 24px);
-  overflow: hidden;
-  background: linear-gradient(100deg, var(--blue) 0%, var(--magenta) 30%, var(--orange) 55%, var(--magenta) 78%, var(--blue) 100%);
-  background-size: 260% 100%;
-  animation: start-gradient 4.5s linear infinite;
-}
-
-/* Diagonal light sweep across the START RACE button. */
-.btn.start::after {
+/* Danger: a red band along the slanted left edge. */
+.btn.danger::after {
   content: '';
   position: absolute;
-  top: -40%;
-  bottom: -40%;
-  left: -30%;
-  width: 45%;
-  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.05) 35%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.05) 65%, transparent 100%);
-  transform: translateX(-120%) skewX(-18deg);
-  animation: start-sheen 2.8s var(--ease-out) infinite;
-  pointer-events: none;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--slant) + 6px);
+  background: var(--red);
+  clip-path: polygon(var(--slant) 0, 100% 0, 6px 100%, 0 100%);
 }
 
-@keyframes start-gradient {
-  to { background-position: 260% 0; }
-}
-
-@keyframes start-sheen {
-  0% { transform: translateX(-120%) skewX(-18deg); }
-  45%, 100% { transform: translateX(420%) skewX(-18deg); }
-}
-
-kbd {
-  font-family: var(--display);
+.btn.small {
+  --slant: 7px;
+  padding: 0 18px;
   font-size: 12px;
-  letter-spacing: 0.08em;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.35);
-  min-width: 34px;
-  text-align: center;
+}
+
+/* A button that is only an icon. */
+.btn.icon-only {
+  padding: 0 16px;
+  min-width: 52px;
+  font-size: 18px;
+}
+
+/* Keyboard / gamepad cursor: filled yellow with a chevron at the left edge.
+   On the primary (already yellow) the fill flips to white. */
+.btn.focused {
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+
+.btn.primary.focused {
+  background: var(--ink);
+}
+
+.btn.focused::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--slant) + 5px);
+  top: 50%;
+  width: 8px;
+  height: 14px;
+  margin-top: -7px;
+  background: currentColor;
+  clip-path: polygon(0 0, 42% 0, 100% 50%, 42% 100%, 0 100%, 58% 50%);
+}
+
+.btn.icon-only.focused::before {
+  display: none;
+}
+
+/* Fingers have no cursor: a touch screen shows the buttons as they are. */
+#ui.touch .btn.focused:not(.primary) {
+  background: var(--panel-hi);
+  color: var(--ink);
+}
+#ui.touch .btn.ghost.focused {
+  background: var(--asphalt);
+}
+#ui.touch .btn.primary.focused {
+  background: var(--yellow);
+}
+#ui.touch .btn.focused::before {
+  display: none;
+}
+
+/* ----------------------------------------------------------------------------
+   Chip (was .pill): a small slanted label.
+   --------------------------------------------------------------------------- */
+.chip {
+  --slant: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 20px;
+  padding: 2px 10px;
+  background: var(--line);
+  color: var(--ink);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
+}
+
+/* Weight class: the colour is an 8 px square in front, not the text colour. */
+.chip[class*='weight-']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--chip-mark, var(--ink-dim));
+}
+.chip.weight-light {
+  --chip-mark: #9be7ff;
+}
+.chip.weight-medium {
+  --chip-mark: #ffe08a;
+}
+.chip.weight-heavy {
+  --chip-mark: #ff9d7a;
+}
+
+/* Lock: a red chip with the padlock icon. */
+.chip.lock {
+  background: var(--red);
+  color: #fff;
+}
+
+/* ----------------------------------------------------------------------------
+   Segmented control: parallelograms butted together, the chosen one yellow.
+   --------------------------------------------------------------------------- */
+.segmented {
+  --slant: 8px;
+  display: inline-flex;
+}
+
+.segmented.wrap {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-left: calc(var(--slant) - 2px);
+}
+
+/* Picker: one out of many (the sixteen circuits). With a pointer, a grid of equal cells, four to
+   a row. On touch, one row that scrolls sideways, so it never eats the height of a phone. */
+.segmented.picker {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  row-gap: 4px;
+  padding-left: calc(var(--slant) - 2px);
+}
+
+.segmented.picker > .seg {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+#ui.touch .segmented.picker {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#ui.touch .segmented.picker::-webkit-scrollbar {
+  display: none;
+}
+
+#ui.touch .segmented.picker > .seg {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.seg {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 0 18px;
+  margin-left: calc(2px - var(--slant));
+  border: 0;
+  border-radius: 0;
+  background: var(--panel-hi);
+  color: var(--ink-dim);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
+  transition: background 0.12s, color 0.12s;
+}
+
+.segmented:not(.wrap) > .seg:first-child {
+  margin-left: 0;
+}
+
+.seg:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+
+.seg.selected {
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+
+/* The cursor on a segment is white, so it reads apart from the yellow choice beside it. */
+.seg.focused {
+  background: var(--ink);
+  color: var(--on-yellow);
+}
+
+#ui.touch .seg {
+  min-height: 44px;
+}
+#ui.touch .seg.focused:not(.selected) {
+  background: var(--panel-hi);
+  color: var(--ink-dim);
+}
+#ui.touch .seg.selected.focused {
+  background: var(--yellow);
+}
+
+/* ----------------------------------------------------------------------------
+   Stat: a label and five blocks.
+   --------------------------------------------------------------------------- */
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.stat-label {
+  min-width: 2.4em;
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.pill {
-  display: inline-block;
-  font-family: var(--display);
-  font-size: 11px;
-  letter-spacing: 0.2em;
-  padding: 4px 9px 3px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: var(--ink-dim);
-  text-transform: uppercase;
+.stat-blocks {
+  display: inline-flex;
+  gap: 1px;
 }
 
-.pill.weight-light {
-  color: #9be7ff;
-  border-color: rgba(155, 231, 255, 0.4);
+.stat-blocks i {
+  width: 13px;
+  height: 10px;
+  background: var(--line);
+  clip-path: polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%);
 }
-.pill.weight-medium {
-  color: #ffe08a;
-  border-color: rgba(255, 224, 138, 0.4);
+
+.stat-blocks i.on {
+  background: var(--yellow);
 }
-.pill.weight-heavy {
-  color: #ff9d7a;
-  border-color: rgba(255, 157, 122, 0.4);
+
+/* ----------------------------------------------------------------------------
+   Plate: a number plate. Racer numbers, and the player's place on the results.
+   --------------------------------------------------------------------------- */
+.plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 1.5em;
+  height: 1.4em;
+  padding: 0 0.3em 0 0.24em;
+  background: #fff;
+  color: #111;
+  border: 2px solid #111;
+  border-radius: var(--radius);
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.plate.yellow {
+  background: var(--yellow);
+}
+.plate.red {
+  background: var(--red);
+  color: #fff;
+}
+.plate.gold {
+  background: var(--gold);
+}
+.plate.silver {
+  background: var(--silver);
+}
+.plate.bronze {
+  background: var(--bronze);
+}
+
+/* ----------------------------------------------------------------------------
+   Key cap
+   --------------------------------------------------------------------------- */
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 24px;
+  padding: 2px 7px 4px;
+  border-radius: var(--radius);
+  background: var(--panel-hi);
+  box-shadow: inset 0 -2px 0 var(--line);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+kbd.kbd-icon {
+  padding: 2px 4px 4px;
+  font-size: 13px;
+}
+
+/* ----------------------------------------------------------------------------
+   Toast
+   --------------------------------------------------------------------------- */
+.toast-host {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 10px 16px 10px 14px;
+  border-left: 6px solid var(--yellow);
+  border-radius: var(--radius);
+  background: var(--asphalt);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: min(70vw, 560px);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.25s var(--ease-out), transform 0.25s var(--ease-out);
+}
+
+.toast-error {
+  border-left-color: var(--red);
+}
+
+.toast-in {
+  opacity: 1;
+  transform: none;
+}
+
+.toast-out {
+  opacity: 0;
+  transform: translateY(8px);
 }

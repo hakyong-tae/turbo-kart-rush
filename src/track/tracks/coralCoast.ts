@@ -47,6 +47,10 @@ export const coralCoast: TrackDefinition = {
   // The pier: planks over open water, so the barriers stop at the ramp and start again at the
   // stadium turn. Straight and wide — you only go in if somebody puts you there.
   voidRanges: [[0.455, 0.555]],
+  // The pier: a ramp straight after its boost pad, out over the water.
+  ramps: [{ t: 0.512, length: 10, height: 2.2 }],
+  // The tide comes in over the inside of the beach S-bend: the short line is the slow one.
+  zones: [{ from: 0.315, to: 0.375, kind: 'mud', look: 'water', lateral: [-8.5, -0.5] }],
   environment: {
     skyTop: 0x1f7fd6,
     skyHorizon: 0xa8e4ff,

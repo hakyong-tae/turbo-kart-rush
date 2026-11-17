@@ -6,6 +6,7 @@ import { magmaRidge } from './magmaRidge';
 import { prismSkyway } from './prismSkyway';
 import { switchbackPass } from './switchbackPass';
 import { validateTrackDefinition } from './validate';
+import { TRACKS } from './index';
 
 function lengthOf(def: TrackDefinition): number {
   const pts = def.controlPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z));
@@ -52,5 +53,22 @@ describe.each([
         expect((sorted[i] - sorted[i - 1]) * L).toBeGreaterThan(25);
       }
     }
+  });
+});
+
+describe('every circuit in the game', () => {
+  it.each(TRACKS.map((t) => [t.id, t] as const))('%s passes the validator (layout and gimmicks)', (_id, def) => {
+    expect(validateTrackDefinition(def)).toEqual([]);
+  });
+
+  it('gimmick rules catch the unfair cases', () => {
+    const base = TRACKS[0];
+    const warn = (extra: Partial<TrackDefinition>): string => validateTrackDefinition({ ...base, ...extra }).join(' | ');
+    expect(warn({ ramps: [{ t: 0.4, height: 2, gap: 8 }] })).toMatch(/not inside a voidRanges/);
+    expect(warn({ ramps: [{ t: 0.99, height: 2 }] })).toMatch(/starting grid/);
+    expect(warn({ ramps: [{ t: 0.4, height: 4, length: 8 }] })).toMatch(/steeper/);
+    expect(warn({ movers: [{ kind: 'roller', from: 0.5, to: 0.49, speed: 8 }] })).toMatch(/too short/);
+    expect(warn({ movers: [{ kind: 'crosser', t: 0.5, period: 2, speed: 8 }] })).toMatch(/too short to pass/);
+    expect(warn({ ramps: [{ t: 0.4, height: 2 }], zones: [{ from: 0.2, to: 0.25, kind: 'ice' }] })).toBe('');
   });
 });

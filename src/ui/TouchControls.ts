@@ -5,6 +5,7 @@
  */
 import type { TouchInputSource } from '../core/types';
 import { el } from './dom';
+import { icon } from './icons';
 import { stickToAxes } from './touchMath';
 import { events } from '../core/events';
 import { t } from '../core/i18n';
@@ -54,7 +55,9 @@ export class TouchControls implements TouchInputSource {
 
     this.itemBtn = el('button', 'touch-btn touch-item', t('touch.item'), this.rootNode);
     this.driftBtn = el('button', 'touch-btn touch-drift', t('touch.drift'), this.rootNode);
-    this.pauseBtn = el('button', 'touch-pause', '❚❚', this.rootNode);
+    this.pauseBtn = el('button', 'touch-pause', undefined, this.rootNode);
+    this.pauseBtn.appendChild(icon('pause', 'filled'));
+    this.pauseBtn.setAttribute('aria-label', t('legend.pause'));
     for (const b of [this.itemBtn, this.driftBtn, this.pauseBtn]) (b as HTMLButtonElement).type = 'button';
 
     zone.addEventListener('pointerdown', this.onStickDown);

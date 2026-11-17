@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { TrackDefinition } from '../../core/types';
 import type { Centerline } from '../Centerline';
 import type { TerrainField } from '../TerrainField';
+import type { MoverSlot, TrackFeatures } from '../features';
 
 export type Updater = (dt: number, elapsed: number) => void;
 
@@ -18,6 +19,10 @@ export interface BuildContext {
   updaters: Updater[];
   /** Shared time uniform for shader-driven animation. */
   timeUniform: { value: number };
+  /** Ramps, gaps and surface zones as numbers (see track/features.ts). */
+  features: TrackFeatures;
+  /** One entry per moving obstacle car; `Track.setRaceTime` moves them, the meshes follow. */
+  movers: MoverSlot[];
 }
 
 /** Register objects for disposal; returns the first argument for chaining. */

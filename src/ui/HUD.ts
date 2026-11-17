@@ -16,7 +16,8 @@ import { BASE_TOP_SPEED } from '../core/constants';
 import { clamp01, damp, formatRaceTime } from '../core/math';
 import { localOrdinal, localOrdinalSuffix, t } from '../core/i18n';
 import type { StringKey } from '../core/i18n';
-import { el, restartAnimation, TextField, cssHex } from './dom';
+import { el, restartAnimation, TextField } from './dom';
+import { icon } from './icons';
 import { Minimap } from './Minimap';
 
 
@@ -106,26 +107,28 @@ export class HUD {
   ) {
     this.rootNode = el('div', 'hud hidden', undefined, root);
 
-    // Top-left: item slot
-    const itemWrap = el('div', 'hud-item', undefined, this.rootNode);
+    // Left column: standings board, minimap under it (touch layout: top three + you, small map).
+    const left = el('div', 'hud-left', undefined, this.rootNode);
+    this.standings = new StandingsBoard(left);
+    const mapWrap = el('div', 'hud-minimap', undefined, left);
+    this.minimap = new Minimap(mapWrap);
+
+    // Right column: item slot, then lap + timer.
+    const right = el('div', 'hud-right', undefined, this.rootNode);
+    const itemWrap = el('div', 'hud-item', undefined, right);
     this.itemFrame = el('div', 'item-frame', undefined, itemWrap);
     this.itemIconHost = el('div', 'item-icon', undefined, this.itemFrame);
     this.itemCount = new TextField(el('div', 'item-count', '', this.itemFrame));
-
-    // Top-left: standings board
-    this.standings = new StandingsBoard(this.rootNode);
-
-    // Top-right: lap + timer
-    const topRight = el('div', 'hud-topright', undefined, this.rootNode);
-    const lapBox = el('div', 'hud-lap glass', undefined, topRight);
+    const topRight = el('div', 'hud-topright', undefined, right);
+    const lapBox = el('div', 'hud-lap', undefined, topRight);
     el('span', 'hud-lap-label', t('hud.lap'), lapBox);
     this.lapText = new TextField(el('span', 'hud-lap-value', '', lapBox));
-    this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
+    this.timerText = new TextField(el('div', 'hud-timer', '0:00.000', topRight));
     // Team tally (team modes only) + rear-view mirror PiP frame (bottom-left).
     this.teamTally = new TeamTally(this.rootNode);
     this.mirror = new MirrorPanel(this.rootNode);
 
-    // Bottom-left: place
+    // Bottom-left: place, on a number plate
     this.placeNode = el('div', 'hud-place', undefined, this.rootNode);
     this.placeNum = new TextField(el('span', 'place-num', '', this.placeNode));
     this.placeSuffix = new TextField(el('span', 'place-suffix', '', this.placeNode));
@@ -158,14 +161,10 @@ export class HUD {
     this.draft = new DraftMeter(speedWrap);
     this.charge = new ChargeGauge(this.rootNode);
 
-    // Bottom-right: minimap
-    const mapWrap = el('div', 'hud-minimap glass', undefined, this.rootNode);
-    this.minimap = new Minimap(mapWrap);
-
     // Centre overlays
     this.center = el('div', 'hud-center', undefined, this.rootNode);
     this.wrongWay = el('div', 'hud-wrongway', undefined, this.rootNode);
-    el('span', 'wrongway-arrow', '⟲', this.wrongWay);
+    el('span', 'wrongway-arrow', undefined, this.wrongWay).appendChild(icon('uturn'));
     el('span', 'wrongway-text', t('hud.wrongWay'), this.wrongWay);
     this.vignette = el('div', 'hud-vignette', undefined, this.rootNode);
     this.boostGlow = el('div', 'hud-boostglow', undefined, this.rootNode);
@@ -326,7 +325,15 @@ export class HUD {
       on('race:positionChange', (e) => {
         if (!e.isPlayer) return;
         const up = e.to < e.from;
-        this.flashCenter(`${up ? '▲' : '▼'} ${localOrdinal(e.to).toUpperCase()}`, `hud-posflash ${up ? 'up' : 'down'}`, 1.0);
+        // Shown for one second, and only when the place actually changes. A second change inside
+        // that second replaces the first instead of stacking on it.
+        for (let i = this.timed.length - 1; i >= 0; i--) {
+          if (!this.timed[i].node.classList.contains('hud-posflash')) continue;
+          this.timed[i].node.remove();
+          this.timed.splice(i, 1);
+        }
+        const node = this.flashCenter(localOrdinal(e.to).toUpperCase(), `hud-posflash ${up ? 'up' : 'down'}`, 1.0);
+        node.prepend(icon(up ? 'chevron-up' : 'chevron-down'));
       }),
       on('item:hit', (e) => {
         if (!e.isPlayer) return;

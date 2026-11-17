@@ -110,7 +110,84 @@ export function validateTrackDefinition(def: TrackDefinition): string[] {
   const fanDeg = Math.abs((worstFan * 180) / Math.PI);
   if (fanDeg > 8) warnings.push(`start straight bends ${fanDeg.toFixed(1)}° by ${worstFanS} m before the line`);
 
+  warnings.push(...validateGimmicks(def, length));
   return warnings;
+}
+
+/** Is t inside any `voidRanges` entry (ranges may wrap the line)? */
+function inVoidRange(def: TrackDefinition, t: number): boolean {
+  for (const [a, b] of def.voidRanges ?? []) {
+    if (a <= b ? t >= a && t <= b : t >= a || t <= b) return true;
+  }
+  return false;
+}
+
+/**
+ * Rules for ramps, surface zones, moving obstacles and wall overrides. They are about fairness,
+ * not taste: a gap nobody can clear from a respawn, a ramp under the starting grid or a boulder
+ * that pops into existence on top of a kart are bugs, whatever the layout looks like.
+ */
+function validateGimmicks(def: TrackDefinition, length: number): string[] {
+  const out: string[] = [];
+  const in01 = (t: number): boolean => t >= 0 && t < 1;
+  const n = def.controlPoints.length;
+
+  if (def.wallHalfWidthFactors) {
+    if (def.wallHalfWidthFactors.length !== n) out.push(`wallHalfWidthFactors length ${def.wallHalfWidthFactors.length} != controlPoints length ${n}`);
+    if (def.wallHalfWidthFactors.some((f) => f < 1 || f > 4)) out.push('wallHalfWidthFactors must be within 1..4');
+  }
+
+  (def.ramps ?? []).forEach((r, i) => {
+    const name = `ramp ${i}`;
+    const len = r.length ?? 10;
+    if (!in01(r.t)) out.push(`${name}: t ${r.t} outside [0,1)`);
+    if (r.height < 0.5 || r.height > 4) out.push(`${name}: height ${r.height} outside 0.5..4 m`);
+    if (len < 6 || len > 24) out.push(`${name}: length ${len} outside 6..24 m`);
+    if (r.height / len > 0.36) out.push(`${name}: slope ${(r.height / len).toFixed(2)} is steeper than 0.36 (karts would be thrown, not launched)`);
+    // Clear of the grid (the last ~45 m before the line) and of the first metres after it.
+    const s0 = r.t * length;
+    const s1 = s0 + len + (r.gap ?? 0);
+    if (s1 > length - 50 || s0 < 12) out.push(`${name}: sits on the starting grid or right after the line`);
+    if (r.gap !== undefined) {
+      if (r.gap < 3 || r.gap > 14) out.push(`${name}: gap ${r.gap} outside 3..14 m`);
+      // The terrain is only carved away under void ranges; anywhere else the "gap" has ground in it.
+      for (const s of [s0 + len, s0 + len + r.gap]) {
+        if (!inVoidRange(def, s / length)) out.push(`${name}: gap at t=${(s / length).toFixed(3)} is not inside a voidRanges section`);
+      }
+      // A boost pad in the run-up, so nobody arrives at a gap slowly by accident.
+      const runup = def.boostPads.some((p) => {
+        const d = s0 - p * length;
+        return d > 8 && d < 70;
+      });
+      if (!runup) out.push(`${name}: a gap needs a boost pad 8..70 m before the ramp`);
+    }
+  });
+
+  (def.zones ?? []).forEach((z, i) => {
+    const name = `zone ${i}`;
+    if (!in01(z.from) || !in01(z.to)) out.push(`${name}: from/to outside [0,1)`);
+    let span = (z.to - z.from) * length;
+    if (span <= 0) span += length;
+    if (span < 6 || span > 260) out.push(`${name}: ${span.toFixed(0)} m long (expected 6..260)`);
+    if (z.lateral && Math.abs(z.lateral[1] - z.lateral[0]) < 2) out.push(`${name}: narrower than 2 m`);
+  });
+
+  (def.movers ?? []).forEach((m, i) => {
+    const name = `mover ${i}`;
+    if (m.speed <= 0 || m.speed > 20) out.push(`${name}: speed ${m.speed} outside 0..20 m/s`);
+    if (m.kind === 'roller') {
+      if (!in01(m.from) || !in01(m.to)) out.push(`${name}: from/to outside [0,1)`);
+      const run = Math.abs(m.to - m.from) * length;
+      if (run < 40) out.push(`${name}: run of ${run.toFixed(0)} m is too short (needs 40 m; it fades in and out over the ends)`);
+      const grid = [m.from, m.to].some((t) => t * length > length - 50 || t * length < 12);
+      if (grid) out.push(`${name}: runs onto the starting grid`);
+    } else {
+      if (!in01(m.t)) out.push(`${name}: t ${m.t} outside [0,1)`);
+      if (m.period < 4) out.push(`${name}: period ${m.period} s is too short to pass between crossings`);
+      if (m.t * length > length - 60 || m.t * length < 20) out.push(`${name}: crosses the starting grid`);
+    }
+  });
+  return out;
 }
 
 export function validateAllTracks(defs: readonly TrackDefinition[]): void {

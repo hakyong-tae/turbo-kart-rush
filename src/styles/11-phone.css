@@ -1,32 +1,18 @@
-/* Phone breakpoints, paused HUD fade, settings sliders, card thumbnails */
+/* Phone breakpoints, paused HUD fade, settings sliders */
 /* ----------------------------------------------------------------------------
    Phones (ONE store / Verse8 mobile): ≤700px wide or ≤480px tall.
-   The select panels become scrolling columns with a sticky footer so the
-   second row of cards and the CONTINUE / START buttons are always reachable,
-   and the keyboard legend no longer covers the tap-to-start prompt.
+   The select panels become scrolling columns with a sticky strip at the bottom,
+   so the second row of cards and the NEXT / START buttons are always reachable.
    --------------------------------------------------------------------------- */
 @media (max-width: 700px), (max-height: 480px) {
-  .controls-legend {
-    display: none;
-  }
-  .version {
-    left: 0;
-    right: 0;
-    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-    text-align: center;
-    font-size: 10px;
-  }
-  .press-start {
-    bottom: calc(clamp(34px, 7vh, 70px) + env(safe-area-inset-bottom, 0px));
-  }
   .panel-select {
     pointer-events: auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     justify-content: flex-start;
-    gap: 10px;
-    padding: calc(12px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px))
-      calc(10px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+    gap: 7px;
+    padding: calc(9px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px))
+      calc(8px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
   }
   .panel-chars {
     --col: 100%;
@@ -35,35 +21,37 @@
   .panel-chars .select-header,
   .panel-chars .card-grid,
   .panel-chars .select-footer,
+  .panel-tracks .select-header,
   .panel-tracks .card-grid {
     width: 100%;
-  }
-  .panel-tracks .select-header {
-    position: static;
   }
   .card-grid {
     flex: 0 0 auto;
     align-content: start;
+    grid-auto-rows: auto;
+    max-height: none;
   }
-  .card {
-    background: rgba(12, 12, 30, 0.8);
+  .char-swatch {
+    flex: none;
+    min-height: 0;
+    height: clamp(60px, 10vh, 104px);
   }
-  .card-tag {
-    display: none;
+  .track-art {
+    flex: none;
+    min-height: 0;
+    height: clamp(74px, 12vh, 118px);
   }
   .select-header .panel-title {
-    font-size: 26px;
+    font-size: 22px;
   }
-  .select-footer {
+  .panel-select .select-footer {
     position: sticky;
     bottom: 0;
-    z-index: 2;
+    z-index: 3;
     width: 100%;
     margin: auto 0 0;
-    flex-wrap: wrap;
-    gap: 8px 12px;
-    padding: 10px 12px;
-    background: rgba(12, 12, 30, 0.92);
+    gap: 6px 14px;
+    padding: 8px 10px;
   }
   .select-info-name {
     font-size: 20px;
@@ -82,20 +70,98 @@
   }
 }
 
-/* Landscape phones: keep 4 columns but strip the cards down to swatch + name + class. */
+/* Landscape phones (≤480px tall): compact cards. Six racers to a row, so all sixteen and the
+   strip fit without scrolling; four circuits to a row, which scroll under the taller strip. */
 @media (max-height: 480px) {
-  .char-card .stats,
+  .card-grid {
+    gap: 6px;
+  }
+  .char-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  /* Also on a landscape phone narrower than 700 px, where the portrait rule would give two. */
+  .track-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* A card this narrow has no room for the number plate or the word on the lock. */
+  .char-plate,
+  .lock-badge.lock .lock-text {
+    display: none;
+  }
+  .char-weight {
+    left: 3px;
+    bottom: 3px;
+  }
+  .card {
+    padding: 4px;
+  }
+  .char-card,
+  .track-card {
+    gap: 4px;
+  }
+  .char-swatch {
+    height: 46px;
+  }
+  .track-art {
+    height: 56px;
+  }
+  .card-name {
+    font-size: 13px;
+  }
+  .char-plate {
+    font-size: 11px;
+  }
+  .card .chip {
+    min-height: 17px;
+    padding: 1px 8px;
+    font-size: 10px;
+  }
+  .lock-badge {
+    top: 7px;
+    right: 7px;
+  }
+  .stars {
+    font-size: 12px;
+  }
+  .track-meta {
+    top: 10px;
+    right: 10px;
+  }
+  .track-theme-chip {
+    top: 3px;
+    left: 3px;
+  }
+  /* Detail strip: name, stats three to a row, icon-only PAINT / BACK. */
+  .select-info {
+    flex: 0 1 auto;
+  }
   .select-info-tagline {
     display: none;
   }
-  .char-swatch {
-    height: 44px;
+  .stats {
+    grid-template-columns: repeat(3, auto);
+    gap: 4px 12px;
   }
-  .track-art {
-    height: 48px;
+  .select-footer .btn.ghost .btn-label {
+    display: none;
   }
-  .select-footer {
-    padding: 8px 12px;
+  .select-footer .btn.ghost {
+    padding: 0 16px;
+    min-width: 52px;
+  }
+  .select-footer .seg {
+    padding: 0 12px;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+  }
+  .select-footer .btn.start {
+    min-height: 48px;
+    padding: 0 30px;
+    font-size: 20px;
+  }
+  .option-title {
+    font-size: 11px;
+    letter-spacing: 0.14em;
   }
 }
 
@@ -117,6 +183,7 @@
 }
 .settings-slider-value {
   font-family: var(--display);
+  font-style: italic;
   font-size: 13px;
   letter-spacing: 0.06em;
   color: var(--ink);
@@ -125,7 +192,7 @@
   width: 100%;
   height: 28px;
   margin: 0;
-  accent-color: var(--blue);
+  accent-color: var(--yellow);
   cursor: pointer;
   touch-action: pan-y;
 }
@@ -136,94 +203,4 @@
 #ui[data-state='finished'],
 .game-canvas {
   touch-action: none;
-}
-
-/* Landscape phones (≤480px tall): compact racer cards so both rows and the footer fit
-   without scrolling — the second row was hiding behind the sticky footer on iPhone. */
-@media (max-height: 480px) {
-  .panel-chars .select-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-  }
-  .panel-chars .panel-kicker {
-    display: none;
-  }
-  .panel-select .select-header .panel-title {
-    font-size: 22px;
-    margin: 0;
-  }
-  .char-card {
-    padding: 8px 8px 6px;
-  }
-  .char-card .char-swatch {
-    height: 34px;
-  }
-  .char-card .card-name {
-    font-size: 13px;
-    margin-top: 4px;
-  }
-  .char-card .pill {
-    font-size: 10px;
-    padding: 2px 8px;
-  }
-  .card-grid {
-    gap: 8px;
-  }
-}
-
-/* Character cards: real kart thumbnail over the colour swatch (helmet placeholder until ready). */
-.char-thumb {
-  position: absolute;
-  inset: -4% -2%;
-  width: 104%;
-  height: 108%;
-  object-fit: contain;
-  opacity: 0;
-  transition: opacity 0.25s var(--ease-out);
-  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45));
-  pointer-events: none;
-}
-.char-card.has-thumb .char-thumb {
-  opacity: 1;
-}
-.char-card.has-thumb .char-helmet,
-.char-card.has-thumb .char-wheel {
-  display: none;
-}
-.char-card.has-thumb .char-swatch {
-  height: clamp(60px, 10vh, 104px);
-}
-@media (max-height: 720px) {
-  .char-card.has-thumb .char-swatch {
-    height: 72px;
-  }
-}
-@media (max-height: 480px) {
-  .char-card.has-thumb .char-swatch {
-    height: 48px;
-  }
-}
-
-/* Track cards: painted course preview fills the art box (taller than the old colour bands). */
-.track-thumb {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-.track-card .track-art {
-  height: clamp(74px, 12vh, 118px);
-}
-@media (max-height: 720px) {
-  .track-card .track-art {
-    height: 84px;
-  }
-}
-@media (max-height: 480px) {
-  .track-card .track-art {
-    height: 62px;
-  }
 }

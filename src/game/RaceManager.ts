@@ -589,7 +589,12 @@ export class RaceManager {
     const kart = tr.kart;
     const s = kart.state;
     const n = this.checkpointT.length;
-    const idx = (tr.nextCheckpoint - 1 + n) % n;
+    let idx = (tr.nextCheckpoint - 1 + n) % n;
+    // Never put a kart down in the run-up to a gap jump: with no speed it would drop straight
+    // back in. Walk back to the last checkpoint the track calls safe (at most one lap).
+    if (this.track.isRespawnSafe) {
+      for (let k = 0; k < n && !this.track.isRespawnSafe(this.checkpointT[idx]); k++) idx = (idx - 1 + n) % n;
+    }
     const cp = this.track.checkpoints[idx];
     let heading: number;
     if (cp) {

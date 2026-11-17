@@ -1,6 +1,6 @@
 # Drift Dash GP
 
-> Verse8 edition of **Turbo Kart Rush** (bridge-mind, MIT). Adds touch controls, eight tracks, ko/en, Verse8 leaderboard / premium karts / settings, and host-authoritative online multiplayer with item sync. Original README follows.
+> Verse8 edition of **Turbo Kart Rush** (bridge-mind, MIT). Adds touch controls, sixteen racers, sixteen circuits with track gimmicks (ramps and gap jumps, ice / mud / boost strips, rolling boulders, trams), ko/en, Verse8 leaderboard / premium karts / settings, and host-authoritative online multiplayer with item sync. Original README follows.
 
 # Turbo Kart Rush (upstream)
 
