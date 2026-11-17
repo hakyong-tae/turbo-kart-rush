@@ -48,6 +48,10 @@ export const neonNexus: TrackDefinition = {
   boostPads: [0.175, 0.52, 0.75],
   // Rooftop skyway: the long straight runs on an unfenced deck above the city.
   voidRanges: [[0.485, 0.585]],
+  // The overpass is out: a ramp after the boost pad, seven metres of nothing, and the road again lower down.
+  ramps: [{ t: 0.535, length: 10, height: 2, gap: 7 }],
+  // A tram crosses the short straight before the last complex.
+  movers: [{ kind: 'crosser', t: 0.68, period: 9, speed: 10, cars: 3, look: 'tram' }],
   environment: {
     skyTop: 0x02020c,
     skyHorizon: 0x6b1a9c,

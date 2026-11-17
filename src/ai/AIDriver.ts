@@ -290,6 +290,8 @@ export class AIDriver implements IAIDriver {
     // ----- hazards: dodge + detect incoming shells -----------------------------
     let dodgeTarget = 0;
     let nearestHazard = B.ai.hazardLookahead;
+    /** Something is already being dodged; only a nearer thing may replace it. */
+    let dodging = false;
     let threatBehind = false;
     const hazards = items.getHazards();
     for (let i = 0; i < hazards.length; i++) {
@@ -306,6 +308,7 @@ export class AIDriver implements IAIDriver {
         if (vAlong < -3) predLat += (h.velocity.x * _right.x + h.velocity.z * _right.z) * (ahead / Math.max(1, speed - vAlong));
         if (Math.abs(predLat) < HAZARD_LATERAL && ahead < nearestHazard) {
           nearestHazard = ahead;
+          dodging = true;
           const hazardTrackLat = kartLat + predLat;
           const roomRight = hw - hazardTrackLat;
           const roomLeft = hw + hazardTrackLat;
@@ -327,28 +330,40 @@ export class AIDriver implements IAIDriver {
     if (obstacles) {
       for (let i = 0; i < obstacles.length; i++) {
         const o = obstacles[i];
-        const dx = o.position.x - s.position.x;
-        const dz = o.position.z - s.position.z;
-        const ahead = dx * _fwd.x + dz * _fwd.z;
-        const lookahead = o.velocity ? B.ai.hazardLookahead * 1.6 : B.ai.hazardLookahead;
-        if (ahead <= 0 || ahead >= lookahead) continue;
-        let lat = dx * _right.x + dz * _right.z;
-        if (o.velocity) {
-          const vAlong = o.velocity.x * _fwd.x + o.velocity.z * _fwd.z;
-          const vLat = o.velocity.x * _right.x + o.velocity.z * _right.z;
-          const arrive = ahead / Math.max(4, speed - vAlong);
-          const predicted = lat + vLat * arrive;
-          if (Math.abs(vLat) > 2.5) {
-            // Crossing traffic: yield if it will be in our lane, or still passing through it.
+        const lookahead = o.velocity ? B.ai.hazardLookahead * 2.6 : B.ai.hazardLookahead;
+        let ahead: number;
+        let lat: number;
+        const ot = o.onTrack;
+        if (ot) {
+          // A moving obstacle, in track terms: distance along the road, and offset from our line.
+          if (o.position.y < -1000) continue; // parked out of play
+          ahead = trackDelta(t, ot.t) * len;
+          if (ahead <= 0 || ahead >= lookahead) continue;
+          lat = ot.lateral - kartLat;
+          const arrive = ahead / Math.max(4, speed - ot.vAlong);
+          if (Math.abs(ot.vLateral) > 2.5) {
+            // Crossing traffic cannot be steered round: yield if it will be in our lane on arrival,
+            // or is still sweeping through it.
+            const predicted = lat + ot.vLateral * arrive;
             const sweepsLane = Math.sign(lat) !== Math.sign(predicted) || Math.abs(predicted) < o.radius + 2.2;
             if (sweepsLane && ahead < yieldDistance) yieldDistance = ahead;
             continue;
           }
-          lat = predicted;
+          // Rollers wander from side to side; their sideways speed now says little about where
+          // they will be, so only lean on it a little.
+          lat += clamp(ot.vLateral * arrive, -1.2, 1.2);
+        } else {
+          const dx = o.position.x - s.position.x;
+          const dz = o.position.z - s.position.z;
+          ahead = dx * _fwd.x + dz * _fwd.z;
+          if (ahead <= 0 || ahead >= lookahead) continue;
+          lat = dx * _right.x + dz * _right.z;
         }
         // Wider than a banana: a pylon is solid, and brushing it costs the corner.
-        if (Math.abs(lat) > o.radius + HAZARD_LATERAL || ahead >= nearestHazard) continue;
+        // (A mover is seen from further away than the item look-ahead that `nearestHazard` starts at.)
+        if (Math.abs(lat) > o.radius + HAZARD_LATERAL || (dodging && ahead >= nearestHazard)) continue;
         nearestHazard = ahead;
+        dodging = true;
         const obstacleTrackLat = kartLat + lat;
         const side = hw - obstacleTrackLat > hw + obstacleTrackLat ? 1 : -1;
         const urgency = 0.55 + 0.45 * (1 - ahead / lookahead);

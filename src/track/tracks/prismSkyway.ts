@@ -95,6 +95,11 @@ export const prismSkyway: TrackDefinition = {
   // Everything but the grid. The gap at the seam keeps the start line and the run to the first
   // hairpin fenced, so a standing start with eight karts elbowing each other is not a lottery.
   voidRanges: [[0.05, 0.965]],
+  // Two panels of the skyway are missing. Both follow a boost pad.
+  ramps: [
+    { t: 0.716, length: 10, height: 1.8, gap: 6 },
+    { t: 0.87, length: 10, height: 2, gap: 8 },
+  ],
   environment: {
     skyTop: 0x150b2e,
     skyHorizon: 0x5a2a8c,

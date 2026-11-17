@@ -46,10 +46,18 @@ export const magmaRidge: TrackDefinition = {
   halfWidths: [8.5, 8.5, 8.5, 8, 8, 8, 8, 8.5, 8, 8.5, 8.5, 8, 7, 7, 8, 8, 7, 7.5, 8, 8, 8, 8, 8.5, 8.5, 8.5, 8.5],
   wallHalfWidthFactor: 1.35,
   itemBoxRows: [0.09, 0.28, 0.54, 0.8],
-  boostPads: [0.24, 0.52, 0.86],
+  boostPads: [0.24, 0.52, 0.585, 0.86], // 0.585: the run-up to the fissure jump
   voidRanges: [
     [0.4, 0.47],
     [0.6, 0.68],
+  ],
+  // The second lava bridge has a fissure in it.
+  ramps: [{ t: 0.615, length: 10, height: 2, gap: 7 }],
+  // Lumps of cooling lava roll down the climb to the ridge, against the traffic.
+  movers: [
+    // Both keep to the outside of the climb, half a run apart: the inside line is the safe one.
+    { kind: 'roller', from: 0.27, to: 0.17, speed: 8, lateral: -2.6, sway: 1.4, radius: 1.5, look: 'lava' },
+    { kind: 'roller', from: 0.27, to: 0.17, speed: 8, lateral: -2.6, sway: 1.4, radius: 1.5, look: 'lava', phase: 0.5 },
   ],
   environment: {
     skyTop: 0x1a0b12,

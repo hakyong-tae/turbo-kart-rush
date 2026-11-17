@@ -342,6 +342,12 @@ export interface TrackObstacle {
   velocity?: THREE.Vector3;
   /** Contract addition (track-gimmicks): touching it spins the kart out instead of just bouncing. */
   hit?: boolean;
+  /**
+   * Contract addition (track-gimmicks): where a moving obstacle is in track terms — lap parameter,
+   * lateral offset, and its speed along and across the road (m/s). On a bend, "ahead of me" in
+   * world space is not "ahead of me on the road"; the AI needs the latter.
+   */
+  onTrack?: { t: number; lateral: number; vAlong: number; vLateral: number };
 }
 
 export interface ITrack {

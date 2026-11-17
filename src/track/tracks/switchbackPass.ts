@@ -56,6 +56,9 @@ export const switchbackPass: TrackDefinition = {
   wallHalfWidthFactor: 1.45,
   itemBoxRows: [0.07, 0.3, 0.52, 0.78],
   boostPads: [0.19, 0.44, 0.86],
+  // Rocks come down the middle straight; the last one is glazed with ice into the final sweep.
+  movers: [{ kind: 'roller', from: 0.525, to: 0.45, speed: 7, lateral: -2.5, sway: 1.5, radius: 1.5, look: 'boulder' }],
+  zones: [{ from: 0.69, to: 0.75, kind: 'ice' }],
   environment: {
     skyTop: 0x2a5590,
     skyHorizon: 0xb8d6f2,

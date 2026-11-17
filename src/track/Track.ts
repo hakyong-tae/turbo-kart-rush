@@ -263,6 +263,12 @@ export class Track implements ITrack {
         0,
         _gs.tangent.z * pose.vAlong + _gs.binormal.z * pose.vLateral,
       );
+      if (o.onTrack) {
+        o.onTrack.t = pose.s / this.length;
+        o.onTrack.lateral = pose.lateral;
+        o.onTrack.vAlong = pose.vAlong;
+        o.onTrack.vLateral = pose.vLateral;
+      }
     }
   }
 
@@ -302,6 +308,7 @@ export class Track implements ITrack {
             height: def.kind === 'roller' ? radius * 2 : 2.6,
             velocity: new THREE.Vector3(),
             hit: true,
+            onTrack: { t: 0, lateral: 0, vAlong: 0, vLateral: 0 },
           },
         });
       }
