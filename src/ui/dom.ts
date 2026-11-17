@@ -68,7 +68,11 @@ export function button(label: string, className: string, onClick: () => void, ic
 /** Replace a button's icon + label in place (a button whose wording changes with state). */
 export function setButtonContent(b: HTMLElement, label: string, iconName?: IconName): void {
   b.replaceChildren();
-  if (iconName) b.appendChild(icon(iconName));
+  if (iconName) {
+    b.appendChild(icon(iconName));
+    // The label may be hidden on a narrow layout (icon-only); keep the name for assistive tech.
+    if (label) b.setAttribute('aria-label', label);
+  }
   if (label) el('span', 'btn-label', label, b);
 }
 

@@ -25,6 +25,14 @@ describe('i18n', () => {
     }
   });
 
+  it('no emoji or arrow glyphs in either language (icons are drawn, not typed)', () => {
+    // Arrows, technical symbols, geometric shapes, dingbats, misc symbols, and the emoji planes.
+    const bad = /[\u2190-\u21ff\u2300-\u23ff\u25a0-\u27ff\u2b00-\u2bff\u{1f000}-\u{1faff}]/u;
+    for (const table of [en, ko]) {
+      for (const [key, value] of Object.entries(table)) expect(bad.test(value), key).toBe(false);
+    }
+  });
+
   it('t() returns the current language string and substitutes params', () => {
     expect(t('menu.laps', { n: 3 })).toBe('3 LAPS');
     setLang('ko');

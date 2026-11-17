@@ -112,46 +112,8 @@
     top: calc(var(--hud-pad) + 78px);
   }
 }
-/* Team tally and touch minimap no longer collide with the standings (both centred). */
-/* Lobby buttons reuse the old corner-toggle class names for tooling; neutralise those offsets. */
-.lobby .lobby-btn {
-  position: relative;
-  top: auto;
-  right: auto;
-  bottom: auto;
-  left: auto;
-  z-index: auto;
-}
-.lobby .settings-toggle {
-  font-size: clamp(16px, 1.6vw, 21px);
-  padding: 14px 22px;
-}
-@media (max-height: 480px) {
-  .lobby .settings-toggle {
-    padding: 9px 16px;
-    font-size: 15px;
-  }
-  .version {
-    display: none;
-  }
-}
 #ui.touch .hud-team {
   top: calc(var(--hud-pad) + 150px);
-}
-
-/* Lobby sits right of the showcase kart on anything wider than a phone. */
-@media (min-width: 701px) {
-  .lobby {
-    left: auto;
-    right: clamp(40px, 9vw, 160px);
-    transform: none;
-    bottom: clamp(48px, 12vh, 120px);
-    width: min(340px, 34vw);
-  }
-  .logo,
-  .logo-sub {
-    /* keep the logo centred */
-  }
 }
 
 /* ---- QA round (26-09-09): phone landscape fixes ---- */

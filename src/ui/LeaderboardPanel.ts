@@ -13,6 +13,7 @@ import { unpackCosmetics } from '../core/cosmetics';
 import { badgeElement } from './badges';
 import { getLookThumbnail } from './kartThumbnails';
 import { button, el, TextField } from './dom';
+import { icon } from './icons';
 
 const ROWS = 10;
 
@@ -51,7 +52,7 @@ export class LeaderboardPanel {
     this.rootNode = el('div', 'screen lb hidden', undefined, root);
     const panel = el('div', 'panel lb-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('lb.title'), panel);
-    const tabRow = el('div', 'lb-tabs', undefined, panel);
+    const tabRow = el('div', 'lb-tabs segmented wrap', undefined, panel);
     for (const tr of tracks) {
       const b = el('button', 'seg lb-tab', tr.name.toUpperCase(), tabRow);
       b.type = 'button';
@@ -66,6 +67,7 @@ export class LeaderboardPanel {
     this.mine = new TextField(el('div', 'lb-mine', '', panel));
     const foot = el('div', 'actions', undefined, panel);
     this.nickLink = button(t('lb.setNickname'), 'ghost lb-nick', () => this.onSetNickname?.());
+    this.nickLink.appendChild(icon('chevron-right'));
     foot.appendChild(this.nickLink);
     foot.appendChild(button(t('lb.close'), 'primary', () => this.close()));
   }

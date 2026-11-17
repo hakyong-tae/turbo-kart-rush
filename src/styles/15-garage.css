@@ -293,27 +293,7 @@
   min-width: 0;
 }
 
-/* Grand Prix: the cup chips in track select, and the running table on the results screen. */
-.cup-row .cup-seg {
-  flex-wrap: wrap;
-}
-.cup-chip.locked {
-  opacity: 0.55;
-}
-.cup-chip.locked::after {
-  content: '🔒';
-  margin-left: 5px;
-  font-size: 0.85em;
-}
-.cup-chip[data-best]:not([data-best='']):not(.locked)::after {
-  content: '★';
-  margin-left: 5px;
-  color: var(--gold);
-}
-.cup-hint {
-  min-height: 1.2em;
-}
-
+/* Grand Prix: the running table on the results screen (the cup chips live in 04-menu). */
 .cup-standings {
   margin: 8px auto 0;
   width: min(420px, 92%);

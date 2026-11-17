@@ -1,9 +1,9 @@
 /**
- * Pause overlay: Resume / Restart / Quit to menu over a blurred backdrop.
+ * Pause overlay: Resume / Restart / Quit to menu over the dimmed race.
  */
 import type { InputState } from '../core/types';
 import { events } from '../core/events';
-import { button, el, FocusRing } from './dom';
+import { button, el, FocusRing, kbd, kbdIcon } from './dom';
 import { t } from '../core/i18n';
 
 export class PauseMenu {
@@ -31,7 +31,19 @@ export class PauseMenu {
     this.focus.add(restart);
     this.focus.add(quit);
 
-    el('div', 'panel-hint', t('pause.hint'), panel);
+    // Key hints, drawn as key caps (hidden on touch devices, which have no keys).
+    const hint = el('div', 'panel-hint', undefined, panel);
+    const resumeHint = el('span', '', undefined, hint);
+    kbd(resumeHint, 'ESC');
+    kbd(resumeHint, 'P');
+    resumeHint.append(t('pause.hint.resume'));
+    const moveHint = el('span', '', undefined, hint);
+    kbdIcon(moveHint, 'chevron-up');
+    kbdIcon(moveHint, 'chevron-down');
+    moveHint.append(t('pause.hint.move'));
+    const selectHint = el('span', '', undefined, hint);
+    kbd(selectHint, 'ENTER');
+    selectHint.append(t('pause.hint.select'));
   }
 
   show(): void {

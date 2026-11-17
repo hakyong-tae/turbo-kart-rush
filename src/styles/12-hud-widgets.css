@@ -232,9 +232,6 @@
   top: calc(var(--hud-pad) + 96px);
   font-size: 15px;
 }
-.race-mode .segmented .seg {
-  font-size: 12px;
-}
 .standing-row.side-ally .standing-place { color: #6fa3ff; }
 .standing-row.side-rival .standing-place { color: #ff6b74; }
 .standing-points {

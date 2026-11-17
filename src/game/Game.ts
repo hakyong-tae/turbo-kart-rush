@@ -56,6 +56,7 @@ import { LoadingScreen } from '../ui/LoadingScreen';
 import { TouchControls } from '../ui/TouchControls';
 import { t } from '../core/i18n';
 import { el } from '../ui/dom';
+import { icon } from '../ui/icons';
 import { showToast } from '../ui/toast';
 import { createEmptyInput } from '../core/types';
 import { LockSheet, type LockSheetHandlers } from '../ui/LockSheet';
@@ -184,6 +185,7 @@ export class Game {
   private pauseMenu: PauseMenu;
   private loading: LoadingScreen;
   private readonly muteIndicator: HTMLElement;
+  private readonly muteLabel: HTMLElement;
 
   private state: GameState = 'boot';
   private prePauseState: GameState = 'racing';
@@ -284,7 +286,9 @@ export class Game {
     this.garage = this.buildGarage();
     this.daily = this.buildDaily();
     this.onlinePanel = this.buildOnlinePanel();
-    this.muteIndicator = el('div', 'mute-indicator', t('mute'), this.uiRoot);
+    this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
+    this.muteIndicator.appendChild(icon('mute'));
+    this.muteLabel = el('span', '', t('mute'), this.muteIndicator);
     this.touch = new TouchControls(this.uiRoot);
     this.input.attachTouch(this.touch);
     // Phones must play in landscape (src/game/OrientationGate.ts).
@@ -787,7 +791,7 @@ export class Game {
     // Keep the mute indicator / touch layer above the rebuilt overlays.
     this.uiRoot.appendChild(this.muteIndicator);
     this.uiRoot.appendChild(this.touch.rootElement);
-    this.muteIndicator.textContent = t('mute');
+    this.muteLabel.textContent = t('mute');
     if (wasMenu) this.mainMenu.show(panel);
   }
 
@@ -1180,8 +1184,8 @@ export class Game {
     this.loadingFrames = 0;
     this.loadingProgress = 0;
     this.shadersReady = false;
-    this.loading.show(trackDef);
-    this.scene.background = new THREE.Color(0x0b0b1a);
+    this.loading.show(trackDef, this.touch.isEnabled);
+    this.scene.background = new THREE.Color(0x15161a);
     this.scene.fog = null;
     this.setState('loading');
   }

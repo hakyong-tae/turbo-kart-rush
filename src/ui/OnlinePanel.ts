@@ -57,7 +57,7 @@ export class OnlinePanel {
     this.lobbyView = el('div', 'online-lobby', undefined, panel);
     this.status = new TextField(el('div', 'online-status', '', this.lobbyView));
     const quickRow = el('div', 'actions', undefined, this.lobbyView);
-    quickRow.appendChild(button(t('online.quick'), 'primary', () => void this.run(() => this.ctl().lobby.quickJoin())));
+    quickRow.appendChild(button(t('online.quick'), 'primary', () => void this.run(() => this.ctl().lobby.quickJoin()), 'play'));
     quickRow.appendChild(button(t('online.create'), '', () => void this.run(() => this.ctl().lobby.create())));
     const codeRow = el('div', 'online-code-row', undefined, this.lobbyView);
     this.codeInput = el('input', 'settings-input online-code', undefined, codeRow);

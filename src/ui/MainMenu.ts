@@ -4,13 +4,17 @@
  */
 import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinition, RaceMode } from '../core/types';
 import { events } from '../core/events';
-import { GAME_TITLE, DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
-import { button, cssHex, cssRgba, el, TextField } from './dom';
+import { DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
+import { button, cssHex, el, TextField } from './dom';
+import { icon } from './icons';
+import { showToast } from './toast';
 import { t, t as tt, tOr } from '../core/i18n';
 import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
 import { canRace, entitlementsPending, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
+import { buildLogo } from './logo';
+import type { IconName } from './icons';
 import type { StringKey } from '../core/i18n';
 
 /** Build stamp, or a placeholder when running somewhere the define is absent (unit tests). */
@@ -28,11 +32,6 @@ const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
 const DIFFICULTY_LABEL: Record<Difficulty, StringKey> = { easy: 'diff.easy', normal: 'diff.normal', hard: 'diff.hard' };
 const RACE_MODES: readonly RaceMode[] = ['solo', 'teamPoints', 'teamFirst'];
 const MODE_LABEL: Record<RaceMode, StringKey> = { solo: 'mode.solo', teamPoints: 'mode.teamPoints', teamFirst: 'mode.teamFirst' };
-const DIFFICULTY_BLURB: Record<Difficulty, StringKey> = {
-  easy: 'diff.easy.blurb',
-  normal: 'diff.normal.blurb',
-  hard: 'diff.hard.blurb',
-};
 const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: StringKey }[] = [
   { key: 'speed', label: 'stat.speed' },
   { key: 'acceleration', label: 'stat.acceleration' },
@@ -40,9 +39,12 @@ const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: StringKey }
   { key: 'weight', label: 'stat.weight' },
   { key: 'miniTurbo', label: 'stat.miniTurbo' },
 ];
-const TIER_KEYS: readonly StringKey[] = ['tier.rookie', 'tier.pro', 'tier.expert'];
+/** A stat is shown as this many blocks; a value of 0..1 lights between one and all of them. */
+const STAT_BLOCKS = 5;
 /** Default character-grid column count (the stylesheet drops to 2 columns on phones). */
 const CHAR_COLUMNS = 4;
+/** The lobby's small buttons sit two to a row (13-lobby-gate.css). */
+const LOBBY_COLUMNS = 2;
 
 export class MainMenu {
   onStart: ((settings: RaceSettings) => void) | null = null;
@@ -68,7 +70,9 @@ export class MainMenu {
   private charIndex = 0;
   private readonly charName: TextField;
   private readonly charTagline: TextField;
-  private readonly lockBadges = new Map<string, HTMLElement>();
+  private readonly lockBadges = new Map<string, { badge: HTMLElement; text: TextField }>();
+  /** Per stat, its five blocks in the detail strip under the racer grid. */
+  private readonly statCells: HTMLElement[][] = [];
   private readonly unsubEntitlements: () => void;
 
   // Track select
@@ -82,10 +86,8 @@ export class MainMenu {
   private readonly modeButtons: HTMLButtonElement[] = [];
   private readonly cupButtons: HTMLButtonElement[] = [];
   private cupIndex = 0;
-  private readonly diffBlurb: TextField;
-  private readonly cupHint: TextField;
   private readonly startButton: HTMLElement;
-  /** 0 = track cards row, 1 = difficulty row, 2 = start button. */
+  /** 0 = track cards, 1 = mode, 2 = difficulty, 3 = grand prix cups, 4 = start button. */
   private trackRow = 0;
 
   constructor(
@@ -97,61 +99,51 @@ export class MainMenu {
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
-    const logoWrap = el('div', 'logo', undefined, title);
-    const words = GAME_TITLE.split(' ');
-    words.forEach((w, i) => {
-      const line = el('span', `logo-word logo-word-${i}`, undefined, logoWrap);
-      line.dataset.text = w;
-      line.textContent = w;
-    });
+    // Reserved for the progression update: the profile bar (level, coins, streak) goes here.
+    // Kept in the layout now so the logo does not have to move when it arrives.
+    el('div', 'lobby-profile', undefined, title);
+    buildLogo(title);
     el('div', 'logo-sub', t('title.sub'), title);
-    // Lobby: single race / online / settings (+ records). Keyboard: ↑↓ + confirm.
+    // Lobby: one big RACE plate, the rest as a grid of small icon + label plates underneath.
+    // (The missions button of the progression update joins the grid; it flows without a relayout.)
     const lobby = el('nav', 'lobby', undefined, title);
-    const lobbyEntry = (label: string, cls: string, action: () => void): HTMLButtonElement => {
-      const b = button(label, cls, () => {
-        events.emit('ui:select', {});
-        action();
-      });
-      b.addEventListener('pointerenter', () => this.setLobby(this.lobbyButtons.length ? this.lobbyButtons.indexOf(b) : 0));
-      lobby.appendChild(b);
+    const lobbyGrid = el('div', 'lobby-grid');
+    const lobbyEntry = (label: string, cls: string, host: HTMLElement, action: () => void, iconName?: IconName): HTMLButtonElement => {
+      const b = button(
+        label,
+        cls,
+        () => {
+          events.emit('ui:select', {});
+          action();
+        },
+        iconName,
+      );
+      b.addEventListener('pointerenter', () => this.setLobby(Math.max(0, this.lobbyButtons.indexOf(b))));
+      host.appendChild(b);
       this.lobbyButtons.push(b);
       return b;
     };
-    lobbyEntry(t('lobby.single'), 'primary lobby-btn single-toggle', () => this.goTo('characterSelect', true));
-    if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', () => this.onOnline?.());
-    lobbyEntry(t('lobby.daily'), 'lobby-btn daily-toggle', () => this.onDaily?.());
-    lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', () => this.onGarage?.());
-    lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', () => this.onSettings?.());
-    lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', () => this.onRecords?.());
+    // "Single race" only means something next to an online mode.
+    lobbyEntry(ONLINE_ENABLED ? t('lobby.single') : t('lobby.race'), 'primary start lobby-btn single-toggle', lobby, () =>
+      this.goTo('characterSelect', true),
+    );
+    lobby.appendChild(lobbyGrid);
+    if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
+    lobbyEntry(t('lobby.daily'), 'lobby-btn daily-toggle', lobbyGrid, () => this.onDaily?.(), 'calendar');
+    lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => this.onGarage?.(), 'wrench');
+    lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', lobbyGrid, () => this.onRecords?.(), 'trophy');
+    lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', lobbyGrid, () => this.onSettings?.(), 'gear');
     this.setLobby(0);
-    const legend = el('div', 'controls-legend', undefined, title);
-    const keys: [string, string][] = [
-      ['W / ↑', t('legend.throttle')],
-      ['S / ↓', t('legend.brake')],
-      ['A D / ← →', t('legend.steer')],
-      ['SPACE / SHIFT', t('legend.drift')],
-      ['E / CTRL', t('legend.item')],
-      ['Q', t('legend.lookBack')],
-      ['ESC / P', t('legend.pause')],
-      ['M', t('legend.mute')],
-    ];
-    for (const [k, v] of keys) {
-      const row = el('div', 'legend-row', undefined, legend);
-      el('kbd', '', k, row);
-      el('span', '', v, row);
-    }
-    // The build stamp rides along with the version line: a QA screenshot of the lobby is then
-    // enough to say which build the findings are against.
-    el('div', 'version', `${t('title.version')} · ${buildStamp()}`, title);
+    // Build stamp: a QA screenshot of the lobby is then enough to say which build it shows.
+    el('div', 'version', buildStamp(), title);
 
     // ------------------------------------------------------- character select
     const chars = el('section', 'panel-select panel-chars', undefined, this.rootNode);
     const charHead = el('header', 'select-header', undefined, chars);
-    el('div', 'panel-kicker', t('menu.step1'), charHead);
     el('h2', 'panel-title', t('menu.chooseRacer'), charHead);
     const charGrid = el('div', 'card-grid char-grid', undefined, chars);
     characters.forEach((c, i) => {
-      const card = this.buildCharacterCard(c);
+      const card = this.buildCharacterCard(c, i);
       card.addEventListener('pointerenter', () => this.setCharacter(i));
       card.addEventListener('click', () => {
         if (this.charIndex === i) this.tryProceed();
@@ -161,21 +153,33 @@ export class MainMenu {
       charGrid.appendChild(card);
       this.charCards.push(card);
     });
-    const charFoot = el('footer', 'select-footer', undefined, chars);
+    // Detail strip: the cards say who, this says what they are like. One racer's numbers at a
+    // time instead of forty stat bars across the grid.
+    const charFoot = el('footer', 'select-footer detail', undefined, chars);
     const charInfo = el('div', 'select-info', undefined, charFoot);
     this.charName = new TextField(el('div', 'select-info-name', '', charInfo));
     this.charTagline = new TextField(el('div', 'select-info-tagline', '', charInfo));
+    const statBox = el('div', 'stats', undefined, charFoot);
+    for (const s of STAT_KEYS) {
+      const row = el('div', 'stat', undefined, statBox);
+      el('span', 'stat-label', t(s.label), row);
+      const blocks = el('span', 'stat-blocks', undefined, row);
+      const cells: HTMLElement[] = [];
+      for (let k = 0; k < STAT_BLOCKS; k++) cells.push(el('i', '', undefined, blocks));
+      this.statCells.push(cells);
+    }
     const charActions = el('div', 'actions', undefined, charFoot);
-    charActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('title', true)));
     // Paint where the kart is chosen: picking a kart used to lead straight to the circuit list,
     // so the only way to paint the kart you were about to drive was to back all the way out.
-    charActions.appendChild(button(t('menu.paint'), 'ghost paint-toggle', () => this.onGarage?.()));
-    charActions.appendChild(button(t('menu.continue'), 'primary', () => this.tryProceed()));
+    charActions.appendChild(button(t('menu.paint'), 'ghost paint-toggle', () => this.onGarage?.(), 'spray'));
+    charActions.appendChild(button(t('menu.back'), 'ghost back-btn', () => this.goTo('title', true), 'chevron-left'));
+    const next = button(t('menu.continue'), 'primary next-btn', () => this.tryProceed());
+    next.appendChild(icon('chevron-right'));
+    charActions.appendChild(next);
 
     // ----------------------------------------------------------- track select
     const tr = el('section', 'panel-select panel-tracks', undefined, this.rootNode);
     const trHead = el('header', 'select-header', undefined, tr);
-    el('div', 'panel-kicker', t('menu.step2'), trHead);
     el('h2', 'panel-title', t('menu.pickCircuit'), trHead);
     const trackGrid = el('div', 'card-grid track-grid', undefined, tr);
     tracks.forEach((t, i) => {
@@ -194,11 +198,15 @@ export class MainMenu {
       trackGrid.appendChild(card);
       this.trackCards.push(card);
     });
-    const trFoot = el('footer', 'select-footer', undefined, tr);
+    // Options: three groups, each a title over a segmented control. No explanatory sentences.
+    const trFoot = el('footer', 'select-footer options', undefined, tr);
+    const optionGroup = (cls: string, title: string): HTMLElement => {
+      const wrap = el('div', `option-group ${cls}`, undefined, trFoot);
+      el('div', 'option-title', title, wrap);
+      return el('div', 'segmented', undefined, wrap);
+    };
     // Race mode: solo / team points / team first-place.
-    const modeWrap = el('div', 'difficulty race-mode', undefined, trFoot);
-    el('div', 'difficulty-label', t('menu.mode'), modeWrap);
-    const modeSeg = el('div', 'segmented', undefined, modeWrap);
+    const modeSeg = optionGroup('race-mode', t('menu.mode'));
     RACE_MODES.forEach((m, i) => {
       const b = el('button', 'seg', t(MODE_LABEL[m]), modeSeg);
       b.type = 'button';
@@ -213,9 +221,7 @@ export class MainMenu {
       });
       this.modeButtons.push(b);
     });
-    const diffWrap = el('div', 'difficulty', undefined, trFoot);
-    el('div', 'difficulty-label', t('menu.difficulty'), diffWrap);
-    const seg = el('div', 'segmented', undefined, diffWrap);
+    const seg = optionGroup('difficulty', t('menu.difficulty'));
     DIFFICULTIES.forEach((d, i) => {
       const b = el('button', 'seg', t(DIFFICULTY_LABEL[d]), seg);
       b.type = 'button';
@@ -230,16 +236,17 @@ export class MainMenu {
       });
       this.diffButtons.push(b);
     });
-    this.diffBlurb = new TextField(el('div', 'difficulty-blurb', '', diffWrap));
 
-    // Grand Prix: three races on one ticket, points decide it. Locked cups stay visible with the
-    // requirement on the chip, the same rule the garage uses for paid rows.
-    const cupWrap = el('div', 'difficulty cup-row', undefined, trFoot);
-    el('div', 'difficulty-label', t('cup.label'), cupWrap);
-    const cupSeg = el('div', 'segmented cup-seg', undefined, cupWrap);
+    // Grand Prix: three races on one ticket, points decide it. Locked cups stay visible with a
+    // padlock; pressing one says what unlocks it. A star marks a cup already finished.
+    const cupSeg = optionGroup('cup-row', t('cup.label'));
+    cupSeg.classList.add('cup-seg');
     CUPS.forEach((cup, i) => {
-      const b = el('button', 'seg cup-chip', tk(`cup.${cup.id}`), cupSeg);
+      const b = el('button', 'seg cup-chip', undefined, cupSeg);
       b.type = 'button';
+      b.appendChild(icon('lock', 'cup-lock'));
+      el('span', 'cup-name', tk(`cup.${cup.id}`), b);
+      b.appendChild(icon('star', 'cup-star filled'));
       b.addEventListener('pointerenter', () => {
         this.trackRow = 3;
         this.cupIndex = i;
@@ -253,12 +260,11 @@ export class MainMenu {
       });
       this.cupButtons.push(b);
     });
-    this.cupHint = new TextField(el('div', 'difficulty-blurb cup-hint', '', cupWrap));
     const trActions = el('div', 'actions', undefined, trFoot);
-    trActions.appendChild(button(t('menu.back'), 'ghost', () => this.goTo('characterSelect', true)));
+    trActions.appendChild(button(t('menu.back'), 'ghost back-btn', () => this.goTo('characterSelect', true), 'chevron-left'));
     this.startButton = button(t('menu.startRace'), 'primary start', () => this.start());
     this.startButton.addEventListener('pointerenter', () => {
-      this.trackRow = 3;
+      this.trackRow = 4;
       this.refreshTrackFocus();
     });
     trActions.appendChild(this.startButton);
@@ -310,16 +316,11 @@ export class MainMenu {
     if (!this.visible) return;
     switch (this.panel) {
       case 'title': {
-        const n = this.lobbyButtons.length;
-        if (input.menuUp) {
-          this.setLobby((this.lobbyIndex + n - 1) % n);
-          events.emit('ui:move', {});
-        } else if (input.menuDown) {
-          this.setLobby((this.lobbyIndex + 1) % n);
-          events.emit('ui:move', {});
-        } else if (input.confirm) {
-          this.lobbyButtons[this.lobbyIndex]?.click();
-        }
+        if (input.menuUp) this.moveLobby(0, -1);
+        else if (input.menuDown) this.moveLobby(0, 1);
+        else if (input.menuLeft) this.moveLobby(-1, 0);
+        else if (input.menuRight) this.moveLobby(1, 0);
+        else if (input.confirm) this.lobbyButtons[this.lobbyIndex]?.click();
         break;
       }
       case 'characterSelect': {
@@ -387,19 +388,19 @@ export class MainMenu {
       if (!def || !isPremium(def.id)) return;
       const locked = !canRace(def.id);
       card.classList.toggle('locked', locked);
-      const badge = this.lockBadges.get(def.id);
-      if (!badge) return;
-      if (ent.premium) badge.classList.add('hidden');
-      else {
-        badge.classList.remove('hidden');
-        // Say "checking" rather than "locked" until the account record lands — a phone on a slow
-        // connection was telling players a kart they owned tickets for was unavailable.
-        badge.textContent = entitlementsPending()
-          ? t('v8.checking')
-          : ent.premiumRaces > 0
-            ? t('v8.ticketsLeft', { n: ent.premiumRaces })
-            : t('v8.locked');
+      const entry = this.lockBadges.get(def.id);
+      if (!entry) return;
+      if (ent.premium) {
+        entry.badge.classList.add('hidden');
+        return;
       }
+      entry.badge.classList.remove('hidden');
+      // Say "checking" rather than "locked" until the account record lands — a phone on a slow
+      // connection was telling players a kart they owned tickets for was unavailable.
+      const pending = entitlementsPending();
+      entry.text.set(pending ? t('v8.checking') : ent.premiumRaces > 0 ? t('v8.ticketsLeft', { n: ent.premiumRaces }) : t('v8.locked'));
+      // Red and padlocked only when it really is locked; tickets in hand are not a warning.
+      entry.badge.classList.toggle('lock', !pending && ent.premiumRaces <= 0);
     });
   }
 
@@ -443,6 +444,10 @@ export class MainMenu {
     const def = this.characters[i];
     this.charName.set(def.name.toUpperCase());
     this.charTagline.set(tOr(`char.${def.id}.tagline`, def.tagline));
+    STAT_KEYS.forEach((stat, k) => {
+      const lit = Math.max(1, Math.round(Math.max(0, Math.min(1, def.stats[stat.key])) * STAT_BLOCKS));
+      this.statCells[k]?.forEach((cell, n) => cell.classList.toggle('on', n < lit));
+    });
     if (changed) {
       if (sound) events.emit('ui:move', {});
       this.onHighlight?.(def.id);
@@ -462,7 +467,6 @@ export class MainMenu {
     const changed = i !== this.difficultyIndex;
     this.difficultyIndex = i;
     this.diffButtons.forEach((b, k) => b.classList.toggle('selected', k === i));
-    this.diffBlurb.set(t(DIFFICULTY_BLURB[DIFFICULTIES[i]]));
     this.refreshTrackFocus();
     if (changed && sound) events.emit('ui:move', {});
   }
@@ -470,6 +474,29 @@ export class MainMenu {
   private setLobby(i: number): void {
     this.lobbyIndex = i;
     this.lobbyButtons.forEach((b, k) => b.classList.toggle('focused', k === i));
+  }
+
+  /**
+   * Cursor movement in the lobby: button 0 is the RACE plate, the rest sit in a two-column grid
+   * under it. Up / down step a row, left / right step a cell.
+   */
+  private moveLobby(dx: number, dy: number): void {
+    const n = this.lobbyButtons.length;
+    const i = this.lobbyIndex;
+    let next = i;
+    if (i === 0) {
+      if (dy > 0) next = Math.min(1, n - 1);
+      else if (dy < 0) next = n - 1;
+    } else if (dx !== 0) {
+      next = Math.min(n - 1, Math.max(1, i + dx));
+    } else if (dy < 0) {
+      next = i - LOBBY_COLUMNS >= 1 ? i - LOBBY_COLUMNS : 0;
+    } else if (dy > 0) {
+      next = i + LOBBY_COLUMNS <= n - 1 ? i + LOBBY_COLUMNS : 0;
+    }
+    if (next === i) return;
+    this.setLobby(next);
+    events.emit('ui:move', {});
   }
 
   private setMode(i: number, sound = false): void {
@@ -491,7 +518,7 @@ export class MainMenu {
     this.refreshCups();
   }
 
-  /** Lock state and the hint under the cup row; cheap enough to run with focus changes. */
+  /** Lock state and best-finish marker on the cup chips; cheap enough to run with focus changes. */
   private refreshCups(): void {
     const progress = getCupProgress();
     CUPS.forEach((cup, i) => {
@@ -501,17 +528,8 @@ export class MainMenu {
       b.classList.toggle('locked', !unlocked);
       const best = progress[cup.id];
       b.dataset.best = best ? String(best) : '';
+      b.title = best ? t('cup.best', { place: String(best), n: String(cup.trackIds.length) }) : '';
     });
-    const current = CUPS[this.cupIndex];
-    if (!current) return;
-    const progressed = progress[current.id];
-    this.cupHint.set(
-      !isCupUnlocked(current.id, progress)
-        ? t('cup.locked', { cup: tk(`cup.${current.requires ?? 'rookie'}`) })
-        : progressed
-          ? t('cup.best', { place: String(progressed), n: String(current.trackIds.length) })
-          : t('cup.blurb', { n: String(current.trackIds.length) }),
-    );
   }
 
   private startCup(): void {
@@ -521,6 +539,8 @@ export class MainMenu {
     if (!isCupUnlocked(cup.id, getCupProgress())) {
       events.emit('ui:back', {});
       this.refreshCups();
+      // The unlock rule is said when asked for, not printed under the row all the time.
+      showToast(t('cup.locked', { cup: tk(`cup.${cup.requires ?? 'rookie'}`) }), 'info', 3200);
       return;
     }
     events.emit('ui:select', {});
@@ -556,21 +576,13 @@ export class MainMenu {
     return cols > 0 ? cols : CHAR_COLUMNS;
   }
 
-  private buildCharacterCard(c: CharacterDef): HTMLElement {
+  /** Card: thumbnail, number plate, name, weight chip, and a lock chip on premium karts. */
+  private buildCharacterCard(c: CharacterDef, index: number): HTMLElement {
     const card = el('div', 'card char-card');
     card.tabIndex = -1;
-    card.style.setProperty('--card-accent', cssHex(c.color));
-    card.style.setProperty('--card-accent-2', cssHex(c.accent));
-    card.style.setProperty('--card-glow', cssRgba(c.color, 0.55));
     const swatch = el('div', 'char-swatch', undefined, card);
-    swatch.style.background = `linear-gradient(145deg, ${cssHex(c.color)} 0%, ${cssHex(c.accent)} 100%)`;
-    const helmet = el('div', 'char-helmet', undefined, swatch);
-    helmet.style.background = `radial-gradient(circle at 35% 35%, #fff 0%, ${cssHex(c.driverColor)} 45%, ${cssHex(
-      c.accent,
-    )} 100%)`;
-    el('div', 'char-wheel char-wheel-l', undefined, swatch);
-    el('div', 'char-wheel char-wheel-r', undefined, swatch);
-    // Real kart render replaces the helmet placeholder as soon as the thumbnail exists.
+    // The racer's own colour, flat.
+    swatch.style.background = cssHex(c.color);
     const thumb = el('img', 'char-thumb', undefined, swatch);
     thumb.alt = c.name;
     thumb.draggable = false;
@@ -586,36 +598,29 @@ export class MainMenu {
         card.classList.add('has-thumb');
       });
     }
-    el('div', 'card-name', c.name.toUpperCase(), card);
     if (c.premium) {
       card.dataset.premium = '1';
-      this.lockBadges.set(c.id, el('div', 'lock-badge', t('v8.locked'), card));
+      const badge = el('div', 'chip lock lock-badge', undefined, card);
+      badge.appendChild(icon('lock'));
+      const text = new TextField(el('span', 'lock-text', '', badge));
+      text.set(t('v8.locked'));
+      this.lockBadges.set(c.id, { badge, text });
     }
-    el('div', 'card-tag', tOr(`char.${c.id}.tagline`, c.tagline), card);
-    const pill = el('div', `chip weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
-    pill.title = t('menu.weightClass');
-    const stats = el('div', 'stats', undefined, card);
-    for (const s of STAT_KEYS) {
-      const row = el('div', 'stat', undefined, stats);
-      el('span', 'stat-label', t(s.label), row);
-      const bar = el('div', 'stat-bar', undefined, row);
-      const fill = el('div', 'stat-fill', undefined, bar);
-      const v = Math.max(0, Math.min(1, c.stats[s.key]));
-      fill.style.width = `${Math.round(v * 100)}%`;
-    }
+    const row = el('div', 'char-row', undefined, card);
+    el('span', 'plate char-plate', String(index + 1), row);
+    el('div', 'card-name', c.name.toUpperCase(), row);
+    const weight = el('div', `chip weight-${c.weightClass}`, t(`weight.${c.weightClass}` as StringKey), card);
+    weight.title = t('menu.weightClass');
     return card;
   }
 
+  /** Card: painted thumbnail with the theme chip, name, difficulty stars, lap count. */
   private buildTrackCard(t: TrackDefinition): HTMLElement {
     const card = el('div', 'card track-card');
     card.tabIndex = -1;
     const env = t.environment;
-    card.style.setProperty('--card-accent', cssHex(env.skyHorizon));
-    card.style.setProperty('--card-glow', cssRgba(env.skyHorizon, 0.5));
     const art = el('div', 'track-art', undefined, card);
-    art.style.background = `linear-gradient(180deg, ${cssHex(env.skyTop)} 0%, ${cssHex(env.skyHorizon)} 55%, ${cssHex(
-      t.palette.ground,
-    )} 56%, ${cssHex(t.palette.ground)} 100%)`;
+    art.style.background = cssHex(env.skyHorizon);
     // Painted course preview: themed horizon + the real track outline on the ground.
     const thumb = buildTrackThumbnail(t).cloneNode(false) as HTMLCanvasElement;
     thumb.className = 'track-thumb';
@@ -626,11 +631,11 @@ export class MainMenu {
     const nameRow = el('div', 'track-name-row', undefined, body);
     el('div', 'card-name', t.name.toUpperCase(), nameRow);
     const stars = el('div', 'stars', undefined, nameRow);
-    for (let i = 0; i < 3; i++) el('span', i < t.difficulty ? 'star on' : 'star', '★', stars);
-    el('div', 'card-tag', tOr(`track.${t.id}.desc`, t.description), body);
+    stars.setAttribute('role', 'img');
+    stars.setAttribute('aria-label', `${t.difficulty} / 3`);
+    for (let i = 0; i < 3; i++) stars.appendChild(icon('star', i < t.difficulty ? 'filled on' : 'off'));
     const meta = el('div', 'track-meta', undefined, body);
     el('span', 'chip', tt('menu.laps', { n: t.laps }), meta);
-    el('span', 'chip', tt(TIER_KEYS[t.difficulty - 1] ?? 'tier.pro'), meta);
     return card;
   }
 }

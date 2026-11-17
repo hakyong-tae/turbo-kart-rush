@@ -30,8 +30,8 @@ export class LockSheet {
     this.title = new TextField(el('h2', 'panel-title', '', panel));
     this.body = new TextField(el('p', 'lock-body', '', panel));
     const actions = el('div', 'actions column', undefined, panel);
-    this.watchBtn = button(t('v8.lock.watch'), 'primary', () => void this.run(this.handlers?.onWatch));
-    this.buyBtn = button(t('v8.lock.buy'), '', () => void this.run(this.handlers?.onBuy));
+    this.watchBtn = button(t('v8.lock.watch'), 'primary', () => void this.run(this.handlers?.onWatch), 'ad');
+    this.buyBtn = button(t('v8.lock.buy'), '', () => void this.run(this.handlers?.onBuy), 'cart');
     this.otherBtn = button(t('v8.lock.other'), 'ghost', () => this.handlers?.onOther());
     actions.append(this.watchBtn, this.buyBtn, this.otherBtn);
   }

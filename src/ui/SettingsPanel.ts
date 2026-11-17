@@ -1,5 +1,6 @@
 /**
- * Settings: nickname (for the track records), language, music / SFX volume. Opened from the title gear.
+ * Settings: nickname (for the track records), language, music / SFX volume, the item guide and the
+ * controls legend. Opened from the lobby.
  */
 import type { InputState } from '../core/types';
 import { getLang, setLang, t, type Lang } from '../core/i18n';
@@ -8,6 +9,7 @@ import { currentAccount } from '../verse8/server';
 import { isAnonymousAccount } from '../verse8/identity';
 import { normalizeNickname } from '../verse8/nickname';
 import { button, el, TextField } from './dom';
+import { buildControlsLegend } from './controlsLegend';
 import { ItemGuide } from './ItemGuide';
 import { showToast } from './toast';
 
@@ -33,6 +35,7 @@ export class SettingsPanel {
   private readonly langButtons: HTMLButtonElement[] = [];
   private readonly sliders = new Map<VolumeKind, { input: HTMLInputElement; value: HTMLElement }>();
   private readonly guide: ItemGuide;
+  private readonly controlsHost: HTMLElement;
   private readonly unsubEntitlements: () => void;
   /** True once the player has touched the field, so a late arrival never overwrites their typing. */
   private nickEdited = false;
@@ -109,6 +112,12 @@ export class SettingsPanel {
       this.guide.open();
     }));
 
+    // Controls: moved here from the title screen. Filled when the panel opens, because whether
+    // this is a touch device is only known once the player has touched something.
+    const controlsField = el('div', 'settings-field settings-controls', undefined, panel);
+    el('span', 'settings-label', t('settings.controls'), controlsField);
+    this.controlsHost = el('div', 'settings-controls-host', undefined, controlsField);
+
     // The account record arrives asynchronously and, on a phone on a slow connection, often after
     // this panel has already been opened. Reading it once at open is what left the nickname box
     // blank after a restart — the value was simply not there yet, and nothing came back for it.
@@ -157,6 +166,9 @@ export class SettingsPanel {
     this.fillFromRecord();
     this.langButtons.forEach((b) => b.classList.toggle('selected', b.textContent?.toLowerCase() === getLang()));
     this.syncSliders();
+    this.controlsHost.replaceChildren();
+    const touch = Boolean(this.rootNode.parentElement?.classList.contains('touch')) || softKeyboardLikely();
+    buildControlsLegend(this.controlsHost, touch);
     this.rootNode.classList.remove('hidden');
     this.visible = true;
     if (!softKeyboardLikely()) this.nickInput.focus();

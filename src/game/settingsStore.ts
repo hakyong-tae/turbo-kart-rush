@@ -25,3 +25,27 @@ export function writeVolume(key: string, level: number): void {
     /* private mode */
   }
 }
+
+/** Set once the controls legend has been shown on a loading screen. */
+export const SEEN_CONTROLS_KEY = 'tkr.seenControls';
+
+/**
+ * Whether the first-race controls legend has already been shown on this device.
+ * Unreadable storage counts as "seen": the legend is a one-time courtesy, and showing it before
+ * every race to someone whose browser blocks storage would be worse than never showing it.
+ */
+export function hasSeenControls(): boolean {
+  try {
+    return localStorage.getItem(SEEN_CONTROLS_KEY) !== null;
+  } catch {
+    return true;
+  }
+}
+
+export function markControlsSeen(): void {
+  try {
+    localStorage.setItem(SEEN_CONTROLS_KEY, '1');
+  } catch {
+    /* private mode */
+  }
+}
