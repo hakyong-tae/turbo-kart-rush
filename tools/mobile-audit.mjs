@@ -1,12 +1,17 @@
 // Screenshot every screen so layout overlaps can be eyeballed: a landscape phone (844x390, touch)
 // and a desktop window (1280x720, keyboard), in Korean and English.
 //
-//   node tools/mobile-audit.mjs [http://localhost:5178] [--out <dir>] [--only phone|pc] [--hud] [--no-flow]
+//   node tools/mobile-audit.mjs [http://localhost:5178] [--out <dir>] [--only phone|pc] [--lang ko|en] [--hud] [--no-flow] [--phone-fonts]
 //
 //   --out   where the PNGs go (default marketing/.audit). Use a folder per round to compare
 //           before / after:  --out marketing/.audit/ui-poster/before
 //   --hud   also capture the race HUD on a bright and a dark pair of circuits, plus a team race
 //   --only  one of the two sizes
+//   --lang  one of the two languages
+//   --phone-fonts  render as a phone does: Impact and the other desktop-only display faces are
+//           dropped from the font stack, so the web-font fallback (Anton / Black Han Sans) draws
+//           the display type. The Mac this runs on has Impact; a phone does not, and that
+//           difference once left the English UI in a thin system face that nobody saw here.
 //
 // Headless and muted. Selectors are the ones the game keeps stable for tooling:
 // .single-toggle .settings-toggle .records-toggle .daily-toggle .garage-toggle .online-toggle.
@@ -23,6 +28,10 @@ const opt = (name, fallback) => {
 const BASE = argv.find((a) => a.startsWith('http')) || 'http://localhost:5178';
 const OUT = opt('--out', 'marketing/.audit');
 const ONLY = opt('--only', '');
+const LANG = opt('--lang', '');
+const LANGS = ['ko', 'en'].filter((l) => !LANG || l === LANG);
+const PHONE_FONTS = flag('--phone-fonts');
+const DESKTOP_ONLY_FACES = ['impact', 'haettenschweiler', 'arial narrow bold', 'arial narrow', 'franklin gothic medium', 'arial black'];
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -61,7 +70,21 @@ async function open(size, lang, extraStorage = {}) {
   );
   page.on('pageerror', (e) => console.log(`  [pageerror ${size}/${lang}] ${e.message}`));
   await page.goto(`${BASE}/?auto=1`, { waitUntil: 'load' });
+  if (PHONE_FONTS) {
+    await page.waitForFunction(() => document.styleSheets.length > 0);
+    await page.evaluate((gone) => {
+      const root = document.documentElement;
+      const kept = getComputedStyle(root)
+        .getPropertyValue('--display')
+        .split(',')
+        .map((f) => f.trim())
+        .filter((f) => !gone.includes(f.replace(/['"]/g, '').toLowerCase()));
+      root.style.setProperty('--display', kept.join(', '), 'important');
+    }, DESKTOP_ONLY_FACES);
+  }
   await page.waitForFunction(() => window.__turboKartRush && document.querySelector('.panel-title-screen'));
+  // Web fonts swap in after first paint; wait for them so a capture never shows the fallback face.
+  await page.evaluate(() => document.fonts.ready);
   await sleep(700);
   return page;
 }
@@ -221,17 +244,22 @@ async function hud(size, lang, trackName, team = false) {
 
 const sizes = Object.keys(SIZES).filter((s) => !ONLY || s === ONLY);
 if (!flag('--no-flow')) {
-  for (const size of sizes) for (const lang of ['ko', 'en']) await flow(size, lang);
+  for (const size of sizes) for (const lang of LANGS) await flow(size, lang);
 }
 if (flag('--hud')) {
   for (const size of sizes) {
-    for (const name of HUD_TRACKS) await hud(size, 'ko', name);
-    await hud(size, 'ko', HUD_TRACKS[0], true);
-    await hud(size, 'en', HUD_TRACKS[2]);
+    if (LANGS.includes('ko')) {
+      for (const name of HUD_TRACKS) await hud(size, 'ko', name);
+      await hud(size, 'ko', HUD_TRACKS[0], true);
+    }
+    if (LANGS.includes('en')) {
+      await hud(size, 'en', HUD_TRACKS[2]);
+      await hud(size, 'en', HUD_TRACKS[0], true);
+    }
   }
 }
 // Portrait gate check.
-if (!flag('--no-flow') && (!ONLY || ONLY === 'phone')) {
+if (!flag('--no-flow') && (!ONLY || ONLY === 'phone') && LANGS.includes('ko')) {
   const page = await browser.newPage();
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await page.evaluateOnNewDocument(() => {

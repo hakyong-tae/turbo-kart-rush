@@ -317,6 +317,20 @@ cart(구매), sound, mute, pause, play, rotate-phone, star, check, close.
 - 첫 레이스 로딩에서 팁 자리에 조작법 표를 한 번 보여준다. **로딩 시간은 늘리지 않았다.** 로딩이
   1~2초로 짧으면 표를 다 읽기 어렵다. 표는 설정에 항상 있다.
 
+### 영어 표시 (2026-11-17 추가 지시: "영어도 잘 나오도록")
+
+- **표시 글꼴에 웹폰트 Anton을 추가했다.** 스펙 1절은 글꼴을 "지금 값 그대로"라고 했지만, 지금 값의
+  첫 글꼴인 Impact는 PC에만 있다. 안드로이드와 iOS에는 없어서 폰에서는 영어 제목·버튼·숫자가 얇은
+  시스템 글꼴로 떨어졌다(한글은 Black Han Sans 웹폰트라 문제없었다). 캡처를 찍는 맥에는 Impact가
+  있어서 화면으로는 드러나지 않았다. `--display`를 `Impact, Haettenschweiler, Anton, Black Han Sans,
+  …`로 바꾸고 `index.html`의 Google Fonts 링크에 Anton(OFL)을 더했다. PC는 전과 같이 Impact로
+  그리고, 폰은 같은 비율의 Anton으로 그린다. 저장소에 글꼴 파일은 없다(Black Han Sans와 같은 방식).
+- 한국어 전용이던 `--display` 재정의 두 개를 없애고 한 스택으로 합쳤다.
+- `tools/mobile-audit.mjs --phone-fonts`: PC 전용 글꼴을 스택에서 빼고 찍는다. 폰에서 보이는 그대로다.
+  `--lang en|ko`로 한 언어만 찍을 수 있다.
+- 영어에서 줄이 넘치던 두 곳을 고쳤다: 차고 탭 9개(PRESETS만 둘째 줄로 떨어짐)와 일시정지 패널의
+  키 안내(ENTER만 둘째 줄).
+
 ### 확인하지 못한 것
 
 - 온라인 패널: `ONLINE_ENABLED`가 꺼져 있어 화면으로 볼 수 없었다. CSS만 새 부품에 맞췄다.

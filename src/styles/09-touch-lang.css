@@ -116,11 +116,8 @@
   border-color: var(--yellow);
 }
 
-/* Korean: Impact has no Hangul, so glyphs fall through to a Gothic face; loosen uppercase tracking. */
-html[lang='ko'] {
-  --display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Apple SD Gothic Neo', 'Noto Sans KR',
-    'Malgun Gothic', system-ui, sans-serif;
-}
+/* Korean: the Hangul in display text is Black Han Sans (the shared --display stack reaches it
+   after the Latin faces); loosen the uppercase tracking that suits Latin capitals. */
 html[lang='ko'] .btn,
 html[lang='ko'] .panel-title,
 html[lang='ko'] .panel-kicker,
@@ -141,11 +138,8 @@ html[lang='ko'] .touch-btn {
   word-break: keep-all;
 }
 
-/* Korean type system: Impact still draws Latin display glyphs where it exists (numbers,
-   racer names); Hangul falls through to Black Han Sans, a heavy arcade display face.
-   Body copy switches from the system UI font to Noto Sans KR. */
+/* Korean body copy switches from the system UI font to Noto Sans KR. */
 html[lang='ko'] {
-  --display: 'Impact', 'Haettenschweiler', 'Black Han Sans', 'Arial Narrow Bold', 'Arial Black', sans-serif;
   --body: 'Noto Sans KR', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 /* Small display labels are too heavy in Black Han Sans — use bold Noto there. */

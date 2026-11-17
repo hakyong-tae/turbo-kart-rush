@@ -36,7 +36,7 @@
 
 .garage-body {
   display: grid;
-  grid-template-columns: minmax(280px, 42%) 1fr;
+  grid-template-columns: minmax(280px, 38%) 1fr;
   gap: 16px;
   min-height: 0;
 }
@@ -76,14 +76,15 @@
 
 .garage-tab {
   min-height: 32px;
-  padding: 0 14px;
+  /* Sized so all nine tabs sit on one line in English as well as Korean. */
+  padding: 0 9px;
   margin-left: calc(2px - var(--slant));
   border: 0;
   border-radius: 0;
   background: var(--panel-hi);
   color: var(--ink-dim);
-  font: 700 12px/1 var(--body);
-  letter-spacing: 0.04em;
+  font: 700 11.5px/1 var(--body);
+  letter-spacing: 0.02em;
   cursor: pointer;
   clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
 }

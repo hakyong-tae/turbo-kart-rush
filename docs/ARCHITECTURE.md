@@ -70,7 +70,7 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 |---|---|
 | `npm test` | vitest (physics with real Karts on `net/FakeTrack`, server.js harness, teams, model) |
 | `npm run typecheck && npm run build` | must stay clean; `grep -c '"@agent8/gameserver' dist/assets/*.js` → 0 |
-| `node tools/mobile-audit.mjs [url] [--out dir] [--hud]` | every screen at phone 844×390 (touch) and PC 1280×720, ko + en, + portrait gate → `marketing/.audit/` (`--hud`: race HUD on bright and dark circuits) |
+| `node tools/mobile-audit.mjs [url] [--out dir] [--hud] [--phone-fonts] [--lang en]` | every screen at phone 844×390 (touch) and PC 1280×720, ko + en, + portrait gate → `marketing/.audit/` (`--hud`: race HUD on bright and dark circuits; `--phone-fonts`: without Impact, as a phone renders it — run this before judging the English UI) |
 | `node tools/kart-lineup.mjs` | all eight karts rendered from the real builder |
 | `node tools/promo-capture.mjs` | store video + thumbnail |
 

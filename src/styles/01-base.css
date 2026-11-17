@@ -37,7 +37,10 @@
   /* Checker: one square is --sq; a strip is two rows, 2 x --sq tall (see .checker in 02-components). */
   --sq: 4px;
 
-  --display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', 'Arial Black', system-ui,
+  /* Display face. Impact on desktops; phones have none, so Anton (a web font cut to the same
+     proportions) draws the Latin there. Hangul falls through both to Black Han Sans. The system
+     faces at the end are only reached offline. */
+  --display: 'Impact', 'Haettenschweiler', 'Anton', 'Black Han Sans', 'Arial Narrow Bold', 'Arial Black', system-ui,
     sans-serif;
   --body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

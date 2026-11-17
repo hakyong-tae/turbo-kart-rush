@@ -8,7 +8,9 @@
 }
 
 .pause-panel {
-  width: min(420px, 100%);
+  /* Wide enough for the three key hints on one line in English. */
+  --pad-x: 26px;
+  width: min(460px, 100%);
   text-align: center;
 }
 
