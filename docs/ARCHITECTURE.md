@@ -58,6 +58,7 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 | Mobile / landscape gate / touch layout | `game/OrientationGate.ts`, `ui/TouchControls.ts`, `styles/09-touch-lang.css`, `11-phone.css` |
 | Korean/English strings | `core/locales/en.ts` (keys are the source of truth) + `ko.ts` |
 | Verse8: ads, shop, records, nickname | `src/verse8/*`, `server.js`, `docs/VERSE8-CONTEXT.md` |
+| Coins: what a race pays, what a garage item costs | root `server.js` (the rule) **and** `core/economy.ts` (what the UI prints); `serverEconomy.test.ts` fails until they match. Ownership gate: `server.js _owns` + `core/cosmetics.ts sanitize(…, owned)` |
 | Online protocol | `net/protocol.ts` (bump carefully — host and clients must match) |
 
 ## 3. Per-frame rules (memory)

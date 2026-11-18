@@ -11,7 +11,7 @@
 2. `@verse8/ads`는 **정적 import** 유지, `package.json` deps에서 빼지 말 것(동적 import는 번들에서 트리셰이킹된 사례 있음).
 3. `src/verse8/server.ts`의 `@agent8/gameserver/dist/src/store/useGameServerStore` 딥임포트는 **리터럴 문자열**로만. `GameServer.connect()` 직접 호출 금지(스토어 경유) — 어기면 창 전환마다 재접속 폭풍.
 4. `src/verse8/embed.ts`의 GAME_SIZE 핸드셰이크 제거 금지(iframe 뷰포트 0 방지).
-5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환). **광고권·구매 상태는 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
+5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환) + 진행 시스템 키 `coins` / `own` / `eco` / `race` / `award`(15번). **광고권·구매 상태·코인은 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
 6. `src/core/**`는 프로즌 계약(추가만, 값 변경 금지). 튠 값은 `src/core/balance.ts`.
 7. 닉네임 규칙은 `src/verse8/nickname.ts`와 `server.js` 두 곳에 복제 — 함께 수정.
 
@@ -62,3 +62,4 @@ bun run build
 12. **모바일 = 가로 전용**: `Game.onOrientationCheck`가 터치 기기 세로에서 `.rotate-gate`를 띄우고 레이스를 일시정지. 타이틀은 로비(싱글/온라인/설정/기록 버튼, `.single-toggle` 등 클래스는 툴 스크립트가 참조). HUD: 좌상단 순위표(`.hud-standings`), 우상단 아이템(라벨 없음, 3개는 겹친 아이콘, 오버드라이브는 링 게이지), 그 아래 랩/타임. 아이템 id: `nitro`/`triple_nitro`/`overdrive`(구 버섯류 — 넷 코드 인덱스는 동일).
 13. **구조**: 모듈 지도와 '무엇을 바꾸려면 어디' 표는 `docs/ARCHITECTURE.md`. CSS는 `src/styles/` 번호순 임포트(순서=캐스케이드). 새 기능은 `ui/hud/`·`kart/assists/` 식으로 위젯/모듈 단위 파일 추가.
 14. **컬렉션 쿼리는 `{ limit }`만**: `getCollectionItems(id, { limit })` 외의 `filters`/`orderBy`/`countCollectionItems`는 이 플랫폼에서 무시되거나 throw(26-09-09 QA: 기록 미저장·"[object Object]1위"·기록 삭제 원인). server.js는 전부 읽어서 JS로 필터/정렬(`_allTimes`). 스냅샷 전송은 `SNAPSHOT_EVERY=7`(≈58ms, relayHot throttle 50 위) — 더 자주 보내면 릴레이가 패킷을 버려 1초 정지가 생긴다. 로비는 `visibilitychange`/`pageshow`에 `Lobby.resume()`(재조인)한다. 온라인 출시 스위치 `ONLINE_ENABLED`(constants).
+15. **진행 시스템(코인)**: 설계는 `docs/superpowers/specs/2026-11-18-progression-server-design.md`. 코인은 **전부 `server.js`가 계산**한다 — 클라는 레이스 사실(순위·리타이어·레이스 시간)만 보내고 금액은 보내지 않는다. `beginRace`(레이스 시작 때 서버 시각 기록) → `finishRace`(서버 시계로 실제 시간이 지났는지 확인 후 지급, 하루 10판 전액 → 30% → 61판부터 0). 항목별 소유는 `own` 문자열(`p:f,k:rosa` — 외형 토큰은 `cos`와 같은 표기, 카트는 `k:<id>`), 판정은 `server.js _owns` / 클라 `sanitize(cos, premium, owned)` 한 쌍. `setCosmetics`는 안 가진 유료 토큰을 걸러서 저장한다. 가격표·순위표는 `server.js`와 `src/core/economy.ts` 두 곳(`serverEconomy.test.ts`가 일치 검사) — **한쪽만 고치지 말 것.** 호스트 밖(로컬)에서는 `src/verse8/localServer.ts`가 같은 `server.js`를 `localStorage`(`tkr.local.user`)로 실행한다: 규칙을 클라에 다시 구현하지 말 것. `?auto`·`?b.` 레이스는 정산하지 않는다. 서버 함수 배포 확인 목록에 `beginRace`, `finishRace`, `buyCosmetic`, `buyKart` 추가.
