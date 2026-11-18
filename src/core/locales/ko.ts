@@ -467,6 +467,8 @@ export const ko: Record<StringKey, string> = {
   'rewards.capped': '오늘 {n}번째 레이스 — 레이스 보상은 내일 다시 받을 수 있어요',
   'rewards.pending': '코인 정산 중…',
   'rewards.failed': '서버에 연결하지 못해 이번 레이스 코인을 받지 못했어요',
+  'rewards.noStart': '레이스 시작이 서버에 기록되지 않아 이번 판은 코인을 받지 못했어요 — 다음 판부터 정상 지급됩니다',
+  'rewards.refused': '서버가 이번 레이스 결과를 받아들이지 않았어요 ({reason})',
   'garage.coinHint': '라이버리와 이펙트는 코인으로 하나씩, 차고 패스로는 한 번에',
   'garage.tryingOnCoins': '입어 보는 중 — {n}코인이면 내 것이 됩니다',
   'garage.buyWorn': '입은 것 사기 · {n}',

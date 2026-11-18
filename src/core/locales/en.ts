@@ -479,6 +479,8 @@ export const en = {
   'rewards.capped': 'Race {n} today — no more race rewards until tomorrow',
   'rewards.pending': 'Counting coins…',
   'rewards.failed': 'Could not reach the server — no coins for this race',
+  'rewards.noStart': 'The server never saw this race start, so it paid nothing — the next race will count',
+  'rewards.refused': 'The server did not accept this race result ({reason})',
   'garage.coinHint': 'Buy liveries and effects one by one with coins, or all at once with the pass',
   'garage.tryingOnCoins': 'Trying it on — {n} coins to keep it',
   'garage.buyWorn': 'BUY THIS LOOK · {n}',

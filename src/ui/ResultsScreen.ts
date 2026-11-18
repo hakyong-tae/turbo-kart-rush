@@ -30,6 +30,8 @@ const COUNT_UP_MS = 900;
  */
 export interface RewardView {
   state: 'pending' | 'paid' | 'failed';
+  /** Why nothing was paid, already worded. Absent: the server could not be reached. */
+  why?: string;
   /** Coins this race paid. */
   coins?: number;
   /** Balance afterwards. */
@@ -262,7 +264,7 @@ export class ResultsScreen {
     this.clearRewards();
     const row = el('div', `reward-row reward-${view.state}`, undefined, this.rewards);
     if (view.state !== 'paid') {
-      el('span', 'reward-note', t(view.state === 'pending' ? 'rewards.pending' : 'rewards.failed'), row);
+      el('span', 'reward-note', view.state === 'pending' ? t('rewards.pending') : (view.why ?? t('rewards.failed')), row);
       return;
     }
     const doubled = Math.max(0, Math.floor(view.doubled ?? 0));

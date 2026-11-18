@@ -82,11 +82,33 @@ const localRoom = {
   broadcastToRoom() {},
 };
 
+/** A wallet cannot hold more than this through the dev parameter. */
+const COINS_PARAM_MAX = 9999999;
+
+/**
+ * Dev aid: `?coins=5000` sets the local wallet when the page loads, so the garage's prices and the
+ * kart sheet can be tried without racing for an hour first. Local only by construction: this
+ * module is never loaded inside a Verse8 host, where the wallet is the server's.
+ */
+function applyCoinsParam(): void {
+  let raw: string | null;
+  try {
+    raw = new URLSearchParams(location.search).get('coins');
+  } catch {
+    return; // no page (unit tests in a node environment)
+  }
+  if (raw === null || raw.trim() === '') return;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 0) return;
+  writeState({ ...readState(), coins: Math.min(n, COINS_PARAM_MAX) });
+}
+
 type ServerInstance = Record<string, (...args: unknown[]) => unknown>;
 let instance: Promise<ServerInstance> | null = null;
 
 function server(): Promise<ServerInstance> {
   if (!instance) {
+    applyCoinsParam();
     // `?raw` keeps server.js a plain text asset: it is not part of the module graph and is only
     // fetched on this path.
     instance = import('../../server.js?raw').then((mod) => {

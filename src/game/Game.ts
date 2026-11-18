@@ -125,9 +125,16 @@ function trackName(trackId: string): string {
   return TRACKS.find((tr) => tr.id === trackId)?.name ?? trackId;
 }
 
-/** The reward line for a settlement reply. A refusal reads as a failure: nothing was paid. */
+/**
+ * The reward line for a settlement reply. Nothing paid is never left unexplained: no answer, a
+ * start the server never saw, and a result it would not accept each say so in their own words.
+ */
 function rewardViewOf(award: RaceAward | null): RewardView {
-  if (!award || !award.ok) return { state: 'failed' };
+  if (!award) return { state: 'failed' };
+  if (!award.ok) {
+    const lateStart = award.reason === 'no-race' || award.reason === 'bad-time';
+    return { state: 'failed', why: lateStart ? t('rewards.noStart') : t('rewards.refused', { reason: award.reason ?? '?' }) };
+  }
   const view: RewardView = {
     state: 'paid',
     coins: award.earned?.race ?? 0,

@@ -276,34 +276,82 @@ function queued<T>(job: () => Promise<T>): Promise<T> {
   return next;
 }
 
-let ticket: Promise<string | null> | null = null;
+type RaceStart = { trackId: string; characterId: string; difficulty: string; mode?: string };
+
+/** The race this client has open on the server, or is still trying to open. */
+interface Ticket {
+  id: string | null;
+  /** This client's clock when the server confirmed the start. */
+  at: number;
+  inflight: Promise<void> | null;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * A start the server did not hear is asked again while the race runs. A phone that launches
+ * straight into a race is often still connecting when the lights go out, and one lost call used
+ * to cost the whole race's reward.
+ */
+const TICKET_RETRY_MS = [3000, 6000, 12000, 24000];
+let ticket: Ticket | null = null;
+
+function requestTicket(t: Ticket, settings: RaceStart, attempt: number): void {
+  t.inflight = queued(() => serverBeginRace(settings.trackId, settings.characterId, settings.difficulty, settings.mode ?? 'solo')).then((r) => {
+    t.inflight = null;
+    if (r?.raceId) {
+      t.id = r.raceId;
+      t.at = Date.now();
+      return;
+    }
+    if (ticket !== t || attempt >= TICKET_RETRY_MS.length) return;
+    t.timer = setTimeout(() => {
+      t.timer = null;
+      if (ticket === t) requestTicket(t, settings, attempt + 1);
+    }, TICKET_RETRY_MS[attempt]);
+  });
+}
+
+function dropTicket(): void {
+  if (ticket?.timer) clearTimeout(ticket.timer);
+  ticket = null;
+}
 
 /**
  * Opens a race on the server. Not awaited by the caller: the race starts regardless, and
  * `finishRace` picks the ticket up when the player crosses the line.
  */
-export function beginRace(settings: { trackId: string; characterId: string; difficulty: string; mode?: string }): void {
-  ticket = queued(() => serverBeginRace(settings.trackId, settings.characterId, settings.difficulty, settings.mode ?? 'solo')).then(
-    (r) => r?.raceId ?? null,
-  );
+export function beginRace(settings: RaceStart): void {
+  dropTicket();
+  const t: Ticket = { id: null, at: 0, inflight: null, timer: null };
+  ticket = t;
+  requestTicket(t, settings, 0);
 }
 
 /** Forgets the open race: a run that must not be paid for (dev auto-drive, tuned balance). */
 export function abandonRace(): void {
-  ticket = null;
+  dropTicket();
 }
 
 /**
- * Settles the race `beginRace` opened. Null when there was nothing to settle or the server did not
- * answer; a refusal (`ok: false`) is returned as it came, with the reason.
+ * Settles the race `beginRace` opened.
+ *
+ * Three ways it can pay nothing, and the caller is told which: null when there was nothing to
+ * settle or the server did not answer the finish; `reason: 'no-race'` when the server never
+ * confirmed the start (built here, since there is no race id to ask about); any other refusal as
+ * the server sent it.
  */
 export async function finishRace(report: RaceReport): Promise<RaceAward | null> {
   const mine = ticket;
-  ticket = null;
+  dropTicket();
   if (!mine) return null;
-  const raceId = await mine;
-  if (!raceId) return null;
-  const award = await queued(() => serverFinishRace(raceId, report));
+  if (mine.inflight) await mine.inflight;
+  const raceId = mine.id;
+  if (!raceId) return { ok: false, reason: 'no-race', coins: getCoins(), races: racesToday() };
+  // A start confirmed late covers only part of the race. Claim no more than the server has seen:
+  // the reward is then decided on what it can vouch for, rather than refused as too fast.
+  const seen = Date.now() - mine.at;
+  const timed: RaceReport = { ...report, timeMs: Math.min(report.timeMs, Math.max(0, seen)) };
+  const award = await queued(() => serverFinishRace(raceId, timed));
   if (award) {
     const patch: Partial<Entitlements> = {
       coins: award.coins,
@@ -381,7 +429,7 @@ export const mockStore = {
 
 export function _resetForTests(): void {
   state = EMPTY;
-  ticket = null;
+  dropTicket();
   walletQueue = Promise.resolve();
   listeners.clear();
   if (retryTimer !== null) clearTimeout(retryTimer);
