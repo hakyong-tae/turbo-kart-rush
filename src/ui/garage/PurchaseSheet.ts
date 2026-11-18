@@ -28,6 +28,7 @@ export class PurchaseSheet {
   onClose: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
+  private readonly title: HTMLElement;
   private readonly balance: HTMLElement;
   private readonly list: HTMLElement;
   private readonly note: HTMLElement;
@@ -41,7 +42,7 @@ export class PurchaseSheet {
     this.rootNode = el('div', 'buy-sheet hidden', undefined, root);
     const panel = el('div', 'panel buy-panel', undefined, this.rootNode);
     const head = el('div', 'buy-head', undefined, panel);
-    el('div', 'panel-kicker', t('buy.title'), head);
+    this.title = el('div', 'panel-kicker', t('buy.title'), head);
     this.balance = el('span', 'coin-chip buy-balance', undefined, head);
     this.list = el('div', 'buy-list', undefined, panel);
     this.note = el('div', 'buy-note', '', panel);
@@ -62,6 +63,8 @@ export class PurchaseSheet {
   /** Shows (or refreshes) the sheet. `passOffered` is false for a player who already has the pass. */
   show(items: readonly PurchaseItem[], coins: number, passOffered: boolean): void {
     this.items = items;
+    // Nothing here is for sale: the sheet is then an explanation, and is titled as one.
+    this.title.textContent = t(this.buyable().length > 0 ? 'buy.title' : 'garage.howToGet');
     this.balance.replaceChildren(icon('coin'), document.createTextNode(formatCoins(coins)));
     this.balance.title = t('buy.balance', { n: formatCoins(coins) });
     this.list.replaceChildren();
