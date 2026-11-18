@@ -8,7 +8,7 @@ import { DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
 import { button, cssHex, el, TextField } from './dom';
 import { icon } from './icons';
 import { showToast } from './toast';
-import { t, t as tt, tOr } from '../core/i18n';
+import { getLang, setLang, t, t as tt, tOr, type Lang } from '../core/i18n';
 import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
 import { canRace, entitlementsPending, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
@@ -25,6 +25,12 @@ function buildStamp(): string {
 /** Cup labels are keyed by id at runtime; the locale test covers the same ground. */
 type LocaleKey = Parameters<typeof t>[0];
 const tk = (key: string): string => t(key as LocaleKey);
+
+/** What each language calls itself. Never translated: this is how someone finds their own. */
+const LANGUAGE_NAMES: readonly (readonly [Lang, string])[] = [
+  ['ko', '한국어'],
+  ['en', 'English'],
+];
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
 
@@ -135,6 +141,23 @@ export class MainMenu {
     lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', lobbyGrid, () => this.onRecords?.(), 'trophy');
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', lobbyGrid, () => this.onSettings?.(), 'gear');
     this.setLobby(0);
+    // Language, on the first screen and each in its own name: nobody should have to find it inside
+    // a settings panel written in a language they cannot read. (Switching rebuilds this menu.)
+    const langSeg = el('div', 'segmented lobby-lang', undefined, title);
+    for (const [lang, name] of LANGUAGE_NAMES) {
+      const b = el('button', 'seg', name, langSeg);
+      b.type = 'button';
+      b.lang = lang;
+      const on = getLang() === lang;
+      b.classList.toggle('selected', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (getLang() === lang) return;
+        events.emit('ui:select', {});
+        setLang(lang);
+      });
+    }
     // Build stamp: a QA screenshot of the lobby is then enough to say which build it shows.
     el('div', 'version', buildStamp(), title);
 
