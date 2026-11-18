@@ -17,9 +17,11 @@ import type {
   TrackSample,
   NetItems,
   NetHazard,
+  RaceMode,
 } from '../core/types';
 import { events } from '../core/events';
 import { BALANCE } from '../core/balance';
+import { isTeamMode, teamOf } from '../core/teams';
 import { GRAVITY, ITEM_BOX_RESPAWN_SECONDS, ITEM_ROULETTE_SECONDS, KART_RADIUS } from '../core/constants';
 import { TAU, clamp, lerp, trackDelta, wrap01 } from '../core/math';
 import { baseItemType, buildItemMesh, disposeItemVisualCaches } from './itemVisuals';
@@ -216,6 +218,7 @@ export class ItemManager implements IItemManager {
   private records: KartRecord[] = [];
   private time = 0;
   private lastLightningTime = -1000;
+  private raceMode: RaceMode = 'solo';
 
   private readonly hazards: Hazard[] = [];
   private readonly hazardOut: HazardInfo[] = [];
@@ -291,6 +294,10 @@ export class ItemManager implements IItemManager {
     this.lastLightningTime = -1000;
     this.time = 0;
     this.resetDebugCounts();
+  }
+
+  setRaceMode(mode: RaceMode): void {
+    this.raceMode = mode;
   }
 
   dispose(): void {
@@ -682,12 +689,20 @@ export class ItemManager implements IItemManager {
     return best;
   }
 
+  /**
+   * Strikes everyone but the user — and, in a team race, everyone but the user's side. Lightning
+   * cannot be dodged or aimed, so unlike a shell it has no way to tell friend from foe unless the
+   * rule does: without this, the item that should swing a team race shrank four team-mates along
+   * with the four rivals.
+   */
   private useLightning(user: IKart): void {
     const uid = user.state.id;
+    const teams = isTeamMode(this.raceMode);
     this.lastLightningTime = this.time;
     for (const other of this.karts) {
       if (other === user) continue;
       const os = other.state;
+      if (teams && teamOf(os.id) === teamOf(uid)) continue;
       if (os.isInvincible || os.finished) continue;
       other.applyShrink(6);
       if (!os.isAirborne) other.applyHit('lightning', uid);

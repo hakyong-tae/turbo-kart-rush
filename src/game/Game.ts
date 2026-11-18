@@ -28,7 +28,7 @@ import { Kart } from '../kart/Kart';
 import { InputManager } from '../kart/InputManager';
 import { CHARACTERS, getCharacter } from '../kart/roster';
 import { Track } from '../track/Track';
-import { TRACKS, getTrackDef } from '../track/tracks';
+import { TRACKS, TRACKS_BY_DIFFICULTY, getTrackDef } from '../track/tracks';
 import { ItemManager } from '../items/ItemManager';
 import { ALL_ITEM_TYPES } from '../core/types';
 import { buildItemIcon, buildItemMesh } from '../items/itemVisuals';
@@ -378,7 +378,7 @@ export class Game {
   // ------------------------------------------------------------- ui builders
 
   private buildMainMenu(): MainMenu {
-    const menu = new MainMenu(this.uiRoot, CHARACTERS as readonly CharacterDef[], TRACKS as readonly TrackDefinition[]);
+    const menu = new MainMenu(this.uiRoot, CHARACTERS as readonly CharacterDef[], TRACKS_BY_DIFFICULTY);
     menu.onHighlight = (id) => {
       this.garageCharacterId = id;
       this.backdrop.setCharacter(getCharacter(id));
@@ -502,7 +502,7 @@ export class Game {
     const panel = new OnlinePanel(
       this.uiRoot,
       this.online,
-      TRACKS as readonly TrackDefinition[],
+      TRACKS_BY_DIFFICULTY,
       CHARACTERS as readonly CharacterDef[],
       (mode) => this.getOnline(mode),
     );
@@ -623,7 +623,7 @@ export class Game {
   }
 
   private buildLeaderboard(): LeaderboardPanel {
-    const lb = new LeaderboardPanel(this.uiRoot, TRACKS as readonly TrackDefinition[], CHARACTERS as readonly CharacterDef[]);
+    const lb = new LeaderboardPanel(this.uiRoot, TRACKS_BY_DIFFICULTY, CHARACTERS as readonly CharacterDef[]);
     lb.onSetNickname = () => {
       lb.hide();
       this.settings.show();
@@ -1314,6 +1314,7 @@ export class Game {
     const items: IItemManager = new ItemManager(this.particles);
     partial.items = items;
     items.init(track, karts);
+    items.setRaceMode?.(settings.mode ?? 'solo');
 
     const raceManager = new RaceManager(track, karts, settings);
     const followCamera = new FollowCamera(this.camera);

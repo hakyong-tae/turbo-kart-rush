@@ -6,7 +6,7 @@ import { magmaRidge } from './magmaRidge';
 import { prismSkyway } from './prismSkyway';
 import { switchbackPass } from './switchbackPass';
 import { validateTrackDefinition } from './validate';
-import { TRACKS } from './index';
+import { TRACKS, TRACKS_BY_DIFFICULTY } from './index';
 
 function lengthOf(def: TrackDefinition): number {
   const pts = def.controlPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z));
@@ -70,5 +70,25 @@ describe('every circuit in the game', () => {
     expect(warn({ movers: [{ kind: 'roller', from: 0.5, to: 0.49, speed: 8 }] })).toMatch(/too short/);
     expect(warn({ movers: [{ kind: 'crosser', t: 0.5, period: 2, speed: 8 }] })).toMatch(/too short to pass/);
     expect(warn({ ramps: [{ t: 0.4, height: 2 }], zones: [{ from: 0.2, to: 0.25, kind: 'ice' }] })).toBe('');
+  });
+});
+
+describe('TRACKS_BY_DIFFICULTY (what the pickers show)', () => {
+  it('is the same circuits, easiest first', () => {
+    expect(TRACKS_BY_DIFFICULTY.map((t) => t.id).sort()).toEqual(TRACKS.map((t) => t.id).sort());
+    const stars = TRACKS_BY_DIFFICULTY.map((t) => t.difficulty);
+    expect(stars).toEqual([...stars].sort((a, b) => a - b));
+  });
+  it('keeps the order they were added within a rating', () => {
+    for (let i = 1; i < TRACKS_BY_DIFFICULTY.length; i++) {
+      const a = TRACKS_BY_DIFFICULTY[i - 1];
+      const b = TRACKS_BY_DIFFICULTY[i];
+      if (a.difficulty === b.difficulty) expect(TRACKS.indexOf(a)).toBeLessThan(TRACKS.indexOf(b));
+    }
+  });
+  it('leaves TRACKS itself alone: the daily challenge indexes into it', () => {
+    expect(TRACKS.slice(0, 9).map((t) => t.id)).toEqual([
+      'sunny_circuit', 'coral_coast', 'dune_drift', 'frostbite_falls', 'neon_nexus', 'magma_ridge', 'switchback_pass', 'prism_skyway', 'windmill_way',
+    ]);
   });
 });

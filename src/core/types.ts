@@ -591,6 +591,8 @@ export interface IItemManager {
   dispose(): void;
   /** Contract additions (item sync). 'mirror' = render network state only. */
   setNetMode?(mode: 'authority' | 'mirror'): void;
+  /** Contract addition (team-items): the race mode, so team races can spare the user's own side. */
+  setRaceMode?(mode: RaceMode): void;
   getNetItems?(): NetItems;
   applyNetItems?(items: NetItems): void;
 }
