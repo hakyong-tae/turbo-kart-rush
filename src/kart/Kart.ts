@@ -24,7 +24,7 @@ import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_RADIUS } from '../core/constants';
 import { TAU, clamp, clamp01, damp, lerp, smoothstep, wrapAngle, angleDelta } from '../core/math';
-import { buildKartModel, type KartModelPartsEx } from './KartModel';
+import { buildKartModel, type KartModelPartsEx, setAfterburner } from './KartModel';
 import { SlipstreamTracker, type SlipstreamHost } from './assists/slipstream';
 import { startMagnet, updateMagnet, type MagnetHost } from './assists/magnet';
 import type { KartCosmetics } from '../core/cosmetics';
@@ -496,17 +496,7 @@ export class Kart implements IKart {
     }
 
     // Neon afterburner: cones fade in with the boost glow, the tip ring always glows.
-    const glow = this.visGlow;
-    p.neonFlameMaterial.opacity = Math.min(1, glow * (0.6 + 0.4 * flicker));
-    p.neonHaloMaterial.opacity = Math.min(1, glow * 0.32 * (0.7 + 0.3 * flicker));
-    p.neonRingMaterial.opacity = 0.5 + 0.5 * glow;
-    p.neonHaloMaterial.opacity *= (p.neonHaloMaterial.userData.strength as number | undefined) ?? 1;
-    const flameLen = (0.55 + 0.75 * glow * (0.8 + 0.2 * flicker)) * p.neonLength;
-    for (let i = 0; i < p.neonFlames.length; i++) {
-      const f = p.neonFlames[i];
-      const ls = (f.userData.lengthScale as number | undefined) ?? 1;
-      f.scale.set(0.8 + 0.4 * glow, 0.8 + 0.4 * glow, flameLen / ls);
-    }
+    setAfterburner(p, this.visGlow, flicker);
     if (s.isInvincible || p.neonCycle) {
       const hue = (this.time * (s.isInvincible ? 1.6 : 0.35) + 0.33) % 1;
       p.neonFlameMaterial.color.setHSL(hue, 1, 0.65);

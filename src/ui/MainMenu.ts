@@ -89,6 +89,9 @@ export class MainMenu {
   private difficultyIndex = 1;
   private modeIndex = 0;
   private lobbyIndex = 0;
+  private readonly langButtons: HTMLButtonElement[] = [];
+  /** Which language button the keyboard cursor is on, or null while it is on the lobby buttons. */
+  private langFocus: number | null = null;
   private readonly lobbyButtons: HTMLButtonElement[] = [];
   private readonly modeButtons: HTMLButtonElement[] = [];
   private readonly cupButtons: HTMLButtonElement[] = [];
@@ -142,8 +145,10 @@ export class MainMenu {
     lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', lobbyGrid, () => this.onSettings?.(), 'gear');
     this.setLobby(0);
     // Language, on the first screen and each in its own name: nobody should have to find it inside
-    // a settings panel written in a language they cannot read. (Switching rebuilds this menu.)
-    const langSeg = el('div', 'segmented lobby-lang', undefined, title);
+    // a settings panel written in a language they cannot read. It sits directly above RACE, the
+    // one place every player looks before doing anything. (Switching rebuilds this menu.)
+    const langSeg = el('div', 'segmented lobby-lang');
+    langSeg.appendChild(icon('globe'));
     for (const [lang, name] of LANGUAGE_NAMES) {
       const b = el('button', 'seg', name, langSeg);
       b.type = 'button';
@@ -157,7 +162,9 @@ export class MainMenu {
         events.emit('ui:select', {});
         setLang(lang);
       });
+      this.langButtons.push(b);
     }
+    lobby.insertBefore(langSeg, lobby.firstChild);
     // Build stamp: a QA screenshot of the lobby is then enough to say which build it shows.
     el('div', 'version', buildStamp(), title);
 
@@ -347,6 +354,10 @@ export class MainMenu {
     if (!this.visible) return;
     switch (this.panel) {
       case 'title': {
+        if (this.langFocus !== null) {
+          this.handleLangRow(input);
+          break;
+        }
         if (input.menuUp) this.moveLobby(0, -1);
         else if (input.menuDown) this.moveLobby(0, 1);
         else if (input.menuLeft) this.moveLobby(-1, 0);
@@ -504,6 +515,33 @@ export class MainMenu {
   private setLobby(i: number): void {
     this.lobbyIndex = i;
     this.lobbyButtons.forEach((b, k) => b.classList.toggle('focused', k === i));
+    this.setLangFocus(null);
+  }
+
+  private setLangFocus(i: number | null): void {
+    this.langFocus = i;
+    this.langButtons.forEach((b, k) => b.classList.toggle('focused', k === i));
+    if (i !== null) this.lobbyButtons.forEach((b) => b.classList.remove('focused'));
+  }
+
+  /** Keyboard / gamepad on the language row above RACE: left / right pick, confirm applies. */
+  private handleLangRow(input: InputState): void {
+    const i = this.langFocus ?? 0;
+    if (input.menuLeft || input.menuRight) {
+      const next = Math.min(this.langButtons.length - 1, Math.max(0, i + (input.menuRight ? 1 : -1)));
+      if (next !== i) {
+        this.setLangFocus(next);
+        events.emit('ui:move', {});
+      }
+    } else if (input.menuDown) {
+      this.setLobby(0);
+      events.emit('ui:move', {});
+    } else if (input.menuUp) {
+      this.setLobby(this.lobbyButtons.length - 1);
+      events.emit('ui:move', {});
+    } else if (input.confirm) {
+      this.langButtons[i]?.click();
+    }
   }
 
   /**
@@ -516,13 +554,24 @@ export class MainMenu {
     let next = i;
     if (i === 0) {
       if (dy > 0) next = Math.min(1, n - 1);
-      else if (dy < 0) next = n - 1;
+      else if (dy < 0 && this.langButtons.length) {
+        // The language row sits above RACE: the cursor lands on the language not in use.
+        this.setLangFocus(Math.max(0, this.langButtons.findIndex((b) => !b.classList.contains('selected'))));
+        events.emit('ui:move', {});
+        return;
+      } else if (dy < 0) next = n - 1;
     } else if (dx !== 0) {
       next = Math.min(n - 1, Math.max(1, i + dx));
     } else if (dy < 0) {
       next = i - LOBBY_COLUMNS >= 1 ? i - LOBBY_COLUMNS : 0;
     } else if (dy > 0) {
-      next = i + LOBBY_COLUMNS <= n - 1 ? i + LOBBY_COLUMNS : 0;
+      // Off the bottom wraps to the top of the column, which is the language row.
+      if (i + LOBBY_COLUMNS <= n - 1) next = i + LOBBY_COLUMNS;
+      else if (this.langButtons.length) {
+        this.setLangFocus(Math.max(0, this.langButtons.findIndex((b) => !b.classList.contains('selected'))));
+        events.emit('ui:move', {});
+        return;
+      } else next = 0;
     }
     if (next === i) return;
     this.setLobby(next);

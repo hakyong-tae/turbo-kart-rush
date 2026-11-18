@@ -8,17 +8,24 @@
  *
  * A dark floor sits under the kart because the underglow is light: with no surface to catch the
  * spill there is nothing to sell, which is also why the preview keeps rolling the wheels — half
- * of these effects only exist in motion.
+ * of these effects only exist in motion. The exhaust flame only exists under boost, so the
+ * turntable boosts: a burst every few seconds, or held open while the flame tab is up.
  */
 import * as THREE from 'three';
 import type { KartCosmetics } from '../../core/cosmetics';
 import type { CharacterDef } from '../../core/types';
-import { buildKartModel, type KartModelPartsEx } from '../../kart/KartModel';
+import { buildKartModel, setAfterburner, type KartModelPartsEx } from '../../kart/KartModel';
 import { tickPatternTime } from '../../kart/patternShader';
 
 const FLOOR_RADIUS = 3.4;
 /** Fixed step: the turntable must look identical whatever the display refresh rate is. */
 const DT = 1 / 60;
+/** Showroom boost: this long burning out of every period, so the flame is seen lighting and dying. */
+const BOOST_PERIOD = 3.6;
+const BOOST_ON = 2.2;
+/** While the boost is held the turntable stops turning and sways about the tail instead. */
+const REAR_VIEW = 0;
+const REAR_SWAY = 0.48;
 
 export class GaragePreview {
   readonly canvas: HTMLCanvasElement;
@@ -34,6 +41,11 @@ export class GaragePreview {
   private wheelSpin = 0;
   private running = false;
   private frame = 0;
+  private time = 0;
+  private glow = 0;
+  private boostHold = false;
+  private sway = 0;
+  private neonTinted = false;
 
   constructor(parent: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -80,6 +92,18 @@ export class GaragePreview {
     this.parts?.applyCosmetics(cosmetics);
   }
 
+  /**
+   * Holds the boost open (the flame tab) instead of pulsing it, and keeps the tail towards the
+   * camera: the pipes are at the back, and a flame chosen while the kart shows its nose is a
+   * flame nobody saw. Released, the turntable carries on from wherever the sway left it.
+   */
+  setBoostHold(on: boolean): void {
+    if (on === this.boostHold) return;
+    this.boostHold = on;
+    if (on) this.sway = 0;
+    else this.spin = this.pivot.rotation.y;
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -124,13 +148,41 @@ export class GaragePreview {
       this.frameCamera(w / Math.max(1, h));
     }
     tickPatternTime(DT);
-    this.spin += DT * 0.5;
-    this.pivot.rotation.y = this.spin;
+    if (this.boostHold) {
+      this.sway += DT * 0.55;
+      this.pivot.rotation.y = REAR_VIEW + Math.sin(this.sway) * REAR_SWAY;
+    } else {
+      this.spin += DT * 0.5;
+      this.pivot.rotation.y = this.spin;
+    }
     // Wheels turn as if rolling at showroom pace, so spoke and rim effects are legible.
     this.wheelSpin = (this.wheelSpin + DT * 6) % (Math.PI * 2);
     const wheels = parts.wheels;
     for (let i = 0; i < wheels.length; i++) wheels[i].rotation.x = -this.wheelSpin;
+    this.burn(parts);
     r.render(this.scene, this.camera);
+  }
+
+  /** The exhaust under a showroom boost — the same numbers `Kart.updateVisuals` uses in a race. */
+  private burn(parts: KartModelPartsEx): void {
+    this.time += DT;
+    const burning = this.boostHold || this.time % BOOST_PERIOD < BOOST_ON;
+    this.glow += ((burning ? 1 : 0) - this.glow) * (1 - Math.exp(-10 * DT));
+    const flicker = 0.75 + 0.25 * Math.sin(this.time * 47) * Math.sin(this.time * 31 + 1);
+    parts.exhaustGlowMaterial.emissiveIntensity = this.glow * 3 * flicker;
+    setAfterburner(parts, this.glow, flicker);
+    if (parts.neonCycle) {
+      const hue = (this.time * 0.35 + 0.33) % 1;
+      parts.neonFlameMaterial.color.setHSL(hue, 1, 0.65);
+      parts.neonHaloMaterial.color.copy(parts.neonFlameMaterial.color);
+      parts.neonRingMaterial.color.copy(parts.neonFlameMaterial.color);
+      this.neonTinted = true;
+    } else if (this.neonTinted) {
+      parts.neonFlameMaterial.color.copy(parts.neonColor);
+      parts.neonHaloMaterial.color.copy(parts.neonColor);
+      parts.neonRingMaterial.color.copy(parts.neonColor);
+      this.neonTinted = false;
+    }
   }
 
   /**

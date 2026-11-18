@@ -4,7 +4,9 @@
  * Tier rule, enforced in one place (`sanitize`, on save and on every render): colours are free,
  * liveries and effects need the garage pass. Locked entries are shown, not hidden — a player who
  * cannot see what a purchase buys has no reason to make it — and tapping one puts it on the live
- * kart briefly while the header says the garage pass is what unlocks it.
+ * kart and leaves it there: the turntable is a fitting room. A free player can dress the kart in
+ * anything and look at it for as long as they like; what they cannot do is take it out of the
+ * room. SAVE keeps the free half, says so, and offers the pass.
  *
  * The draft look is local until SAVE. Nothing is written to the account while browsing, so
  * backing out of the panel leaves the saved kart untouched.
@@ -54,9 +56,6 @@ function paidPartOf(cos: KartCosmetics): KartCosmetics {
   }
   return out as KartCosmetics;
 }
-
-/** How long a locked entry stays on the kart before snapping back. */
-const AUDITION_MS = 3000;
 
 /**
  * Catalogue keys are built from ids at runtime (`cos.trail.embers`), which the compile-time key
@@ -113,8 +112,12 @@ export class GaragePanel {
   private character: CharacterDef;
   private tab: TabId = 'paint';
   private visible = false;
-  /** Set while a locked entry is on the kart; holds the look to restore. */
-  private audition: { timer: number; restore: KartCosmetics } | null = null;
+  /**
+   * Set when SAVE was pressed with locked work on the kart. If the pass arrives while the panel
+   * is still open, the look the player was trying on is saved for them — they have already said
+   * they want it, and making them find SAVE again after paying would be a second ask.
+   */
+  private saveOnUnlock = false;
   private readonly unsubEntitlements: () => void;
 
   constructor(root: HTMLElement) {
@@ -156,6 +159,7 @@ export class GaragePanel {
       this.apply();
       this.syncChrome();
       this.setTab(this.tab);
+      if (this.saveOnUnlock && this.premium) void this.save();
     });
   }
 
@@ -189,7 +193,7 @@ export class GaragePanel {
     // Second chance at the entitlement read: the first one happens at boot, when a phone may
     // still be negotiating the connection. Opening the garage is exactly when the answer matters.
     if (!this.entitlementsKnown) void refreshEntitlements();
-    this.cancelAudition();
+    this.saveOnUnlock = false;
     this.preview.setCharacter(this.character, this.draft);
     this.preview.start();
     this.syncChrome();
@@ -199,7 +203,7 @@ export class GaragePanel {
   }
 
   hide(): void {
-    this.cancelAudition();
+    this.saveOnUnlock = false;
     this.preview.stop();
     this.rootNode.classList.add('hidden');
     this.visible = false;
@@ -211,7 +215,6 @@ export class GaragePanel {
   }
 
   dispose(): void {
-    this.cancelAudition();
     this.unsubEntitlements();
     this.preview.dispose();
     this.rootNode.remove();
@@ -228,18 +231,28 @@ export class GaragePanel {
     this.onClose?.();
   }
 
+  /** A free player with locked work on the turntable: looking is allowed, keeping is not. */
+  private get tryingOn(): boolean {
+    return this.entitlementsKnown && !this.premium && usesPaid(this.draft);
+  }
+
   private syncChrome(): void {
     const known = this.entitlementsKnown;
     const owned = this.premium;
-    this.stateChip.textContent = !known ? t('garage.loading') : owned ? t('garage.owned') : t('garage.paidHint');
+    const trying = this.tryingOn;
+    this.stateChip.textContent = !known ? t('garage.loading') : owned ? t('garage.owned') : trying ? t('garage.tryingOn') : t('garage.paidHint');
     this.stateChip.classList.toggle('owned', known && owned);
+    this.stateChip.classList.toggle('trying', trying);
     this.unlockBtn.classList.toggle('hidden', !known || owned);
+    // The offer is loudest at the moment the player is looking at what it buys.
+    this.unlockBtn.classList.toggle('wanted', trying);
   }
 
   private setTab(id: TabId): void {
     this.tab = id;
     for (const [tabId, b] of this.tabButtons) b.classList.toggle('selected', tabId === id);
     this.rows.textContent = '';
+    if (id !== 'flame') this.preview.setBoostHold(false);
     if (id === 'paint') {
       for (const slot of PAINT_SLOTS) this.colorRow(slot);
       el('p', 'garage-hint', t('garage.freeHint'), this.rows);
@@ -253,6 +266,9 @@ export class GaragePanel {
     if (!tab?.list || !tab.field) return;
     this.optionRow(tab.field, tab.list, id);
     if (tab.color) this.colorRow(tab.color);
+    // The exhaust only burns under boost, so the flame tab holds the throttle open and turns the
+    // kart tail-on; everywhere else the turntable gives it a burst every few seconds.
+    this.preview.setBoostHold(id === 'flame');
   }
 
   /** A labelled strip of swatches plus a "character default" chip. */
@@ -316,15 +332,13 @@ export class GaragePanel {
         lock.title = t('garage.locked');
       }
       b.addEventListener('click', () => {
-        if (locked) {
-          this.auditionValue(field, entry.id);
-          return;
-        }
+        // Locked or not, it goes on the kart: see the note at the top of the file.
         if (entry.id === first) delete this.draft[field];
         else (this.draft as Record<string, unknown>)[field] = entry.id;
         this.touched = true;
         this.apply();
         paint();
+        this.syncChrome();
       });
     }
     paint();
@@ -345,63 +359,22 @@ export class GaragePanel {
       }
       else if (preset.free) el('span', 'chip garage-option-free', t('garage.presetFree'), b);
       b.addEventListener('click', () => {
-        if (locked) {
-          this.auditionLook({ ...preset.cos });
-          return;
-        }
         this.draft = { ...preset.cos };
         this.touched = true;
         this.apply();
         this.setTab('preset');
+        this.syncChrome();
       });
     }
   }
 
-  /** Three seconds of the real thing, then back to the saved draft. */
-  private auditionValue(field: EnumField, id: string): void {
-    const next = { ...this.draft } as Record<string, unknown>;
-    next[field] = id;
-    this.auditionLook(next as KartCosmetics);
-  }
-
-  private auditionLook(look: KartCosmetics): void {
-    const restore = this.audition ? this.audition.restore : { ...this.draft };
-    this.cancelAudition(false);
-    // Rendered with the gate open: the audition is the one moment a free player sees paid work.
-    // The label states the requirement rather than counting the seconds down — what the player
-    // needs to know is that this costs the garage pass, not that the peek is about to end.
-    this.preview.setCosmetics(sanitize(look, true));
-    this.stateChip.textContent = t('garage.needsPass');
-    this.stateChip.classList.add('auditioning');
-    this.audition = {
-      restore,
-      timer: window.setTimeout(() => {
-        this.audition = null;
-        this.draft = restore;
-        this.apply();
-        this.syncChrome();
-        this.stateChip.classList.remove('auditioning');
-      }, AUDITION_MS),
-    };
-  }
-
-  private cancelAudition(restore = true): void {
-    if (!this.audition) return;
-    clearTimeout(this.audition.timer);
-    if (restore) {
-      this.draft = this.audition.restore;
-      this.apply();
-    }
-    this.audition = null;
-    this.stateChip.classList.remove('auditioning');
-  }
-
+  /** The turntable always shows the whole draft, paid work included; only SAVE checks the pass. */
   private apply(): void {
-    this.preview.setCosmetics(sanitize(this.draft, this.premium));
+    this.preview.setCosmetics(sanitize(this.draft, true));
   }
 
   private reset(): void {
-    this.cancelAudition(false);
+    this.saveOnUnlock = false;
     this.touched = true;
     this.draft = {};
     this.apply();
@@ -417,9 +390,14 @@ export class GaragePanel {
    * the sanitized draft would quietly delete a paying player's livery, so instead the paid fields
    * already on the account are carried through untouched and only the colours are updated. A free
    * player still cannot add paid work this way, and a premium player cannot lose any.
+   *
+   * A free player trying locked work on keeps it on the turntable: the free half is saved, the
+   * toast says the rest was left out, and the pass is offered. If they buy it, the look they were
+   * wearing is saved without another press (`saveOnUnlock`).
    */
   private async save(): Promise<void> {
-    this.cancelAudition();
+    const trying = this.tryingOn;
+    this.saveOnUnlock = false;
     let next: KartCosmetics;
     if (this.entitlementsKnown) {
       next = sanitize(this.draft, this.premium);
@@ -427,14 +405,20 @@ export class GaragePanel {
       const stored = unpackCosmetics(getEntitlements().cos);
       next = { ...paidPartOf(stored), ...sanitize(this.draft, false) };
     }
-    this.draft = next;
+    if (!trying) this.draft = next;
     const ok = await saveCosmetics(next);
     const message = !this.entitlementsKnown
       ? t('garage.savedColours')
-      : ok && serverReachable()
-        ? t('garage.saved')
-        : t('garage.saveFailed');
+      : !ok || !serverReachable()
+        ? t('garage.saveFailed')
+        : trying
+          ? t('garage.savedWithoutLocked')
+          : t('garage.saved');
     showToast(message, ok ? 'info' : 'error');
     if (ok) this.onSaved?.();
+    if (trying) {
+      this.saveOnUnlock = true;
+      this.onUnlock?.();
+    }
   }
 }

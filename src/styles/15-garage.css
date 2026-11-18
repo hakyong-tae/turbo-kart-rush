@@ -30,7 +30,7 @@
   color: var(--ink-dim);
 }
 .garage-state.owned,
-.garage-state.auditioning {
+.garage-state.trying {
   color: var(--yellow);
 }
 
@@ -176,6 +176,10 @@
 .garage-option.locked .garage-option-name {
   color: var(--ink-dim);
 }
+/* A locked entry being tried on: lit like a choice, the lock still on it. */
+.garage-option.locked.selected .garage-option-name {
+  color: var(--ink);
+}
 .garage-option-name {
   flex: 1;
   min-width: 0;
@@ -207,6 +211,22 @@
 }
 .garage-actions .garage-unlock {
   margin-right: auto;
+}
+/* Locked work is on the turntable: the offer turns yellow and breathes. */
+.garage-actions .garage-unlock.wanted {
+  background: var(--yellow);
+  color: var(--on-yellow);
+  animation: garage-wanted 1.6s ease-in-out infinite;
+}
+@keyframes garage-wanted {
+  50% {
+    filter: brightness(1.18);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .garage-actions .garage-unlock.wanted {
+    animation: none;
+  }
 }
 
 /* Phone landscape: the stage shrinks rather than the list, which is what players actually use. */

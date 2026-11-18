@@ -29,34 +29,6 @@
   height: clamp(30px, 6.5vh, 48px);
 }
 
-/* Language switch, top-right of the first screen: clear of the wordmark (top-left) and of the
-   lobby buttons (bottom-right). */
-.lobby-lang {
-  position: absolute;
-  top: calc(clamp(10px, 2.4vh, 26px) + env(safe-area-inset-top, 0px));
-  right: calc(clamp(20px, 5vw, 72px) + env(safe-area-inset-right, 0px));
-  z-index: 2;
-  /* The menu layer lets clicks through to the canvas except on its own controls. */
-  pointer-events: auto;
-  animation: fade-up 0.4s 0.12s var(--ease-out) both;
-}
-
-.lobby-lang > .seg {
-  min-height: 36px;
-  padding: 0 15px;
-  font-size: 14px;
-}
-
-/* The one you are not using is the one you are looking for: keep it as readable as the other. */
-.lobby-lang > .seg:not(.selected) {
-  color: var(--ink);
-}
-
-#ui.touch .lobby-lang > .seg {
-  min-height: 44px;
-  padding: 0 16px;
-}
-
 /* Wordmark: white italic name, "GP" on a yellow plate, a checker strip underneath. */
 .logo {
   --sq: 0.07em;

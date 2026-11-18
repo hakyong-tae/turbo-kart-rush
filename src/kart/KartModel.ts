@@ -559,3 +559,21 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
     dispose,
   };
 }
+
+/**
+ * Afterburner cones and halo for a boost glow of 0..1 (`flicker` wobbles around 0.75). The tip
+ * ring is lit even at rest. Shared by the race kart and the garage turntable, so the flame a
+ * player tries on in the garage is the flame they get on the track.
+ */
+export function setAfterburner(p: KartModelPartsEx, glow: number, flicker: number): void {
+  p.neonFlameMaterial.opacity = Math.min(1, glow * (0.6 + 0.4 * flicker));
+  p.neonHaloMaterial.opacity = Math.min(1, glow * 0.32 * (0.7 + 0.3 * flicker));
+  p.neonRingMaterial.opacity = 0.5 + 0.5 * glow;
+  p.neonHaloMaterial.opacity *= (p.neonHaloMaterial.userData.strength as number | undefined) ?? 1;
+  const flameLen = (0.55 + 0.75 * glow * (0.8 + 0.2 * flicker)) * p.neonLength;
+  for (let i = 0; i < p.neonFlames.length; i++) {
+    const f = p.neonFlames[i];
+    const ls = (f.userData.lengthScale as number | undefined) ?? 1;
+    f.scale.set(0.8 + 0.4 * glow, 0.8 + 0.4 * glow, flameLen / ls);
+  }
+}
