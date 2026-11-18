@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Vite's ?raw import keeps this free of node typings.
 import serverSource from '../../server.js?raw';
 
@@ -151,6 +151,8 @@ describe('server.js', () => {
   });
 
   it('setCosmetics stores the look, stamps my rows, and rejects a hostile payload', async () => {
+    // This account has the pass, so the paid entries in the look are its to keep.
+    await g.updateUserState('0xAAAA1111', { premium: true });
     await me.submitTime('sunny_circuit', 90000, 'zippy', 'normal');
     const r = await me.setCosmetics('b:101218,p:f,t:3');
     expect(r.cos).toBe('b:101218,p:f,t:3');
@@ -202,7 +204,7 @@ describe('server.js', () => {
   });
 
   it('entitlements: grant +3 (cap 9, 10/day), consume, purchase', async () => {
-    expect(await me.getMyEntitlements()).toEqual({ premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {} });
+    expect(await me.getMyEntitlements()).toMatchObject({ premium: false, premiumRaces: 0, nickname: '', cos: '', cups: {}, coins: 0, own: '' });
     for (let i = 0; i < 3; i++) await me.grantPremiumRaces();
     expect((await me.getMyEntitlements()).premiumRaces).toBe(9);
     expect((await me.consumePremiumRace('zippy')).ok).toBe(true); // non-premium: free
@@ -219,6 +221,118 @@ describe('server.js', () => {
 
   it('consumePremiumRace refuses with no races', async () => {
     expect((await me.consumePremiumRace('bram')).ok).toBe(false);
+  });
+
+  describe('economy', () => {
+    const T0 = Date.parse('2026-11-18T10:00:00Z');
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T0);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    /** One honest race: opened, driven for `seconds` of real time, reported. */
+    async function race(srv: any, place: number, opts: { difficulty?: string; retired?: boolean; seconds?: number } = {}) {
+      const { raceId } = await srv.beginRace('sunny_circuit', 'zippy', opts.difficulty ?? 'normal', 'solo');
+      const seconds = opts.seconds ?? 90;
+      vi.setSystemTime(Date.now() + (seconds + 8) * 1000);
+      return srv.finishRace(raceId, { place, retired: !!opts.retired, timeMs: seconds * 1000 });
+    }
+
+    it('pays by place and difficulty from its own table', async () => {
+      expect((await race(me, 1)).earned.race).toBe(60);
+      expect((await race(me, 8)).earned.race).toBe(10);
+      expect((await race(me, 2, { difficulty: 'hard' })).earned.race).toBe(59); // 45 × 1.3 = 58.5
+      expect((await race(me, 4, { difficulty: 'easy' })).earned.race).toBe(22); // 28 × 0.8 = 22.4
+      // A retirement pays the retirement rate whatever place it was classified in.
+      expect((await race(me, 3, { retired: true })).earned.race).toBe(5);
+      const state = await me.getMyEntitlements();
+      expect(state.coins).toBe(60 + 10 + 59 + 22 + 5);
+      expect(state.eco).toEqual({ day: '2026-11-18', races: 5 });
+    });
+
+    it('a race is paid once, and only against the ticket that opened it', async () => {
+      const { raceId } = await me.beginRace('sunny_circuit', 'zippy', 'normal', 'solo');
+      vi.setSystemTime(Date.now() + 100000);
+      expect((await me.finishRace('not-the-ticket', { place: 1, timeMs: 90000 })).reason).toBe('no-race');
+      expect((await me.finishRace(raceId, { place: 1, timeMs: 90000 })).ok).toBe(true);
+      expect(await me.finishRace(raceId, { place: 1, timeMs: 90000 })).toMatchObject({ ok: false, reason: 'no-race', coins: 60 });
+      await expect(me.beginRace('nowhere', 'zippy', 'normal', 'solo')).rejects.toThrow();
+      await expect(me.beginRace('sunny_circuit', 'zippy', 'impossible', 'solo')).rejects.toThrow();
+    });
+
+    it('refuses a finish the server clock says could not have happened', async () => {
+      const { raceId } = await me.beginRace('sunny_circuit', 'zippy', 'hard', 'solo');
+      // Ten seconds after the start, claiming a ninety second race.
+      vi.setSystemTime(Date.now() + 10000);
+      expect((await me.finishRace(raceId, { place: 1, timeMs: 90000 })).reason).toBe('too-fast');
+      // Claiming a race too short to be one.
+      expect((await me.finishRace(raceId, { place: 1, timeMs: 9000 })).reason).toBe('bad-time');
+      expect((await me.finishRace(raceId, { place: 0, timeMs: 30000 })).reason).toBe('too-fast');
+      expect((await me.getMyEntitlements()).coins).toBe(0);
+      // The same ticket still pays once the time has really passed.
+      vi.setSystemTime(Date.now() + 90000);
+      expect((await me.finishRace(raceId, { place: 9, timeMs: 90000 })).reason).toBe('bad-place');
+      expect((await me.finishRace(raceId, { place: 1, timeMs: 90000 })).earned.race).toBe(78);
+    });
+
+    it('ten races a day at full rate, then 30%, then nothing from the 61st; a new day starts over', async () => {
+      const paid: number[] = [];
+      for (let i = 0; i < 62; i++) paid.push((await race(me, 1, { seconds: 31 })).earned.race);
+      expect(paid.slice(0, 10)).toEqual(new Array(10).fill(60));
+      expect(paid.slice(10, 60)).toEqual(new Array(50).fill(18));
+      expect(paid.slice(60)).toEqual([0, 0]);
+      expect((await me.getMyEntitlements()).eco.races).toBe(62);
+      vi.setSystemTime(Date.parse('2026-11-19T00:00:05Z'));
+      expect((await me.getMyEntitlements()).eco).toEqual({ day: '2026-11-19', races: 0 });
+      const next = await race(me, 1);
+      expect(next).toMatchObject({ rate: 100, races: 1 });
+      expect(next.earned.race).toBe(60);
+    });
+
+    it('buyCosmetic charges the table price once and reports why it would not', async () => {
+      await g.updateUserState('0xAAAA1111', { coins: 1000 });
+      expect(await me.buyCosmetic('p:1')).toEqual({ ok: true, reason: undefined, coins: 600, own: 'p:1' });
+      // Already owned: answered as a success that costs nothing.
+      expect(await me.buyCosmetic('p:1')).toMatchObject({ ok: true, reason: 'owned', coins: 600 });
+      expect(await me.buyCosmetic('p:0')).toMatchObject({ ok: true, reason: 'owned', coins: 600 }); // free entry
+      expect(await me.buyCosmetic('f:1')).toMatchObject({ ok: false, reason: 'short', coins: 600 });
+      for (const junk of ['p:zz', 'q:1', 'k:rosa', '', null, 'p:1,p:2']) {
+        expect((await me.buyCosmetic(junk)).reason).toBe('unknown');
+      }
+      expect(await me.buyCosmetic('g:8')).toMatchObject({ ok: true, coins: 300, own: 'p:1,g:8' });
+      expect((await me.getMyEntitlements()).own).toBe('p:1,g:8');
+    });
+
+    it('the pass covers the paid tier: buying under it costs nothing', async () => {
+      await g.updateUserState('0xAAAA1111', { coins: 5000, premium: true });
+      expect(await me.buyCosmetic('p:w')).toMatchObject({ ok: true, reason: 'owned', coins: 5000 });
+      expect(await me.buyKart('rosa')).toMatchObject({ ok: true, reason: 'owned', coins: 5000 });
+    });
+
+    it('buyKart: 2,500 coins, premium karts only, and the kart then needs no ticket', async () => {
+      await g.updateUserState('0xAAAA1111', { coins: 2600 });
+      expect((await me.buyKart('zippy')).reason).toBe('unknown');
+      expect((await me.consumePremiumRace('rosa')).ok).toBe(false);
+      expect(await me.buyKart('rosa')).toMatchObject({ ok: true, coins: 100, own: 'k:rosa' });
+      expect(await me.consumePremiumRace('rosa')).toEqual({ ok: true, premiumRaces: 0 });
+      expect((await me.consumePremiumRace('bram')).ok).toBe(false);
+      expect((await me.buyKart('bram')).reason).toBe('short');
+    });
+
+    it('setCosmetics keeps what the account owns and drops the rest', async () => {
+      await g.updateUserState('0xAAAA1111', { coins: 1000 });
+      await me.buyCosmetic('t:3');
+      // Colours and the bought trail stay; the unbought livery and its index-padded twin go.
+      expect((await me.setCosmetics('b:101218,pc:ffffff,p:f,t:3,g:0')).cos).toBe('b:101218,pc:ffffff,t:3,g:0');
+      expect((await me.setCosmetics('t:03,f:8')).cos).toBe('t:3');
+      // Junk in the stored ownership string is not ownership.
+      await g.updateUserState('0xAAAA1111', { own: 'p:f,<x>,k:zippy' });
+      expect((await me.getMyEntitlements()).own).toBe('');
+      await g.updateUserState('0xAAAA1111', { own: 'p:f,k:zippy,k:rosa,zz' });
+      expect((await me.getMyEntitlements()).own).toBe('p:f,k:rosa');
+      expect((await me.setCosmetics('p:f,f:8')).cos).toBe('p:f');
+    });
   });
 
   describe('rooms', () => {

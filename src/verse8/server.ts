@@ -11,6 +11,7 @@
 //   * Epoch-guarded writes: a stale attempt cannot clobber a fresh success.
 
 import { GameServer } from '@agent8/gameserver';
+import { inVerse8Host } from './embed';
 import { resolveIdentity } from './identity';
 
 let instance: any = null;
@@ -106,6 +107,23 @@ export async function callServer<T>(fn: string, args: unknown[] = [], fallback: 
   }
 }
 
+/**
+ * Calls a function on whichever server holds this player's account: the gameserver inside a
+ * Verse8 host, the in-page copy of server.js outside one (`localServer.ts`). The account record —
+ * what is owned, what is in the wallet — goes through here, so local play runs on the real rules.
+ * Records and rooms stay on `callServer`: there is no leaderboard to share with nobody.
+ */
+export async function callBackend<T>(fn: string, args: unknown[] = [], fallback: T, budgetMs = CONNECT_BUDGET_MS): Promise<T> {
+  if (inVerse8Host()) return callServer(fn, args, fallback, budgetMs);
+  try {
+    const { callLocal } = await import('./localServer');
+    return await callLocal<T>(fn, args);
+  } catch (err) {
+    console.warn(`[local] ${fn} failed:`, err);
+    return fallback;
+  }
+}
+
 // ── Game-specific calls (see root server.js) ────────────────────────────────
 
 export interface TimeRow {
@@ -136,6 +154,47 @@ export interface Entitlements {
   cos: string;
   /** Best Grand Prix placing per cup id. */
   cups: Record<string, number>;
+  /** Coin balance. Absent on a reply from a server older than the economy. */
+  coins?: number;
+  /** Ownership tokens, comma-joined: garage entries (`p:f`) and karts (`k:rosa`). */
+  own?: string;
+  /** Today's ledger (UTC day). */
+  eco?: EcoDay;
+}
+
+export interface EcoDay {
+  day: string;
+  /** Races already paid for today; decides the rate of the next one. */
+  races: number;
+}
+
+/** What `finishRace` answers. A refusal carries a reason instead of throwing. */
+export interface RaceAward {
+  ok: boolean;
+  reason?: 'no-race' | 'bad-time' | 'too-fast' | 'bad-place';
+  raceId?: string;
+  /** Balance after this race. */
+  coins: number;
+  earned?: { race: number; total: number };
+  /** Races paid for today, this one included. */
+  races: number;
+  /** Percent of the table this race was paid at: 100, 30 or 0. */
+  rate?: number;
+}
+
+/** What the race looked like from the driver's seat. Amounts are never part of it. */
+export interface RaceReport {
+  place: number;
+  retired: boolean;
+  /** Race clock at the player's finish (or retirement), ms. */
+  timeMs: number;
+}
+
+export interface BuyReply {
+  ok: boolean;
+  reason?: 'unknown' | 'owned' | 'short' | 'earn';
+  coins: number;
+  own: string;
 }
 
 export function submitTime(
@@ -174,20 +233,33 @@ export function submitDailyTime(timeMs: number, characterId: string): Promise<Da
 }
 
 export function fetchEntitlements(): Promise<Entitlements | null> {
-  return callServer<Entitlements | null>('getMyEntitlements', [], null, 12000);
+  return callBackend<Entitlements | null>('getMyEntitlements', [], null, 12000);
 }
 export function serverGrantPremiumRaces(): Promise<{ granted: boolean; premiumRaces: number } | null> {
-  return callServer<{ granted: boolean; premiumRaces: number } | null>('grantPremiumRaces', [], null);
+  return callBackend<{ granted: boolean; premiumRaces: number } | null>('grantPremiumRaces', [], null);
 }
 export function serverConsumePremiumRace(characterId: string): Promise<{ ok: boolean; premiumRaces: number } | null> {
-  return callServer<{ ok: boolean; premiumRaces: number } | null>('consumePremiumRace', [characterId], null);
+  return callBackend<{ ok: boolean; premiumRaces: number } | null>('consumePremiumRace', [characterId], null);
 }
 export function serverSetNickname(name: string): Promise<{ nickname: string } | null> {
-  return callServer<{ nickname: string } | null>('setNickname', [name], null);
+  return callBackend<{ nickname: string } | null>('setNickname', [name], null);
 }
 export function serverSetCosmetics(packed: string): Promise<{ cos: string } | null> {
-  return callServer<{ cos: string } | null>('setCosmetics', [packed], null);
+  return callBackend<{ cos: string } | null>('setCosmetics', [packed], null);
 }
 export function serverSetCupProgress(progress: Record<string, number>): Promise<{ cups: Record<string, number> } | null> {
-  return callServer<{ cups: Record<string, number> } | null>('setCupProgress', [progress], null);
+  return callBackend<{ cups: Record<string, number> } | null>('setCupProgress', [progress], null);
+}
+
+export function serverBeginRace(trackId: string, characterId: string, difficulty: string, mode: string): Promise<{ raceId: string } | null> {
+  return callBackend<{ raceId: string } | null>('beginRace', [trackId, characterId, difficulty, mode], null);
+}
+export function serverFinishRace(raceId: string, report: RaceReport): Promise<RaceAward | null> {
+  return callBackend<RaceAward | null>('finishRace', [raceId, report], null);
+}
+export function serverBuyCosmetic(token: string): Promise<BuyReply | null> {
+  return callBackend<BuyReply | null>('buyCosmetic', [token], null);
+}
+export function serverBuyKart(characterId: string): Promise<BuyReply | null> {
+  return callBackend<BuyReply | null>('buyKart', [characterId], null);
 }

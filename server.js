@@ -16,6 +16,12 @@
 //   submitDaily(timeMs, characterId)                     — one attempt per UTC day, own board
 //   getDailyTop(limit)                                   — today's board + my attempt state
 //   $onItemPurchased({productId})                        — VXShop "premium-garage" → premium
+//   beginRace(trackId, characterId, difficulty, mode)    — stamps the start of a race, returns { raceId }
+//   finishRace(raceId, report)                           — pays coins for it, from the server's own tables
+//   buyCosmetic(token) / buyKart(characterId)            — spends coins on one garage item / one premium kart
+//
+// Economy: docs/superpowers/specs/2026-11-18-progression-server-design.md. Coins are computed here and
+// only here; the client reports what happened in a race and never an amount.
 //
 // All purchase / ticket state lives in $global user state (server-authoritative).
 
@@ -70,6 +76,55 @@ const MAX_PLACE = 8;
  */
 const DAILY_ID = 'tkr_daily';
 const DAILY_KEEP_DAYS = 3;
+
+// ── Economy tables ────────────────────────────────────────────────────────────
+// Mirror of src/core/economy.ts. src/verse8/serverEconomy.test.ts reads these out of this file and
+// holds them equal to the client's copy, so a price shown in the garage is the price charged here.
+
+/** Coins by finishing place (1st..8th), and what a retirement pays whatever the place. */
+const RACE_COINS = [60, 45, 35, 28, 22, 18, 14, 10];
+const RETIRE_COINS = 5;
+/** Difficulty multiplier on race coins, in percent so the sum stays in integers. */
+const DIFF_PCT = { easy: 80, normal: 100, hard: 130 };
+const MODES = new Set(['solo', 'teamPoints', 'teamFirst']);
+/** Per UTC day: this many races at full rate, then REDUCED_PCT, then nothing from RACE_CAP on. */
+const FULL_RACES = 10;
+const REDUCED_PCT = 30;
+const RACE_CAP = 60;
+/** A paid race must have lasted this long, and the server's own clock must agree it did. */
+const MIN_RACE_MS = 30000;
+const RACE_CLOCK_SLACK = 0.95;
+const KART_PRICE = 2500;
+
+const run = (n, price) => new Array(n).fill(price);
+/**
+ * Coin price of every garage entry, by packed key and catalogue index (src/core/cosmetics.ts).
+ * 0 = free. Catalogue arrays are append-only, so an index is a permanent id.
+ */
+const COS_PRICES = {
+  // none · stripes · racing + geometric · organic · fades · special
+  p: [0, ...run(5, 400), ...run(11, 500), ...run(6, 600), ...run(5, 700), ...run(5, 1000)],
+  u: [0, ...run(6, 500)],
+  t: [0, ...run(10, 600)],
+  f: [0, ...run(8, 700)],
+  w: [0, ...run(4, 400)],
+  e: [0, ...run(5, 800)],
+  g: [0, ...run(8, 300)],
+};
+const TOKEN_RE = /^([a-z]):([a-z0-9]+)$/;
+
+/** `p:0f` → `p:f`; null for anything that is not a known garage entry. */
+function cosToken(raw) {
+  const m = typeof raw === 'string' ? TOKEN_RE.exec(raw) : null;
+  if (!m || !COS_PRICES[m[1]]) return null;
+  const index = Number.parseInt(m[2], 36);
+  if (!Number.isFinite(index) || COS_PRICES[m[1]][index] === undefined) return null;
+  return `${m[1]}:${index.toString(36)}`;
+}
+function cosPrice(token) {
+  const m = TOKEN_RE.exec(token);
+  return m && COS_PRICES[m[1]] ? COS_PRICES[m[1]][Number.parseInt(m[2], 36)] : undefined;
+}
 
 const ROOMS_ID = 'tkr_rooms';
 const ROOM_CAP = 8;
@@ -138,6 +193,145 @@ class Server {
   _nickname(state) {
     const n = normalizeNickname(state && state.nickname);
     return n || defaultNickname($sender.account);
+  }
+
+  // ── Economy helpers ──────────────────────────────────────────────────────
+
+  _coins(state) {
+    return state && Number.isFinite(state.coins) ? Math.max(0, Math.floor(state.coins)) : 0;
+  }
+
+  /** Everything bought with coins: garage tokens (`p:f`) and karts (`k:rosa`). */
+  _ownSet(state) {
+    const out = new Set();
+    const raw = state && typeof state.own === 'string' && COS_RE.test(state.own) ? state.own : '';
+    for (const part of raw.split(',')) {
+      const m = TOKEN_RE.exec(part);
+      if (!m) continue;
+      if (m[1] === 'k') {
+        if (PREMIUM.has(m[2])) out.add(part);
+      } else {
+        const token = cosToken(part);
+        if (token) out.add(token);
+      }
+    }
+    return out;
+  }
+
+  /** The one ownership rule: free, bought, or covered by the 100 VX pass. */
+  _owns(state, token, own) {
+    const price = cosPrice(token);
+    if (price === undefined) return false;
+    if (price === 0) return true;
+    return (own || this._ownSet(state)).has(token) || this._premium(state);
+  }
+
+  /** A packed look with every entry the account does not own taken out. Colours always stay. */
+  _ownedCos(state, packed) {
+    const own = this._ownSet(state);
+    const keep = [];
+    for (const part of packed.split(',')) {
+      const colon = part.indexOf(':');
+      if (colon <= 0) continue;
+      if (!COS_PRICES[part.slice(0, colon)]) {
+        keep.push(part);
+        continue;
+      }
+      const token = cosToken(part);
+      if (token && this._owns(state, token, own)) keep.push(token);
+    }
+    return keep.join(',');
+  }
+
+  /** Today's ledger. A stored one from another UTC day reads as a fresh day. */
+  _eco(state) {
+    const day = todayKey();
+    const e = state && state.eco && state.eco.day === day ? state.eco : null;
+    const n = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    return { day, races: e ? n(e.races) : 0 };
+  }
+
+  // ── Race rewards ─────────────────────────────────────────────────────────
+
+  /**
+   * Stamps the start of a race with this server's clock. `finishRace` pays against the stamp, so a
+   * reward costs at least as much real time as the race it claims to be for.
+   */
+  async beginRace(trackId, characterId, difficulty, mode) {
+    if (!TRACKS.has(trackId)) throw new Error('Unknown track.');
+    if (!CHARACTERS.has(characterId)) throw new Error('Unknown character.');
+    if (!DIFFICULTIES.has(difficulty)) throw new Error('Unknown difficulty.');
+    const id = Date.now().toString(36) + Math.floor(Math.random() * 0xffffffff).toString(36);
+    const race = { id, at: Date.now(), trackId, characterId, difficulty, mode: MODES.has(mode) ? mode : 'solo' };
+    await $global.updateUserState($sender.account, { race });
+    return { raceId: id };
+  }
+
+  /**
+   * Pays for the race `beginRace` opened. The report says where the player finished; every number
+   * that follows from it is worked out here. Refusals are answers, not errors, so the client can
+   * tell the player which it was.
+   */
+  async finishRace(raceId, report) {
+    const s = await this._state();
+    const coins = this._coins(s);
+    const eco = this._eco(s);
+    const refuse = (reason) => ({ ok: false, reason, coins, races: eco.races });
+    const race = s.race;
+    if (!race || typeof raceId !== 'string' || race.id !== raceId) return refuse('no-race');
+    const rep = report && typeof report === 'object' ? report : {};
+    const timeMs = Math.min(MAX_TIME_MS, Number(rep.timeMs));
+    if (!Number.isFinite(timeMs) || timeMs < MIN_RACE_MS) return refuse('bad-time');
+    if (Date.now() - race.at < timeMs * RACE_CLOCK_SLACK) return refuse('too-fast');
+    const retired = !!rep.retired;
+    const place = Math.floor(Number(rep.place));
+    if (!(place >= 1 && place <= MAX_PLACE)) return refuse('bad-place');
+
+    const rate = eco.races < FULL_RACES ? 100 : eco.races < RACE_CAP ? REDUCED_PCT : 0;
+    const base = retired ? RETIRE_COINS : RACE_COINS[place - 1];
+    const earned = Math.round((base * DIFF_PCT[race.difficulty] * rate) / 10000);
+    const next = coins + earned;
+    const races = eco.races + 1;
+    await $global.updateUserState($sender.account, {
+      coins: next,
+      race: null,
+      eco: { ...eco, races },
+      award: { id: race.id, coins: earned, doubled: false },
+    });
+    return { ok: true, raceId: race.id, coins: next, earned: { race: earned, total: earned }, races, rate };
+  }
+
+  // ── Spending ─────────────────────────────────────────────────────────────
+
+  /** Unlocks one garage entry for coins. Already open (bought, free, or the pass) costs nothing. */
+  async buyCosmetic(rawToken) {
+    const s = await this._state();
+    const coins = this._coins(s);
+    const own = this._ownSet(s);
+    const reply = (ok, reason, c) => ({ ok, reason, coins: c === undefined ? coins : c, own: [...own].join(',') });
+    const token = cosToken(rawToken);
+    if (!token) return reply(false, 'unknown');
+    if (this._owns(s, token, own)) return reply(true, 'owned');
+    const price = cosPrice(token);
+    if (coins < price) return reply(false, 'short');
+    own.add(token);
+    await $global.updateUserState($sender.account, { coins: coins - price, own: [...own].join(',') });
+    return reply(true, undefined, coins - price);
+  }
+
+  /** Unlocks one premium kart for good. Tickets and the pass keep working as before. */
+  async buyKart(characterId) {
+    const s = await this._state();
+    const coins = this._coins(s);
+    const own = this._ownSet(s);
+    const reply = (ok, reason, c) => ({ ok, reason, coins: c === undefined ? coins : c, own: [...own].join(',') });
+    if (!PREMIUM.has(characterId)) return reply(false, 'unknown');
+    const token = 'k:' + characterId;
+    if (this._premium(s) || own.has(token)) return reply(true, 'owned');
+    if (coins < KART_PRICE) return reply(false, 'short');
+    own.add(token);
+    await $global.updateUserState($sender.account, { coins: coins - KART_PRICE, own: [...own].join(',') });
+    return reply(true, undefined, coins - KART_PRICE);
   }
 
   /**
@@ -235,12 +429,15 @@ class Server {
   }
 
   /**
-   * Saves the garage look. Also stamped onto my existing ranking rows, the same best-effort
+   * Saves the garage look, minus anything the account does not own. Also stamped onto my existing ranking rows, the same best-effort
    * rewrite setNickname does, so the records board shows the kart I drive today.
    */
   async setCosmetics(packed) {
-    const cos = typeof packed === 'string' ? packed : '';
-    if (cos.length > COS_MAX || !COS_RE.test(cos)) throw new Error('Invalid cosmetics.');
+    const raw = typeof packed === 'string' ? packed : '';
+    if (raw.length > COS_MAX || !COS_RE.test(raw)) throw new Error('Invalid cosmetics.');
+    // Ownership is decided here, not by the client that drew the look: a paid entry the account
+    // has not unlocked is dropped before it can reach the records board.
+    const cos = this._ownedCos(await this._state(), raw);
     await $global.updateUserState($sender.account, { cos });
     const mine = (await this._allTimes()).filter((r) => r.account === $sender.account);
     for (const row of mine) {
@@ -277,6 +474,9 @@ class Server {
       nickname: normalizeNickname(s.nickname),
       cos: this._cos(s),
       cups: this._cups(s),
+      coins: this._coins(s),
+      own: [...this._ownSet(s)].join(','),
+      eco: this._eco(s),
     };
   }
 
@@ -296,6 +496,8 @@ class Server {
     const s = await this._state();
     const current = Number.isFinite(s.premiumRaces) ? s.premiumRaces : 0;
     if (!PREMIUM.has(characterId) || this._premium(s)) return { ok: true, premiumRaces: current };
+    // A kart bought with coins is owned outright: it never spends a ticket.
+    if (this._ownSet(s).has('k:' + characterId)) return { ok: true, premiumRaces: current };
     if (current <= 0) return { ok: false, premiumRaces: 0 };
     await $global.updateUserState($sender.account, { premiumRaces: current - 1 });
     return { ok: true, premiumRaces: current - 1 };

@@ -30,14 +30,18 @@
   padding-bottom: 0;
 }
 
-/* The buttons stay in reach however long the tables get (a cup adds a second one). */
-.results-panel > .actions {
+/* The foot — what the race paid, then the buttons — stays in reach however long the tables get
+   (a cup adds a second one). */
+.results-foot {
   position: sticky;
   bottom: 0;
   z-index: 2;
   margin: 0 calc(-1 * var(--pad-x));
-  padding: 12px var(--pad-x) var(--pad-y);
+  padding: 0 var(--pad-x) var(--pad-y);
   background: var(--panel);
+}
+.results-foot > .actions {
+  padding-top: 12px;
 }
 
 /* Head: place on a big number plate, the verdict beside it, the winner's kart at the end. */
@@ -200,7 +204,7 @@
   grid-template-columns: 52px 14px 1fr auto auto;
 }
 
-/* Reserved for the progression update (coins, experience, missions). Collapsed while empty. */
+/* What the race paid (18-progression.css). Collapsed while empty. */
 .results-rewards:empty {
   display: none;
 }
@@ -280,7 +284,7 @@
   .standing-name {
     font-size: 15px;
   }
-  .results-panel > .actions {
+  .results-foot > .actions {
     padding-top: 8px;
   }
   /* A cup in progress: two tables share the height. */

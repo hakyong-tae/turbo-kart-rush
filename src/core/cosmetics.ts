@@ -56,6 +56,11 @@ export interface CatalogueEntry<T extends string> {
   id: T;
   /** i18n key suffix: `cos.<group>.<id>`. */
   free: boolean;
+  /**
+   * Contract addition (progression): earned or bought with coins only. The 100 VX pass does not
+   * open these; see `isUnlocked`.
+   */
+  earn?: true;
 }
 
 const paid = <T extends string>(ids: readonly T[]): CatalogueEntry<T>[] => ids.map((id) => ({ id, free: false }));
@@ -140,12 +145,31 @@ export const PRESETS: readonly PresetLook[] = [
 
 // --- helpers -------------------------------------------------------------------
 
-function allow<T extends string>(list: readonly CatalogueEntry<T>[], value: T | undefined, premium: boolean): T | undefined {
+function allow<T extends string>(
+  list: readonly CatalogueEntry<T>[],
+  value: T | undefined,
+  premium: boolean,
+  short: string,
+  owned: ReadonlySet<string> | undefined,
+): T | undefined {
   if (value === undefined) return undefined;
-  const entry = list.find((e) => e.id === value);
-  if (!entry) return undefined;
-  if (!entry.free && !premium) return undefined;
-  return value;
+  const index = list.findIndex((e) => e.id === value);
+  if (index < 0) return undefined;
+  return entryOpen(list[index], `${short}:${index.toString(36)}`, premium, owned) ? value : undefined;
+}
+
+/**
+ * The ownership rule, in one place (server.js `_owns` is its twin).
+ *
+ * Without `owned` this is the original two-tier gate: free, or everything with the pass. That is
+ * also what a renderer showing someone else's kart wants, so those callers keep passing `true`
+ * and nothing else. With `owned` it is the per-item gate: free, individually owned, or covered by
+ * the pass — which covers the paid tier it was sold for, not the earn-only entries added later.
+ */
+function entryOpen(entry: CatalogueEntry<string>, token: string, premium: boolean, owned: ReadonlySet<string> | undefined): boolean {
+  if (entry.free) return true;
+  if (!owned) return premium;
+  return owned.has(token) || (premium && !entry.earn);
 }
 
 const colour = (v: number | undefined): number | undefined =>
@@ -154,8 +178,11 @@ const colour = (v: number | undefined): number | undefined =>
 /**
  * Drops unknown ids and, when `premium` is false, every paid entry. Colours always survive.
  * Run this on load, before save, and on cosmetics received from another client.
+ *
+ * `owned` (contract addition, progression) is the account's set of ownership tokens. Pass it when
+ * gating the player's own look: entries they bought one at a time then survive without the pass.
  */
-export function sanitize(cos: KartCosmetics | null | undefined, premium: boolean): KartCosmetics {
+export function sanitize(cos: KartCosmetics | null | undefined, premium: boolean, owned?: ReadonlySet<string>): KartCosmetics {
   if (!cos) return {};
   const out: KartCosmetics = {};
   const setC = (k: 'body' | 'accent' | 'rim' | 'helmet' | 'patternColor' | 'underglowColor' | 'trailColor') => {
@@ -166,28 +193,28 @@ export function sanitize(cos: KartCosmetics | null | undefined, premium: boolean
   setC('accent');
   setC('rim');
   setC('helmet');
-  const pattern = allow(PATTERNS, cos.pattern, premium);
+  const pattern = allow(PATTERNS, cos.pattern, premium, 'p', owned);
   if (pattern && pattern !== 'none') {
     out.pattern = pattern;
     setC('patternColor');
   }
-  const underglow = allow(UNDERGLOWS, cos.underglow, premium);
+  const underglow = allow(UNDERGLOWS, cos.underglow, premium, 'u', owned);
   if (underglow && underglow !== 'none') {
     out.underglow = underglow;
     setC('underglowColor');
   }
-  const trail = allow(TRAILS, cos.trail, premium);
+  const trail = allow(TRAILS, cos.trail, premium, 't', owned);
   if (trail && trail !== 'none') {
     out.trail = trail;
     setC('trailColor');
   }
-  const flame = allow(FLAMES, cos.flame, premium);
+  const flame = allow(FLAMES, cos.flame, premium, 'f', owned);
   if (flame && flame !== 'none') out.flame = flame;
-  const wheelFx = allow(WHEEL_FX, cos.wheelFx, premium);
+  const wheelFx = allow(WHEEL_FX, cos.wheelFx, premium, 'w', owned);
   if (wheelFx && wheelFx !== 'none') out.wheelFx = wheelFx;
-  const enginePack = allow(ENGINE_PACKS, cos.enginePack, premium);
+  const enginePack = allow(ENGINE_PACKS, cos.enginePack, premium, 'e', owned);
   if (enginePack && enginePack !== 'scream') out.enginePack = enginePack;
-  const badge = allow(BADGES, cos.badge, premium);
+  const badge = allow(BADGES, cos.badge, premium, 'g', owned);
   if (badge && badge !== 'none') out.badge = badge;
   return out;
 }
@@ -252,4 +279,89 @@ export function unpackCosmetics(packed: string | null | undefined): KartCosmetic
     if (entry) out[spec.field] = entry.id;
   }
   return out as KartCosmetics;
+}
+
+// --- ownership tokens (contract addition, progression) ------------------------------
+//
+// One garage entry, named the way the packed form already names it: `<key>:<index base 36>`, so
+// `p:f` is pattern 15. The account's `own` string is a comma-joined list of these (plus `k:<id>`
+// for karts), which makes the wire form, the storage form and the price table share one id.
+
+export type CosmeticField = (typeof ENUM_KEYS)[keyof typeof ENUM_KEYS]['field'];
+
+const FIELD_SPECS = Object.entries(ENUM_KEYS).map(([short, spec]) => ({
+  short,
+  field: spec.field as CosmeticField,
+  list: spec.list as readonly CatalogueEntry<string>[],
+}));
+
+/** One entry of the garage, located: which field it dresses, what it is called, how it is stored. */
+export interface CosmeticRef {
+  field: CosmeticField;
+  id: string;
+  token: string;
+  entry: CatalogueEntry<string>;
+}
+
+/** The token for `id` in `field`, or null when the catalogue has no such entry. */
+export function cosmeticToken(field: CosmeticField, id: string): string | null {
+  const spec = FIELD_SPECS.find((s) => s.field === field);
+  const index = spec ? spec.list.findIndex((e) => e.id === id) : -1;
+  return spec && index >= 0 ? `${spec.short}:${index.toString(36)}` : null;
+}
+
+/** The entry a token names, or null for a kart token, a colour or anything unknown. */
+export function cosmeticOf(token: string): CosmeticRef | null {
+  const colon = token.indexOf(':');
+  const spec = FIELD_SPECS.find((s) => s.short === token.slice(0, colon));
+  if (!spec || colon <= 0) return null;
+  const index = Number.parseInt(token.slice(colon + 1), 36);
+  const entry = spec.list[index];
+  return entry ? { field: spec.field, id: entry.id, token: `${spec.short}:${index.toString(36)}`, entry } : null;
+}
+
+/** Every catalogue entry that is not free, in catalogue order. */
+export function paidCosmetics(): CosmeticRef[] {
+  const out: CosmeticRef[] = [];
+  for (const spec of FIELD_SPECS) {
+    spec.list.forEach((entry, index) => {
+      if (!entry.free) out.push({ field: spec.field, id: entry.id, token: `${spec.short}:${index.toString(36)}`, entry });
+    });
+  }
+  return out;
+}
+
+/** Whether this account may keep `id` on the kart. The per-item form of the gate in `sanitize`. */
+export function isUnlocked(field: CosmeticField, id: string, premium: boolean, owned: ReadonlySet<string>): boolean {
+  const spec = FIELD_SPECS.find((s) => s.field === field);
+  const index = spec ? spec.list.findIndex((e) => e.id === id) : -1;
+  if (!spec || index < 0) return false;
+  return entryOpen(spec.list[index], `${spec.short}:${index.toString(36)}`, premium, owned);
+}
+
+/** What a look is wearing that this account does not own: the garage's "trying on" list. */
+export function lockedParts(cos: KartCosmetics, premium: boolean, owned: ReadonlySet<string>): CosmeticRef[] {
+  const out: CosmeticRef[] = [];
+  for (const spec of FIELD_SPECS) {
+    const id = cos[spec.field] as string | undefined;
+    if (id === undefined) continue;
+    const index = spec.list.findIndex((e) => e.id === id);
+    if (index < 0) continue;
+    const token = `${spec.short}:${index.toString(36)}`;
+    if (!entryOpen(spec.list[index], token, premium, owned)) out.push({ field: spec.field, id, token, entry: spec.list[index] });
+  }
+  return out;
+}
+
+/** Parses an account's `own` string. Unknown shapes are dropped; the server is the authority. */
+export function parseOwned(own: string | null | undefined): Set<string> {
+  const out = new Set<string>();
+  if (typeof own !== 'string') return out;
+  for (const part of own.split(',')) if (/^[a-z]:[a-z0-9]+$/.test(part)) out.add(part);
+  return out;
+}
+
+/** Ownership token of a kart bought with coins. */
+export function kartToken(characterId: string): string {
+  return `k:${characterId}`;
 }

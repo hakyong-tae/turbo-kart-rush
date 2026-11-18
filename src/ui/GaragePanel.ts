@@ -2,11 +2,12 @@
  * The garage: paint and dress the kart, then save the look to the account.
  *
  * Tier rule, enforced in one place (`sanitize`, on save and on every render): colours are free,
- * liveries and effects need the garage pass. Locked entries are shown, not hidden — a player who
- * cannot see what a purchase buys has no reason to make it — and tapping one puts it on the live
- * kart and leaves it there: the turntable is a fitting room. A free player can dress the kart in
- * anything and look at it for as long as they like; what they cannot do is take it out of the
- * room. SAVE keeps the free half, says so, and offers the pass.
+ * liveries and effects are bought one at a time with coins or all at once with the garage pass.
+ * Locked entries are shown, not hidden, each with its price — a player who cannot see what a
+ * purchase buys has no reason to make it — and tapping one puts it on the live kart and leaves it
+ * there: the turntable is a fitting room. A player can dress the kart in anything and look at it
+ * for as long as they like; what they cannot do is take it out of the room. SAVE keeps the half
+ * they own, says so, and opens the purchase sheet for the rest.
  *
  * The draft look is local until SAVE. Nothing is written to the account while browsing, so
  * backing out of the panel leaves the saved kart untouched.
@@ -21,29 +22,37 @@ import {
   TRAILS,
   UNDERGLOWS,
   WHEEL_FX,
+  cosmeticToken,
+  isUnlocked,
+  lockedParts,
   sanitize,
   unpackCosmetics,
-  usesPaid,
   type BadgeId,
   type CatalogueEntry,
+  type CosmeticRef,
   type KartCosmetics,
 } from '../core/cosmetics';
+import { formatCoins, priceOf } from '../core/economy';
 import { t } from '../core/i18n';
 import type { CharacterDef, InputState } from '../core/types';
 import { getCharacter } from '../kart/roster';
 import { inVerse8Host } from '../verse8/embed';
 import {
+  buyCosmetic,
+  getCoins,
   getCosmetics,
   getEntitlements,
+  getOwned,
   onEntitlementsChange,
   refreshEntitlements,
   saveCosmetics,
   serverReachable,
 } from '../verse8/entitlements';
 import { badgeElement } from './badges';
-import { button, el } from './dom';
+import { button, el, setButtonContent } from './dom';
 import { icon } from './icons';
 import { GaragePreview } from './garage/GaragePreview';
+import { PurchaseSheet, type PurchaseItem } from './garage/PurchaseSheet';
 import { showToast } from './toast';
 
 /** Everything the paid tier owns, lifted off a stored look so a save can carry it through. */
@@ -103,6 +112,8 @@ export class GaragePanel {
   private readonly tabsBar: HTMLElement;
   private readonly rows: HTMLElement;
   private readonly stateChip: HTMLElement;
+  private readonly coinChip: HTMLElement;
+  private readonly sheet: PurchaseSheet;
   private readonly unlockBtn: HTMLButtonElement;
   private readonly saveBtn: HTMLButtonElement;
   private readonly preview: GaragePreview;
@@ -113,9 +124,10 @@ export class GaragePanel {
   private tab: TabId = 'paint';
   private visible = false;
   /**
-   * Set when SAVE was pressed with locked work on the kart. If the pass arrives while the panel
-   * is still open, the look the player was trying on is saved for them — they have already said
-   * they want it, and making them find SAVE again after paying would be a second ask.
+   * Set when SAVE was pressed with locked work on the kart. If everything on it is unlocked while
+   * the panel is still open — bought piece by piece, or all at once with the pass — the look the
+   * player was trying on is saved for them. They have already said they want it, and making them
+   * find SAVE again after paying would be a second ask.
    */
   private saveOnUnlock = false;
   private readonly unsubEntitlements: () => void;
@@ -128,6 +140,9 @@ export class GaragePanel {
     const head = el('div', 'garage-head', undefined, panel);
     el('div', 'panel-kicker', t('garage.title'), head);
     this.stateChip = el('span', 'garage-state', '', head);
+    // The wallet, where prices are being read.
+    this.coinChip = el('span', 'coin-chip garage-coins', undefined, head);
+    this.coinChip.title = t('coin.label');
 
     const body = el('div', 'garage-body', undefined, panel);
     const stage = el('div', 'garage-stage', undefined, body);
@@ -144,12 +159,18 @@ export class GaragePanel {
     this.rows = el('div', 'garage-rows', undefined, controls);
 
     const actions = el('div', 'actions garage-actions', undefined, panel);
-    this.unlockBtn = button(t('garage.unlock'), 'garage-unlock', () => this.onUnlock?.(), 'cart');
+    // One button, two offers: the pass while browsing, the till once something locked is on the kart.
+    this.unlockBtn = button(t('garage.unlock'), 'garage-unlock', () => (this.tryingOn ? this.openSheet() : this.onUnlock?.()), 'cart');
     actions.appendChild(this.unlockBtn);
     actions.appendChild(button(t('garage.reset'), 'garage-reset', () => this.reset()));
     this.saveBtn = button(t('garage.save'), 'primary garage-save', () => void this.save());
     actions.appendChild(this.saveBtn);
     actions.appendChild(button(t('menu.back'), 'ghost garage-close', () => this.close(), 'chevron-left'));
+
+    this.sheet = new PurchaseSheet(this.rootNode);
+    this.sheet.onBuy = (tokens) => this.buy(tokens);
+    this.sheet.onPass = () => this.onUnlock?.();
+    this.sheet.onClose = () => this.sheet.hide();
 
     // Entitlements land asynchronously inside the host. When they do — a purchase completing, or
     // just the first read finishing — the locks and the saved look have to catch up in place.
@@ -159,7 +180,8 @@ export class GaragePanel {
       this.apply();
       this.syncChrome();
       this.setTab(this.tab);
-      if (this.saveOnUnlock && this.premium) void this.save();
+      if (this.sheet.isVisible) this.refreshSheet();
+      if (this.saveOnUnlock && !this.tryingOn) void this.save(true);
     });
   }
 
@@ -204,6 +226,7 @@ export class GaragePanel {
 
   hide(): void {
     this.saveOnUnlock = false;
+    this.sheet.hide();
     this.preview.stop();
     this.rootNode.classList.add('hidden');
     this.visible = false;
@@ -211,11 +234,14 @@ export class GaragePanel {
 
   handleInput(input: InputState): void {
     if (!this.visible) return;
-    if (input.back) this.close();
+    if (!input.back) return;
+    if (this.sheet.isVisible) this.sheet.hide();
+    else this.close();
   }
 
   dispose(): void {
     this.unsubEntitlements();
+    this.sheet.dispose();
     this.preview.dispose();
     this.rootNode.remove();
   }
@@ -231,21 +257,80 @@ export class GaragePanel {
     this.onClose?.();
   }
 
-  /** A free player with locked work on the turntable: looking is allowed, keeping is not. */
+  /** What the draft is wearing that this account does not own. */
+  private worn(): CosmeticRef[] {
+    return lockedParts(sanitize(this.draft, true), this.premium, getOwned());
+  }
+
+  /** Coins it takes to buy every buyable piece in `parts`. */
+  private costOf(parts: readonly CosmeticRef[]): number {
+    return parts.reduce((sum, part) => sum + (priceOf(part.token) ?? 0), 0);
+  }
+
+  /** Locked work on the turntable: looking is allowed, keeping is not. */
   private get tryingOn(): boolean {
-    return this.entitlementsKnown && !this.premium && usesPaid(this.draft);
+    return this.entitlementsKnown && this.worn().length > 0;
   }
 
   private syncChrome(): void {
     const known = this.entitlementsKnown;
     const owned = this.premium;
-    const trying = this.tryingOn;
-    this.stateChip.textContent = !known ? t('garage.loading') : owned ? t('garage.owned') : trying ? t('garage.tryingOn') : t('garage.paidHint');
-    this.stateChip.classList.toggle('owned', known && owned);
+    const worn = known ? this.worn() : [];
+    const trying = worn.length > 0;
+    const cost = formatCoins(this.costOf(worn));
+    this.stateChip.textContent = !known
+      ? t('garage.loading')
+      : trying
+        ? t('garage.tryingOnCoins', { n: cost })
+        : owned
+          ? t('garage.owned')
+          : t('garage.coinHint');
+    this.stateChip.classList.toggle('owned', known && owned && !trying);
     this.stateChip.classList.toggle('trying', trying);
-    this.unlockBtn.classList.toggle('hidden', !known || owned);
+    this.coinChip.replaceChildren(icon('coin'), document.createTextNode(formatCoins(getCoins())));
+    this.unlockBtn.classList.toggle('hidden', !known || (owned && !trying));
+    setButtonContent(this.unlockBtn, trying ? t('garage.buyWorn', { n: cost }) : t('garage.unlock'), trying ? 'coin' : 'cart');
     // The offer is loudest at the moment the player is looking at what it buys.
     this.unlockBtn.classList.toggle('wanted', trying);
+  }
+
+  // ------------------------------------------------------------ purchase sheet
+
+  private openSheet(): void {
+    this.refreshSheet();
+  }
+
+  /** Re-lists what is still locked on the kart; closes itself once nothing is. */
+  private refreshSheet(): void {
+    const worn = this.worn();
+    if (worn.length === 0) {
+      this.sheet.hide();
+      return;
+    }
+    const items: PurchaseItem[] = worn.map((part) => ({
+      token: part.token,
+      group: tk(`garage.tab.${part.field}`),
+      name: tk(`cos.${part.field}.${part.id}`),
+      price: priceOf(part.token) ?? null,
+    }));
+    this.sheet.show(items, getCoins(), !this.premium);
+  }
+
+  /**
+   * Buys entries one after another. Each reply updates the account record, which re-renders the
+   * locks and this sheet through the entitlement listener; when the last piece on the kart is
+   * bought, that same listener saves the look.
+   */
+  private async buy(tokens: readonly string[]): Promise<void> {
+    this.saveOnUnlock = true;
+    for (const token of tokens) {
+      const r = await buyCosmetic(token);
+      if (!r || !r.ok) {
+        showToast(t(r?.reason === 'short' ? 'buy.notEnough' : 'buy.failed'), 'error');
+        break;
+      }
+    }
+    if (this.sheet.isVisible) this.refreshSheet();
   }
 
   private setTab(id: TabId): void {
@@ -316,8 +401,9 @@ export class GaragePanel {
         node.classList.toggle('selected', id === (this.draft[field] ?? first));
       }
     };
+    const owned = getOwned();
     for (const entry of list) {
-      const locked = !entry.free && !this.premium;
+      const locked = !isUnlocked(field, entry.id, this.premium, owned);
       const b = el('button', `garage-option${locked ? ' locked' : ''}`, undefined, grid);
       b.type = 'button';
       b.dataset.id = entry.id;
@@ -326,11 +412,7 @@ export class GaragePanel {
         if (glyph) b.appendChild(glyph);
       }
       el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
-      if (locked) {
-        const lock = el('span', 'chip lock garage-option-lock', undefined, b);
-        lock.appendChild(icon('lock'));
-        lock.title = t('garage.locked');
-      }
+      if (locked) this.lockChip(b, priceOf(cosmeticToken(field, entry.id) ?? ''));
       b.addEventListener('click', () => {
         // Locked or not, it goes on the kart: see the note at the top of the file.
         if (entry.id === first) delete this.draft[field];
@@ -348,15 +430,13 @@ export class GaragePanel {
     const row = el('div', 'garage-row', undefined, this.rows);
     const grid = el('div', 'garage-options garage-presets', undefined, row);
     for (const preset of PRESETS) {
-      const locked = usesPaid(preset.cos) && !this.premium;
+      // A preset is a set of parts: it costs whatever of them the player has yet to buy.
+      const missing = lockedParts(preset.cos, this.premium, getOwned());
+      const locked = missing.length > 0;
       const b = el('button', `garage-option${locked ? ' locked' : ''}`, undefined, grid);
       b.type = 'button';
       el('span', 'garage-option-name', tk(`cos.preset.${preset.id}`), b);
-      if (locked) {
-        const lock = el('span', 'chip lock garage-option-lock', undefined, b);
-        lock.appendChild(icon('lock'));
-        lock.title = t('garage.locked');
-      }
+      if (locked) this.lockChip(b, this.costOf(missing));
       else if (preset.free) el('span', 'chip garage-option-free', t('garage.presetFree'), b);
       b.addEventListener('click', () => {
         this.draft = { ...preset.cos };
@@ -368,7 +448,19 @@ export class GaragePanel {
     }
   }
 
-  /** The turntable always shows the whole draft, paid work included; only SAVE checks the pass. */
+  /** The mark on a locked entry: its price in coins, or a bare padlock when it has none. */
+  private lockChip(host: HTMLElement, price: number | undefined): void {
+    const chip = el('span', 'chip lock garage-option-lock', undefined, host);
+    if (price && price > 0) {
+      chip.classList.add('price');
+      chip.append(icon('coin'), document.createTextNode(formatCoins(price)));
+    } else {
+      chip.appendChild(icon('lock'));
+    }
+    chip.title = t('garage.locked');
+  }
+
+  /** The turntable always shows the whole draft, paid work included; only SAVE checks ownership. */
   private apply(): void {
     this.preview.setCosmetics(sanitize(this.draft, true));
   }
@@ -391,16 +483,17 @@ export class GaragePanel {
    * already on the account are carried through untouched and only the colours are updated. A free
    * player still cannot add paid work this way, and a premium player cannot lose any.
    *
-   * A free player trying locked work on keeps it on the turntable: the free half is saved, the
-   * toast says the rest was left out, and the pass is offered. If they buy it, the look they were
-   * wearing is saved without another press (`saveOnUnlock`).
+   * A player trying locked work on keeps it on the turntable: the half they own is saved, the
+   * toast says the rest was left out, and the purchase sheet opens. If they buy it, the look they
+   * were wearing is saved without another press (`saveOnUnlock`, which calls back in here with
+   * `afterPurchase`).
    */
-  private async save(): Promise<void> {
+  private async save(afterPurchase = false): Promise<void> {
     const trying = this.tryingOn;
     this.saveOnUnlock = false;
     let next: KartCosmetics;
     if (this.entitlementsKnown) {
-      next = sanitize(this.draft, this.premium);
+      next = sanitize(this.draft, this.premium, getOwned());
     } else {
       const stored = unpackCosmetics(getEntitlements().cos);
       next = { ...paidPartOf(stored), ...sanitize(this.draft, false) };
@@ -409,16 +502,20 @@ export class GaragePanel {
     const ok = await saveCosmetics(next);
     const message = !this.entitlementsKnown
       ? t('garage.savedColours')
-      : !ok || !serverReachable()
+      : // Inside the host a save that did not reach the server is worth a warning. Outside it the
+        // account lives on this device to begin with, so there is nothing that failed.
+        !ok || (inVerse8Host() && !serverReachable())
         ? t('garage.saveFailed')
         : trying
-          ? t('garage.savedWithoutLocked')
-          : t('garage.saved');
+          ? t('garage.savedWithoutLockedCoins')
+          : afterPurchase
+            ? t('buy.savedLook')
+            : t('garage.saved');
     showToast(message, ok ? 'info' : 'error');
     if (ok) this.onSaved?.();
     if (trying) {
       this.saveOnUnlock = true;
-      this.onUnlock?.();
+      this.openSheet();
     }
   }
 }

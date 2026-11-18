@@ -84,7 +84,7 @@ function mockPurchase(): void {
     const el = (e.target as HTMLElement).closest('[data-mock]') as HTMLElement | null;
     if (!el) return;
     overlay.remove();
-    if (el.dataset.mock === 'buy') mockStore.purchase();
+    if (el.dataset.mock === 'buy') void mockStore.purchase();
   });
   document.body.appendChild(overlay);
 }

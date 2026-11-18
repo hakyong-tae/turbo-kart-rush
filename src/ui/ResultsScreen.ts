@@ -13,10 +13,32 @@ import { badgeElement } from './badges';
 import { CHARACTERS } from '../kart/roster';
 import { getLookThumbnail } from './kartThumbnails';
 import { button, cssHex, el, FocusRing, setButtonContent, TextField } from './dom';
+import { formatCoins } from '../core/economy';
+import { icon } from './icons';
 
 const CONFETTI_COUNT = 56;
 /** Race yellow, white and the two greys of the palette: flag-day paper, not a rainbow. */
 const CONFETTI_COLORS = ['#ffd400', '#ffffff', '#b9bdc7', '#ffd400', '#3d4049', '#ffffff'];
+
+/** How long the coin total takes to count up. */
+const COUNT_UP_MS = 900;
+
+/**
+ * What this race paid, as far as it is known. `pending` while the server is still counting,
+ * `failed` when it never answered: the screen says which, because "no coins" and "not yet" look
+ * the same on an empty line.
+ */
+export interface RewardView {
+  state: 'pending' | 'paid' | 'failed';
+  /** Coins this race paid. */
+  coins?: number;
+  /** Balance afterwards. */
+  balance?: number;
+  /** Percent of the table the race was paid at (100 / 30 / 0). */
+  rate?: number;
+  /** Which race of the day this was. */
+  races?: number;
+}
 
 /** What the results screen needs to know about an in-progress cup. */
 export interface CupView {
@@ -46,6 +68,8 @@ export class ResultsScreen {
   private againButton!: HTMLButtonElement;
   private readonly winnerShot: HTMLImageElement;
   private readonly cupBox: HTMLElement;
+  private readonly rewards: HTMLElement;
+  private countTimer = 0;
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
@@ -65,10 +89,12 @@ export class ResultsScreen {
     this.table = el('div', 'standings', undefined, this.panel);
     // Cup table: only filled during a Grand Prix, where the race result is half the story.
     this.cupBox = el('div', 'cup-standings hidden', undefined, this.panel);
-    // Reserved for the progression update: coins, experience and mission progress earned by
-    // this race go between the table and the buttons. Empty (and collapsed) until then.
-    el('div', 'results-rewards', undefined, this.panel);
-    const actions = el('div', 'actions', undefined, this.panel);
+    // What the race paid: between the table and the buttons. Empty (and collapsed) for a race
+    // that pays nothing, such as a dev auto-drive.
+    // It shares the sticky foot with the buttons, so it stays on screen when the tables scroll.
+    const foot = el('div', 'results-foot', undefined, this.panel);
+    this.rewards = el('div', 'results-rewards', undefined, foot);
+    const actions = el('div', 'actions', undefined, foot);
     this.focus = new FocusRing((i) => this.activate(i));
     const again = button(t('results.again'), 'primary', () => this.activate(0));
     this.againButton = again;
@@ -89,6 +115,7 @@ export class ResultsScreen {
    */
   show(standings: readonly RaceStanding[], mode: RaceMode = 'solo', online = false, cup?: CupView): void {
     this.recordsButton.hidden = online;
+    this.clearRewards();
     this.table.replaceChildren();
     this.confetti.replaceChildren();
     const player = standings.find((s) => s.isPlayer);
@@ -186,6 +213,7 @@ export class ResultsScreen {
   hide(): void {
     this.rootNode.classList.add('hidden');
     this.confetti.replaceChildren();
+    this.stopCount();
     this.visible = false;
   }
 
@@ -201,6 +229,7 @@ export class ResultsScreen {
   }
 
   dispose(): void {
+    this.stopCount();
     this.rootNode.remove();
   }
 
@@ -208,6 +237,52 @@ export class ResultsScreen {
   showRankBanner(text: string): void {
     this.rankBanner.set(text);
     this.rankBanner.node.classList.remove('hidden');
+  }
+
+  /**
+   * Fills the reward line. Called again when the server's answer lands after the screen opened.
+   */
+  showRewards(view: RewardView): void {
+    this.clearRewards();
+    const row = el('div', `reward-row reward-${view.state}`, undefined, this.rewards);
+    if (view.state !== 'paid') {
+      el('span', 'reward-note', t(view.state === 'pending' ? 'rewards.pending' : 'rewards.failed'), row);
+      return;
+    }
+    const coins = Math.max(0, Math.floor(view.coins ?? 0));
+    el('span', 'reward-label', t('rewards.race'), row);
+    const amount = el('span', 'reward-amount', undefined, row);
+    amount.appendChild(icon('coin'));
+    const number = el('span', 'reward-number', '+0', amount);
+    if (view.balance !== undefined) el('span', 'reward-balance', t('rewards.balance', { n: formatCoins(view.balance) }), row);
+    if (view.rate !== undefined && view.rate < 100) {
+      el(
+        'div',
+        'reward-note',
+        t(view.rate > 0 ? 'rewards.reduced' : 'rewards.capped', { n: String(view.races ?? 0), pct: String(view.rate) }),
+        this.rewards,
+      );
+    }
+    // Counted on a timer, not on animation frames: a results screen opened in a background tab
+    // must still end up showing the real number.
+    const started = Date.now();
+    const tick = (): void => {
+      const k = Math.min(1, (Date.now() - started) / COUNT_UP_MS);
+      number.textContent = `+${formatCoins(Math.round(coins * (1 - (1 - k) * (1 - k))))}`;
+      if (k >= 1) this.stopCount();
+    };
+    this.countTimer = window.setInterval(tick, 40);
+    tick();
+  }
+
+  private stopCount(): void {
+    if (this.countTimer) window.clearInterval(this.countTimer);
+    this.countTimer = 0;
+  }
+
+  private clearRewards(): void {
+    this.stopCount();
+    this.rewards.replaceChildren();
   }
 
   private activate(i: number): void {

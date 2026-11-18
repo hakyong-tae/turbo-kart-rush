@@ -65,14 +65,14 @@ import type { DailyChallenge } from '../core/daily';
 import { DailyPanel } from '../ui/DailyPanel';
 import { RescueDrones } from '../fx/RescueDrones';
 import { GaragePanel } from '../ui/GaragePanel';
-import type { CupView } from '../ui/ResultsScreen';
+import type { CupView, RewardView } from '../ui/ResultsScreen';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
 import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
 import { submitDailyTime } from '../verse8/server';
 import { buyPremium, initShop } from '../verse8/shop';
 import { inVerse8Host } from '../verse8/embed';
-import { submitTime, type SubmitResult } from '../verse8/server';
+import { submitTime, type RaceAward, type SubmitResult } from '../verse8/server';
 import { OnlineController, type OnlineMode } from '../net/online';
 import { OnlinePanel } from '../ui/OnlinePanel';
 import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
@@ -88,6 +88,10 @@ import {
   watchForeground,
   saveCupResult,
   consumePremiumRace as consumeTicket,
+  abandonRace,
+  beginRace,
+  buyKart,
+  finishRace,
 } from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
@@ -98,6 +102,12 @@ const MAX_STEPS_PER_FRAME = 8;
 const SUN_DISTANCE = 90;
 const SHADOW_HALF_EXTENT = 30;
 const EMPTY_KARTS: readonly IKart[] = [];
+
+/** The reward line for a settlement reply. A refusal reads as a failure: nothing was paid. */
+function rewardViewOf(award: RaceAward | null): RewardView {
+  if (!award || !award.ok) return { state: 'failed' };
+  return { state: 'paid', coins: award.earned?.race ?? 0, balance: award.coins, rate: award.rate, races: award.races };
+}
 
 function framingFor(panel: MenuPanel): MenuFraming {
   return panel === 'characterSelect' ? 'characters' : panel === 'trackSelect' ? 'tracks' : 'title';
@@ -139,6 +149,8 @@ interface RaceContext {
   online: OnlineRaceConfig | null;
   /** Kart index the local player controls / the camera follows. */
   localKartId: number;
+  /** The player's finish has been sent for settlement (once per race). */
+  settled?: boolean;
   /** Items are disabled in online races (phase 2). */
   itemsEnabled: boolean;
 }
@@ -167,6 +179,11 @@ export class Game {
   private dailyRun: DailyChallenge | null = null;
   private daily: DailyPanel;
   private lastSubmit: SubmitResult | null = null;
+  /**
+   * What the current race paid: null for a race that pays nothing, `pending` from the finish line
+   * until the server answers. Shown on the results screen whichever of the two arrives first.
+   */
+  private reward: RewardView | null = null;
   private online: OnlineController | null = null;
   private onlinePanel: OnlinePanel;
 
@@ -617,7 +634,11 @@ export class Game {
       isPlayer: s.kartId === r.localKartId,
     }));
     r.hud.hide();
+    // A client whose race ended without its own finish event (host lost) still gets settled.
+    const mine = mapped.find((s) => s.isPlayer);
+    if (mine) this.settleRace(r, mine.place, !(mine.finishTime > 0), mine.finishTime);
     this.results.show(mapped, r.settings.mode ?? 'solo', true);
+    if (this.reward) this.results.showRewards(this.reward);
     this.setState('results');
     this.playMusic('results');
   }
@@ -688,6 +709,16 @@ export class Game {
         this.lockSheet.hide();
         this.mainMenu.proceedFromCharacter();
       },
+      onCoins: async () => {
+        const r = await buyKart(def.id);
+        if (!r || !r.ok) {
+          showToast(t(r?.reason === 'short' ? 'buy.notEnough' : 'buy.failed'), 'error');
+          return;
+        }
+        showToast(t('v8.lock.kartBought', { name: def.name }), 'info');
+        this.lockSheet.hide();
+        this.mainMenu.proceedFromCharacter();
+      },
       onBuy: () => {
         const result = buyPremium();
         if (result === 'unregistered') showToast(t('v8.lock.unregistered'), 'error');
@@ -713,6 +744,41 @@ export class Game {
       }
     }
     this.startRace(settings);
+  }
+
+  /**
+   * A run that must not earn anything: an AI drove it, or the balance was tuned from the URL.
+   * The same rule that keeps such a run off the records board.
+   */
+  private isUnrankedRun(r: RaceContext | null): boolean {
+    const params = new URLSearchParams(location.search);
+    if (params.has('auto') || r?.playerAutoDriverBeforeFinish) return true;
+    return Array.from(params.keys()).some((k) => k.startsWith('b.'));
+  }
+
+  /**
+   * Sends the player's finish to the server, which decides what it was worth. Only the facts go:
+   * place, whether they retired, and the race clock. See the progression server design, section 5.
+   */
+  private settleRace(r: RaceContext, place: number, retired: boolean, seconds: number): void {
+    if (r.settled) return;
+    r.settled = true;
+    if (this.isUnrankedRun(r)) {
+      abandonRace();
+      return;
+    }
+    // A retired kart has no finish time; the race clock at that moment is how long it ran.
+    const clock = retired || !(seconds > 0) ? r.raceManager.raceTime : seconds;
+    this.showReward({ state: 'pending' });
+    void finishRace({ place, retired, timeMs: Math.round(clock * 1000) }).then((award) => {
+      if (this.race !== r) return;
+      this.showReward(rewardViewOf(award));
+    });
+  }
+
+  private showReward(view: RewardView): void {
+    this.reward = view;
+    if (this.state === 'results') this.results.showRewards(view);
   }
 
   private maybeSubmitTime(r: RaceContext, seconds: number): void {
@@ -1214,6 +1280,11 @@ export class Game {
     }
     this.pendingSettings = { ...settings, trackId: trackDef.id };
     this.lastSubmit = null;
+    this.reward = null;
+    // Open the race on the server now, so its clock covers the whole race by the time the
+    // finish is reported. Fire-and-forget: a slow server must not hold up the start lights.
+    if (this.isUnrankedRun(null)) abandonRace();
+    else beginRace({ ...settings, trackId: trackDef.id });
     this.loadingElapsed = 0;
     this.loadingFrames = 0;
     this.loadingProgress = 0;
@@ -1446,6 +1517,7 @@ export class Game {
       events.on('race:finish', (e) => {
         if (this.race !== r || !e.isPlayer) return;
         this.onPlayerFinished(r);
+        this.settleRace(r, e.place, Boolean(e.retired) || !(e.time > 0), e.time);
         if (!e.retired && e.time > 0) this.maybeSubmitTime(r, e.time);
       }),
       events.on('race:allFinished', () => {
@@ -1529,6 +1601,7 @@ export class Game {
       if (cupView.isFinal) this.finishCup();
     }
     this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
+    if (this.reward) this.results.showRewards(this.reward);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
     }

@@ -1,27 +1,33 @@
 /**
- * Server-authoritative entitlements cache: { premium, premiumRaces, nickname, cos, cups }.
+ * Server-authoritative account cache: { premium, premiumRaces, nickname, cos, cups, coins, own }.
  * The gameserver user state is the single source of truth (root server.js); this module
- * only caches it and exposes subscriptions. Outside a Verse8 host (local dev) an in-memory
- * mock store applies the same rules so every UI path can be exercised.
+ * only caches it and exposes subscriptions. Outside a Verse8 host (local dev) the same server.js
+ * runs in the page against localStorage (`localServer.ts`), so every UI path can be exercised on
+ * the real rules and the wallet survives a reload.
  */
-import { packCosmetics, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
+import { kartToken, packCosmetics, parseOwned, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { CUPS, recordCupResult, type CupId, type CupProgress } from '../core/cups';
 import { CHARACTERS } from '../kart/roster';
 import { inVerse8Host } from './embed';
 import {
   fetchEntitlements,
   isConnected,
+  serverBeginRace,
+  serverBuyCosmetic,
+  serverBuyKart,
   serverConsumePremiumRace,
+  serverFinishRace,
   serverGrantPremiumRaces,
   serverSetCosmetics,
   serverSetCupProgress,
   serverSetNickname,
+  type BuyReply,
   type Entitlements,
+  type RaceAward,
+  type RaceReport,
 } from './server';
 
 const PREMIUM_IDS = new Set(CHARACTERS.filter((c) => c.premium).map((c) => c.id));
-const GRANT_SIZE = 3;
-const GRANT_CAP = 9;
 
 export type EntitlementState = Entitlements & { loaded: boolean };
 
@@ -75,22 +81,49 @@ export function canRace(characterId: string): boolean {
   // starting a premium race spends a ticket through `consumePremiumRace`, which is decided on the
   // server, so an optimistic card here can only ever be corrected — never exploited.
   if (entitlementsPending()) return true;
-  return state.premium || state.premiumRaces > 0;
+  return state.premium || ownsKart(characterId) || state.premiumRaces > 0;
+}
+
+// ── Wallet and ownership ────────────────────────────────────────────────────
+
+export function getCoins(): number {
+  return typeof state.coins === 'number' && state.coins > 0 ? Math.floor(state.coins) : 0;
+}
+
+let ownedSource: string | undefined;
+let ownedSet: ReadonlySet<string> = new Set();
+
+/** Ownership tokens of this account (see core/cosmetics.ts). Parsed once per change of the record. */
+export function getOwned(): ReadonlySet<string> {
+  if (state.own !== ownedSource) {
+    ownedSource = state.own;
+    ownedSet = parseOwned(state.own);
+  }
+  return ownedSet;
+}
+
+/** A premium kart unlocked for good, by the pass or with coins. Tickets do not count as owning. */
+export function ownsKart(characterId: string): boolean {
+  return state.premium || getOwned().has(kartToken(characterId));
+}
+
+/** Races already paid for today; `core/economy.raceRate` turns it into the next race's rate. */
+export function racesToday(): number {
+  return state.eco && state.eco.day === new Date().toISOString().slice(0, 10) ? state.eco.races : 0;
 }
 
 /**
- * The look to drive with, already gated: a free player's saved paid pattern stays on the server
- * but is never rendered, so buying the tier brings it straight back.
+ * The look to drive with, already gated: a paid pattern the player does not own stays on the
+ * server but is never rendered, so unlocking it brings it straight back.
  */
 export function getCosmetics(): KartCosmetics {
-  return sanitize(unpackCosmetics(state.cos), state.premium);
+  return sanitize(unpackCosmetics(state.cos), state.premium, getOwned());
 }
 
 /** Saves the garage look. Cached optimistically so the preview never waits on the network. */
 export async function saveCosmetics(cos: KartCosmetics): Promise<boolean> {
   const packed = packCosmetics(cos);
   mergeEntitlements({ cos: packed });
-  if (!useServer()) return true;
   const r = await serverSetCosmetics(packed);
   if (!r) return false;
   mergeEntitlements({ cos: r.cos });
@@ -118,7 +151,6 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let attempt = 0;
 
 export async function refreshEntitlements(): Promise<void> {
-  if (!useServer()) return;
   const e = await fetchEntitlements();
   if (e) {
     attempt = 0;
@@ -151,7 +183,6 @@ export function watchForeground(): void {
 
 /** After a host-verified rewarded ad: +3 premium races (server caps at 9, 10 grants/day). */
 export async function grantPremiumRaces(): Promise<boolean> {
-  if (!useServer()) return mockStore.grant();
   const r = await serverGrantPremiumRaces();
   if (!r) return false;
   mergeEntitlements({ premiumRaces: r.premiumRaces });
@@ -163,10 +194,9 @@ export async function grantPremiumRaces(): Promise<boolean> {
 
 /** Starting a race with `characterId`: spends one ticket when the kart is premium. */
 export async function consumePremiumRace(characterId: string): Promise<boolean> {
-  if (!useServer()) return mockStore.consume(characterId).ok;
   const r = await serverConsumePremiumRace(characterId);
   // Server unreachable inside the host: only free karts (or a confirmed purchase) may start.
-  if (!r) return !isPremium(characterId) || state.premium;
+  if (!r) return !isPremium(characterId) || ownsKart(characterId);
   mergeEntitlements({ premiumRaces: r.premiumRaces });
   if (!state.loaded) void refreshEntitlements();
   return r.ok;
@@ -174,10 +204,6 @@ export async function consumePremiumRace(characterId: string): Promise<boolean> 
 
 /** Returns the stored (normalised) nickname, or null when the server rejected / is absent. */
 export async function setNickname(name: string): Promise<string | null> {
-  if (!useServer()) {
-    mergeEntitlements({ nickname: name });
-    return name;
-  }
   const r = await serverSetNickname(name);
   if (!r) return null;
   mergeEntitlements({ nickname: r.nickname });
@@ -202,7 +228,6 @@ export async function saveCupResult(id: CupId, place: number): Promise<void> {
   const next = recordCupResult(getCupProgress(), id, place);
   if (next === getCupProgress()) return;
   mergeEntitlements({ cups: { ...state.cups, ...next } as Record<string, number> });
-  if (!useServer()) return;
   const r = await serverSetCupProgress(next as Record<string, number>);
   if (r) mergeEntitlements({ cups: r.cups });
 }
@@ -211,25 +236,89 @@ export function serverReachable(): boolean {
   return useServer() && isConnected();
 }
 
-// ── Local-dev mock store (never reached inside the host) ────────────────────
+// ── Race rewards and spending ───────────────────────────────────────────────
+//
+// Unlike the garage look, none of this is cached optimistically. A coin shown and then taken back
+// is the worst thing a wallet can do, so the balance on screen only ever moves on the server's word.
+
+/** Calls that change the wallet run one at a time, so two replies cannot land out of order. */
+let walletQueue: Promise<unknown> = Promise.resolve();
+function queued<T>(job: () => Promise<T>): Promise<T> {
+  const next = walletQueue.then(job, job);
+  walletQueue = next.catch(() => undefined);
+  return next;
+}
+
+let ticket: Promise<string | null> | null = null;
+
+/**
+ * Opens a race on the server. Not awaited by the caller: the race starts regardless, and
+ * `finishRace` picks the ticket up when the player crosses the line.
+ */
+export function beginRace(settings: { trackId: string; characterId: string; difficulty: string; mode?: string }): void {
+  ticket = queued(() => serverBeginRace(settings.trackId, settings.characterId, settings.difficulty, settings.mode ?? 'solo')).then(
+    (r) => r?.raceId ?? null,
+  );
+}
+
+/** Forgets the open race: a run that must not be paid for (dev auto-drive, tuned balance). */
+export function abandonRace(): void {
+  ticket = null;
+}
+
+/**
+ * Settles the race `beginRace` opened. Null when there was nothing to settle or the server did not
+ * answer; a refusal (`ok: false`) is returned as it came, with the reason.
+ */
+export async function finishRace(report: RaceReport): Promise<RaceAward | null> {
+  const mine = ticket;
+  ticket = null;
+  if (!mine) return null;
+  const raceId = await mine;
+  if (!raceId) return null;
+  const award = await queued(() => serverFinishRace(raceId, report));
+  if (award) mergeEntitlements({ coins: award.coins, eco: { day: new Date().toISOString().slice(0, 10), races: award.races } });
+  return award;
+}
+
+function applyPurchase(r: BuyReply | null): BuyReply | null {
+  if (r) mergeEntitlements({ coins: r.coins, own: r.own });
+  return r;
+}
+
+/** Buys one garage entry with coins. Null when the server did not answer. */
+export function buyCosmetic(token: string): Promise<BuyReply | null> {
+  return queued(() => serverBuyCosmetic(token)).then(applyPurchase);
+}
+
+/** Unlocks one premium kart for good with coins. Null when the server did not answer. */
+export function buyKart(characterId: string): Promise<BuyReply | null> {
+  return queued(() => serverBuyKart(characterId)).then(applyPurchase);
+}
+
+// ── Local-dev stand-ins (never reached inside the host) ─────────────────────
+//
+// These used to keep their own copy of the ticket rules in memory. They now drive the in-page
+// server like everything else, which also means a mock purchase survives a reload.
 export const mockStore = {
-  grant(): boolean {
-    applyEntitlements({ ...state, premiumRaces: Math.min(GRANT_CAP, state.premiumRaces + GRANT_SIZE) });
-    return true;
+  grant(): Promise<boolean> {
+    return grantPremiumRaces();
   },
-  consume(characterId: string): { ok: boolean; premiumRaces: number } {
-    if (!isPremium(characterId) || state.premium) return { ok: true, premiumRaces: state.premiumRaces };
-    if (state.premiumRaces <= 0) return { ok: false, premiumRaces: 0 };
-    applyEntitlements({ ...state, premiumRaces: state.premiumRaces - 1 });
-    return { ok: true, premiumRaces: state.premiumRaces };
+  async consume(characterId: string): Promise<{ ok: boolean; premiumRaces: number }> {
+    const ok = await consumePremiumRace(characterId);
+    return { ok, premiumRaces: state.premiumRaces };
   },
-  purchase(): void {
-    applyEntitlements({ ...state, premium: true });
+  async purchase(): Promise<void> {
+    const { localPurchase } = await import('./localServer');
+    await localPurchase('premium-garage');
+    await refreshEntitlements();
   },
 };
 
 export function _resetForTests(): void {
   state = EMPTY;
+  ticket = null;
+  walletQueue = Promise.resolve();
   listeners.clear();
   if (retryTimer !== null) clearTimeout(retryTimer);
   retryTimer = null;

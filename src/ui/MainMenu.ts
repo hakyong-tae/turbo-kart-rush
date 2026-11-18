@@ -10,7 +10,17 @@ import { icon } from './icons';
 import { showToast } from './toast';
 import { getLang, setLang, t, t as tt, tOr, type Lang } from '../core/i18n';
 import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
-import { canRace, entitlementsPending, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
+import {
+  canRace,
+  entitlementsPending,
+  getCoins,
+  getCupProgress,
+  getEntitlements,
+  isPremium,
+  onEntitlementsChange,
+  ownsKart,
+} from '../verse8/entitlements';
+import { formatCoins } from '../core/economy';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
 import { buildLogo } from './logo';
@@ -78,6 +88,7 @@ export class MainMenu {
   private readonly charName: TextField;
   private readonly charTagline: TextField;
   private readonly lockBadges = new Map<string, { badge: HTMLElement; text: TextField }>();
+  private readonly coinText: TextField;
   /** Per stat, its five blocks in the detail strip under the racer grid. */
   private readonly statCells: HTMLElement[][] = [];
   private readonly unsubEntitlements: () => void;
@@ -109,9 +120,13 @@ export class MainMenu {
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
-    // Reserved for the progression update: the profile bar (level, coins, streak) goes here.
-    // Kept in the layout now so the logo does not have to move when it arrives.
-    el('div', 'lobby-profile', undefined, title);
+    // Profile bar: what the player has to show for the races so far. Coins for now; level and
+    // streak join it with the rest of the progression update.
+    const profile = el('div', 'lobby-profile', undefined, title);
+    const coinChip = el('div', 'coin-chip profile-coins', undefined, profile);
+    coinChip.title = t('coin.label');
+    coinChip.appendChild(icon('coin'));
+    this.coinText = new TextField(el('span', 'profile-coins-n', '0', coinChip));
     buildLogo(title);
     el('div', 'logo-sub', t('title.sub'), title);
     // Lobby: one big RACE plate, the rest as a grid of small icon + label plates underneath.
@@ -308,8 +323,12 @@ export class MainMenu {
     trActions.appendChild(this.startButton);
 
     this.panels = { title, characterSelect: chars, trackSelect: tr };
-    this.unsubEntitlements = onEntitlementsChange(() => this.refreshLocks());
+    this.unsubEntitlements = onEntitlementsChange(() => {
+      this.refreshLocks();
+      this.refreshProfile();
+    });
     this.refreshLocks();
+    this.refreshProfile();
     this.setCharacter(0);
     this.setTrack(0);
     this.setDifficulty(1);
@@ -417,6 +436,10 @@ export class MainMenu {
     this.goTo('trackSelect', true);
   }
 
+  private refreshProfile(): void {
+    this.coinText.set(formatCoins(getCoins()));
+  }
+
   private refreshLocks(): void {
     const ent = getEntitlements();
     this.charCards.forEach((card, i) => {
@@ -426,7 +449,8 @@ export class MainMenu {
       card.classList.toggle('locked', locked);
       const entry = this.lockBadges.get(def.id);
       if (!entry) return;
-      if (ent.premium) {
+      // Owned for good, by the pass or with coins: nothing left to say on the card.
+      if (ownsKart(def.id)) {
         entry.badge.classList.add('hidden');
         return;
       }
