@@ -9,9 +9,13 @@ import {
   buyKart,
   canRace,
   finishRace,
+  claimAttendance,
   getCoins,
   getCosmetics,
+  getMissions,
   getOwned,
+  getStreak,
+  getXp,
   ownsKart,
   racesToday,
   refreshEntitlements,
@@ -114,7 +118,9 @@ describe('entitlements (mock store rules)', () => {
       vi.setSystemTime(new Date('2026-11-18T10:00:00Z'));
       await refreshEntitlements();
       expect(getCoins()).toBe(0);
-      // Nine wins on hard buy one flame; the clock has to really pass for each.
+      // Nine wins on hard; the clock has to really pass for each. Missions and level-ups pay on
+      // top of the race, so the wallet is checked against what the server said it paid.
+      let paid = 0;
       for (let i = 0; i < 9; i++) {
         beginRace({ trackId: 'sunny_circuit', characterId: 'zippy', difficulty: 'hard' });
         // The start is fire-and-forget in the game; here the stamp has to land before the clock moves.
@@ -123,16 +129,18 @@ describe('entitlements (mock store rules)', () => {
         const award = await finishRace({ place: 1, retired: false, timeMs: 90000 });
         expect(award?.ok).toBe(true);
         expect(award?.earned?.race).toBe(78);
+        paid += award?.earned?.total ?? 0;
       }
-      expect(getCoins()).toBe(702);
+      expect(paid).toBeGreaterThanOrEqual(702);
+      expect(getCoins()).toBe(paid);
       expect(racesToday()).toBe(9);
+      expect(getXp()).toBeGreaterThanOrEqual(540);
+      expect(getMissions()?.list).toHaveLength(3);
 
-      const short = await buyCosmetic('e:1'); // an engine pack is 800
-      expect(short?.ok).toBe(false);
-      expect(short?.reason).toBe('short');
-      const flame = await buyCosmetic('f:1');
+      expect((await buyCosmetic('p:zz'))?.reason).toBe('unknown');
+      const flame = await buyCosmetic('f:1'); // a flame is 700
       expect(flame?.ok).toBe(true);
-      expect(getCoins()).toBe(2);
+      expect(getCoins()).toBe(paid - 700);
       expect(getOwned().has('f:1')).toBe(true);
 
       // The look can now keep the flame it bought, and nothing it did not.
@@ -143,12 +151,23 @@ describe('entitlements (mock store rules)', () => {
       _resetForTests();
       expect(getCoins()).toBe(0);
       await refreshEntitlements();
-      expect(getCoins()).toBe(2);
+      expect(getCoins()).toBe(paid - 700);
       expect(getOwned().has('f:1')).toBe(true);
       expect(getCosmetics()).toEqual({ flame: 'jet', body: 0x112233 });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('check-in pays through the local server and the record follows', async () => {
+    await refreshEntitlements();
+    expect(getStreak()).toMatchObject({ claimed: false, n: 0, total: 0, next: 1 });
+    const first = await claimAttendance();
+    expect(first).toMatchObject({ ok: true, reward: 50 });
+    expect(getCoins()).toBe(50);
+    expect(getStreak()).toMatchObject({ claimed: true, n: 1, total: 1 });
+    expect((await claimAttendance())?.reason).toBe('claimed');
+    expect(getCoins()).toBe(50);
   });
 
   it('a kart bought with coins races without a ticket', async () => {

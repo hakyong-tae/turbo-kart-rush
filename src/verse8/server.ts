@@ -160,12 +160,80 @@ export interface Entitlements {
   own?: string;
   /** Today's ledger (UTC day). */
   eco?: EcoDay;
+  /** Lifetime experience; the level follows from it (core/economy `levelInfo`). */
+  xp?: number;
+  streak?: StreakView;
+  missions?: MissionsView;
 }
 
 export interface EcoDay {
   day: string;
   /** Races already paid for today; decides the rate of the next one. */
   races: number;
+  /** Rewarded-ad doublings and mission swaps used today. */
+  doubles?: number;
+  swaps?: number;
+}
+
+/** The check-in record, as the server sees it today. */
+export interface StreakView {
+  /** Last day claimed (`YYYY-MM-DD`, UTC); '' before the first check-in. */
+  last: string;
+  /** Length of the current run. */
+  n: number;
+  /** Days checked in, ever. */
+  total: number;
+  /** Today is already claimed. */
+  claimed: boolean;
+  /** The run is broken by exactly one missed day: an ad can carry it on. */
+  canRecover: boolean;
+  /** Which day of the run today's claim would be (or is, once claimed). */
+  next: number;
+}
+
+export interface MissionView {
+  /** `drift`, `track:coral_coast`, `class:heavy` — see core/economy `parseMissionKey`. */
+  key: string;
+  tier: 0 | 1 | 2;
+  target: number;
+  progress: number;
+  done: boolean;
+  coins: number;
+  xp: number;
+}
+
+export interface MissionsView {
+  day: string;
+  list: MissionView[];
+  /** The all-three bonus has been paid. */
+  bonus: boolean;
+  bonusCoins: number;
+  swapsLeft: number;
+}
+
+export interface AttendanceReply {
+  ok: boolean;
+  /** `claimed`: already done today. `choose`: a broken run, recover or restart. */
+  reason?: 'claimed' | 'choose';
+  coins: number;
+  reward: number;
+  streak: StreakView;
+  unlocked: string[];
+  own?: string;
+}
+
+export interface SwapReply {
+  ok: boolean;
+  reason?: 'unknown' | 'done' | 'limit';
+  missions: MissionsView;
+}
+
+export interface DoubleReply {
+  ok: boolean;
+  reason?: 'no-race' | 'done' | 'limit' | 'nothing';
+  coins: number;
+  added: number;
+  doublesLeft: number;
 }
 
 /** What `finishRace` answers. A refusal carries a reason instead of throwing. */
@@ -175,11 +243,27 @@ export interface RaceAward {
   raceId?: string;
   /** Balance after this race. */
   coins: number;
-  earned?: { race: number; total: number };
+  /** Coins by source: the race itself, missions it completed, levels it gained. */
+  earned?: { race: number; missions?: number; levels?: number; total: number };
   /** Races paid for today, this one included. */
   races: number;
   /** Percent of the table this race was paid at: 100, 30 or 0. */
   rate?: number;
+  /** Lifetime experience after this race, and how much of it this race added. */
+  xp?: number;
+  xpEarned?: number;
+  level?: number;
+  levelUps?: number;
+  missions?: MissionsView;
+  /** Mission keys this race completed. */
+  completed?: string[];
+  /** This race completed the third mission: the bonus was paid. */
+  bonus?: boolean;
+  /** Garage tokens this race's level-ups awarded. */
+  unlocked?: string[];
+  own?: string;
+  /** Rewarded-ad doublings still available today (0 when the race paid nothing). */
+  doublesLeft?: number;
 }
 
 /** What the race looked like from the driver's seat. Amounts are never part of it. */
@@ -188,6 +272,14 @@ export interface RaceReport {
   retired: boolean;
   /** Race clock at the player's finish (or retirement), ms. */
   timeMs: number;
+  /** Mission counters (core/economy `RaceStats`); the server clamps each. */
+  stats?: Record<string, number>;
+  /** This was today's seeded challenge. */
+  daily?: boolean;
+  /** A team race, and the player's side won it. */
+  teamWon?: boolean;
+  /** This race was the last leg of a Grand Prix cup. */
+  cupDone?: boolean;
 }
 
 export interface BuyReply {
@@ -262,4 +354,13 @@ export function serverBuyCosmetic(token: string): Promise<BuyReply | null> {
 }
 export function serverBuyKart(characterId: string): Promise<BuyReply | null> {
   return callBackend<BuyReply | null>('buyKart', [characterId], null);
+}
+export function serverDoubleRaceCoins(raceId: string): Promise<DoubleReply | null> {
+  return callBackend<DoubleReply | null>('doubleRaceCoins', [raceId], null);
+}
+export function serverClaimAttendance(recover?: boolean): Promise<AttendanceReply | null> {
+  return callBackend<AttendanceReply | null>('claimAttendance', recover === undefined ? [] : [recover], null);
+}
+export function serverSwapMission(index: number): Promise<SwapReply | null> {
+  return callBackend<SwapReply | null>('swapMission', [index], null);
 }

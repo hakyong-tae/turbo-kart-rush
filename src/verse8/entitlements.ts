@@ -15,16 +15,24 @@ import {
   serverBeginRace,
   serverBuyCosmetic,
   serverBuyKart,
+  serverClaimAttendance,
   serverConsumePremiumRace,
+  serverDoubleRaceCoins,
   serverFinishRace,
   serverGrantPremiumRaces,
   serverSetCosmetics,
   serverSetCupProgress,
   serverSetNickname,
+  serverSwapMission,
+  type AttendanceReply,
   type BuyReply,
+  type DoubleReply,
   type Entitlements,
+  type MissionsView,
   type RaceAward,
   type RaceReport,
+  type StreakView,
+  type SwapReply,
 } from './server';
 
 const PREMIUM_IDS = new Set(CHARACTERS.filter((c) => c.premium).map((c) => c.id));
@@ -110,6 +118,25 @@ export function ownsKart(characterId: string): boolean {
 /** Races already paid for today; `core/economy.raceRate` turns it into the next race's rate. */
 export function racesToday(): number {
   return state.eco && state.eco.day === new Date().toISOString().slice(0, 10) ? state.eco.races : 0;
+}
+
+/** Lifetime experience. `core/economy.levelInfo` turns it into a level and a bar. */
+export function getXp(): number {
+  return typeof state.xp === 'number' && state.xp > 0 ? Math.floor(state.xp) : 0;
+}
+
+/** The check-in record, or null while the account has not been read (or the server predates it). */
+export function getStreak(): StreakView | null {
+  return state.streak ?? null;
+}
+
+/**
+ * Today's missions, or null when unknown. A set fetched before midnight UTC is yesterday's by the
+ * time the player looks at it; that reads as unknown too, and the caller refreshes.
+ */
+export function getMissions(): MissionsView | null {
+  const m = state.missions;
+  return m && m.day === new Date().toISOString().slice(0, 10) ? m : null;
 }
 
 /**
@@ -277,8 +304,45 @@ export async function finishRace(report: RaceReport): Promise<RaceAward | null> 
   const raceId = await mine;
   if (!raceId) return null;
   const award = await queued(() => serverFinishRace(raceId, report));
-  if (award) mergeEntitlements({ coins: award.coins, eco: { day: new Date().toISOString().slice(0, 10), races: award.races } });
+  if (award) {
+    const patch: Partial<Entitlements> = {
+      coins: award.coins,
+      eco: { ...state.eco, day: new Date().toISOString().slice(0, 10), races: award.races },
+    };
+    if (award.xp !== undefined) patch.xp = award.xp;
+    if (award.own !== undefined) patch.own = award.own;
+    if (award.missions) patch.missions = award.missions;
+    mergeEntitlements(patch);
+  }
   return award;
+}
+
+/** After a host-verified rewarded ad: the last race's coins, once more. */
+export async function doubleRaceCoins(raceId: string): Promise<DoubleReply | null> {
+  const r = await queued(() => serverDoubleRaceCoins(raceId));
+  if (r) mergeEntitlements({ coins: r.coins });
+  return r;
+}
+
+/**
+ * Claims today's check-in. `recover` is only meaningful for a run broken by one missed day:
+ * true (after a rewarded ad) carries it on, false starts over, undefined asks which.
+ */
+export async function claimAttendance(recover?: boolean): Promise<AttendanceReply | null> {
+  const r = await queued(() => serverClaimAttendance(recover));
+  if (r) {
+    const patch: Partial<Entitlements> = { coins: r.coins, streak: r.streak };
+    if (r.own !== undefined) patch.own = r.own;
+    mergeEntitlements(patch);
+  }
+  return r;
+}
+
+/** After a host-verified rewarded ad: trades one unfinished mission for another of its tier. */
+export async function swapMission(index: number): Promise<SwapReply | null> {
+  const r = await queued(() => serverSwapMission(index));
+  if (r) mergeEntitlements({ missions: r.missions });
+  return r;
 }
 
 function applyPurchase(r: BuyReply | null): BuyReply | null {

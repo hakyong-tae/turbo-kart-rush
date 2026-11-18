@@ -25,11 +25,20 @@ export type PatternId =
   | 'carbon' | 'holo' | 'starfield' | 'glitch' | 'wireframe';
 
 export type UnderglowId = 'none' | 'solid' | 'pulse' | 'breathe' | 'strobe' | 'rainbow' | 'ripple';
-export type TrailId = 'none' | 'ribbon' | 'sparks' | 'smoke' | 'stars' | 'hex' | 'bolts' | 'shards' | 'rings' | 'embers' | 'pixels';
-export type FlameId = 'none' | 'jet' | 'plasma' | 'ember' | 'ion' | 'frost' | 'void' | 'prism' | 'pulseJet';
-export type WheelFxId = 'none' | 'spokeGlow' | 'rimLight' | 'tyreTrail' | 'spinBlur';
+export type TrailId =
+  | 'none' | 'ribbon' | 'sparks' | 'smoke' | 'stars' | 'hex' | 'bolts' | 'shards' | 'rings' | 'embers' | 'pixels'
+  // earn-only (progression)
+  | 'comet' | 'confetti' | 'snow' | 'meteor';
+export type FlameId =
+  | 'none' | 'jet' | 'plasma' | 'ember' | 'ion' | 'frost' | 'void' | 'prism' | 'pulseJet'
+  // earn-only (progression)
+  | 'aurora' | 'dawn' | 'inferno' | 'supernova';
+export type WheelFxId = 'none' | 'spokeGlow' | 'rimLight' | 'tyreTrail' | 'spinBlur' | /* earn-only */ 'goldRim' | 'neonRim';
 export type EnginePackId = 'scream' | 'rumble' | 'electric' | 'diesel' | 'turbine' | 'chiptune';
-export type BadgeId = 'none' | 'bolt' | 'crown' | 'flame' | 'skull' | 'star' | 'gear' | 'wing' | 'diamond';
+export type BadgeId =
+  | 'none' | 'bolt' | 'crown' | 'flame' | 'skull' | 'star' | 'gear' | 'wing' | 'diamond'
+  // earn-only (progression)
+  | 'medal' | 'laurel' | 'sun' | 'trophy';
 
 /** A player's kart look. Every field is optional; absent means the character's own default. */
 export interface KartCosmetics {
@@ -64,6 +73,12 @@ export interface CatalogueEntry<T extends string> {
 }
 
 const paid = <T extends string>(ids: readonly T[]): CatalogueEntry<T>[] => ids.map((id) => ({ id, free: false }));
+/**
+ * Earn-only entries (progression): a level reward, a check-in reward, or the coin-only shelf.
+ * Always appended after the paid ones — the index is the stored id — and never opened by the pass.
+ * Which is which, and what the shelf charges, is in core/economy.ts.
+ */
+const earned = <T extends string>(ids: readonly T[]): CatalogueEntry<T>[] => ids.map((id) => ({ id, free: false, earn: true }));
 
 /** Pattern ids in garage order. `none` is the only free one: patterns are a paid tier. */
 export const PATTERNS: readonly CatalogueEntry<PatternId>[] = [
@@ -86,16 +101,19 @@ export const UNDERGLOWS: readonly CatalogueEntry<UnderglowId>[] = [
 export const TRAILS: readonly CatalogueEntry<TrailId>[] = [
   { id: 'none', free: true },
   ...paid<TrailId>(['ribbon', 'sparks', 'smoke', 'stars', 'hex', 'bolts', 'shards', 'rings', 'embers', 'pixels']),
+  ...earned<TrailId>(['comet', 'confetti', 'snow', 'meteor']),
 ];
 
 export const FLAMES: readonly CatalogueEntry<FlameId>[] = [
   { id: 'none', free: true },
   ...paid<FlameId>(['jet', 'plasma', 'ember', 'ion', 'frost', 'void', 'prism', 'pulseJet']),
+  ...earned<FlameId>(['aurora', 'dawn', 'inferno', 'supernova']),
 ];
 
 export const WHEEL_FX: readonly CatalogueEntry<WheelFxId>[] = [
   { id: 'none', free: true },
   ...paid<WheelFxId>(['spokeGlow', 'rimLight', 'tyreTrail', 'spinBlur']),
+  ...earned<WheelFxId>(['goldRim', 'neonRim']),
 ];
 
 /** The stock voice is free so a free player still hears a real engine. */
@@ -107,6 +125,7 @@ export const ENGINE_PACKS: readonly CatalogueEntry<EnginePackId>[] = [
 export const BADGES: readonly CatalogueEntry<BadgeId>[] = [
   { id: 'none', free: true },
   ...paid<BadgeId>(['bolt', 'crown', 'flame', 'skull', 'star', 'gear', 'wing', 'diamond']),
+  ...earned<BadgeId>(['medal', 'laurel', 'sun', 'trophy']),
 ];
 
 /** Colour swatches offered in the garage. Free for everyone. */

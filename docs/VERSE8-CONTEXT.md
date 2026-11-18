@@ -11,7 +11,7 @@
 2. `@verse8/ads`는 **정적 import** 유지, `package.json` deps에서 빼지 말 것(동적 import는 번들에서 트리셰이킹된 사례 있음).
 3. `src/verse8/server.ts`의 `@agent8/gameserver/dist/src/store/useGameServerStore` 딥임포트는 **리터럴 문자열**로만. `GameServer.connect()` 직접 호출 금지(스토어 경유) — 어기면 창 전환마다 재접속 폭풍.
 4. `src/verse8/embed.ts`의 GAME_SIZE 핸드셰이크 제거 금지(iframe 뷰포트 0 방지).
-5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환) + 진행 시스템 키 `coins` / `own` / `eco` / `race` / `award`(15번). **광고권·구매 상태·코인은 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
+5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환) + 진행 시스템 키 `coins` / `own` / `eco` / `race` / `award` / `xp` / `mis` / `streak`(15·16번). **광고권·구매 상태·코인은 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
 6. `src/core/**`는 프로즌 계약(추가만, 값 변경 금지). 튠 값은 `src/core/balance.ts`.
 7. 닉네임 규칙은 `src/verse8/nickname.ts`와 `server.js` 두 곳에 복제 — 함께 수정.
 
@@ -25,7 +25,7 @@ npm run build       # dist/ ; grep -c '"@agent8/gameserver' dist/assets/*.js →
 
 ## 4. 크리에이터 콘솔 체크리스트
 - VXShop 상품: id **`premium-garage`**, 100 VX, 비소모(non-consumable), Lifetime Limit 1. 게임 내 표기 "차고 해금 · 100 VX" — 차고의 유료 항목(라이버리·언더글로우·트레일·배기 화염·휠·엔진음)과 프리미엄 카트 3종 영구 해금. 구 id `remove-ads`는 폐기(구매자 0명)이나 서버는 계속 인정.
-- 광고 placement: **`rewarded_premium_kart`** (리워드). 전면 광고 없음.
+- 광고 placement(전부 리워드, 전면 광고 없음): **`rewarded_premium_kart`**(프리미엄 카트 3회권), **`rewarded_double_coins`**(레이스 코인 2배, 하루 5회), **`rewarded_streak_recover`**(끊긴 출석 이어가기), **`rewarded_mission_swap`**(미션 교체, 하루 1회). 뒤의 셋은 진행 시스템에서 추가 — 콘솔에 등록해야 한다.
 - 서버 함수 배포 확인: `ping`, `submitTime`, `getTopTimes`, `getMyEntitlements`, `grantPremiumRaces`, `consumePremiumRace`, `setNickname`, `$onItemPurchased`.
 
 ## 5. 배포
@@ -63,3 +63,4 @@ bun run build
 13. **구조**: 모듈 지도와 '무엇을 바꾸려면 어디' 표는 `docs/ARCHITECTURE.md`. CSS는 `src/styles/` 번호순 임포트(순서=캐스케이드). 새 기능은 `ui/hud/`·`kart/assists/` 식으로 위젯/모듈 단위 파일 추가.
 14. **컬렉션 쿼리는 `{ limit }`만**: `getCollectionItems(id, { limit })` 외의 `filters`/`orderBy`/`countCollectionItems`는 이 플랫폼에서 무시되거나 throw(26-09-09 QA: 기록 미저장·"[object Object]1위"·기록 삭제 원인). server.js는 전부 읽어서 JS로 필터/정렬(`_allTimes`). 스냅샷 전송은 `SNAPSHOT_EVERY=7`(≈58ms, relayHot throttle 50 위) — 더 자주 보내면 릴레이가 패킷을 버려 1초 정지가 생긴다. 로비는 `visibilitychange`/`pageshow`에 `Lobby.resume()`(재조인)한다. 온라인 출시 스위치 `ONLINE_ENABLED`(constants).
 15. **진행 시스템(코인)**: 설계는 `docs/superpowers/specs/2026-11-18-progression-server-design.md`. 코인은 **전부 `server.js`가 계산**한다 — 클라는 레이스 사실(순위·리타이어·레이스 시간)만 보내고 금액은 보내지 않는다. `beginRace`(레이스 시작 때 서버 시각 기록) → `finishRace`(서버 시계로 실제 시간이 지났는지 확인 후 지급, 하루 10판 전액 → 30% → 61판부터 0). 항목별 소유는 `own` 문자열(`p:f,k:rosa` — 외형 토큰은 `cos`와 같은 표기, 카트는 `k:<id>`), 판정은 `server.js _owns` / 클라 `sanitize(cos, premium, owned)` 한 쌍. `setCosmetics`는 안 가진 유료 토큰을 걸러서 저장한다. 가격표·순위표는 `server.js`와 `src/core/economy.ts` 두 곳(`serverEconomy.test.ts`가 일치 검사) — **한쪽만 고치지 말 것.** 호스트 밖(로컬)에서는 `src/verse8/localServer.ts`가 같은 `server.js`를 `localStorage`(`tkr.local.user`)로 실행한다: 규칙을 클라에 다시 구현하지 말 것. `?auto`·`?b.` 레이스는 정산하지 않는다. 서버 함수 배포 확인 목록에 `beginRace`, `finishRace`, `buyCosmetic`, `buyKart` 추가.
+16. **진행 시스템(미션·출석·레벨)**: 전부 `server.js`. `finishRace`가 경험치(순위표, 난이도 무관, 하루 감쇠 적용)·레벨업 코인(레벨당 100)·미션 진행을 한 번에 계산한다. 미션 3개는 **서버가** 날짜 시드로 고르고(`missionsFor`, 전원 동일) 클라는 받은 목록을 그리기만 한다 — 고르는 로직을 클라에 만들지 말 것. 미션 카운터는 `src/game/RaceStatsTracker.ts`가 세어 보고하고 서버가 `STAT_CAP`으로 자른다. 출석은 `claimAttendance(recover)`(7일 주기, 딱 하루 빠졌을 때만 `recover`로 선택), 광고 뒤 호출은 `doubleRaceCoins`·`swapMission`·`claimAttendance(true)`이며 하루 횟수는 서버가 센다. 레벨 보상·출석 보상 외형은 `own`에 저장하지 않고 `xp`·`streak.total`에서 계산한다(`_ownSet`). 획득 전용 외형 14종은 카탈로그 뒤에 `earn: true`로 붙어 있고 100 VX로 열리지 않는다(`EARN_ONLY`). 미션 후보·보상·레벨 곡선·출석표는 `server.js`와 `core/economy.ts` 두 곳, 체급표 `CLASS_OF`는 `kart/roster.ts`와 두 곳 — `serverEconomy.test.ts`가 일치를 검사한다. 서버 함수 배포 확인 목록에 `doubleRaceCoins`, `claimAttendance`, `swapMission` 추가.

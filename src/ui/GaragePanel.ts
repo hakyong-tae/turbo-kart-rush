@@ -53,6 +53,7 @@ import { button, el, setButtonContent } from './dom';
 import { icon } from './icons';
 import { GaragePreview } from './garage/GaragePreview';
 import { PurchaseSheet, type PurchaseItem } from './garage/PurchaseSheet';
+import { earnChip, earnCondition } from './progression/text';
 import { showToast } from './toast';
 
 /** Everything the paid tier owns, lifted off a stored look so a save can carry it through. */
@@ -262,9 +263,9 @@ export class GaragePanel {
     return lockedParts(sanitize(this.draft, true), this.premium, getOwned());
   }
 
-  /** Coins it takes to buy every buyable piece in `parts`. */
+  /** Coins it takes to buy every piece in `parts` that is for sale (some are only ever earned). */
   private costOf(parts: readonly CosmeticRef[]): number {
-    return parts.reduce((sum, part) => sum + (priceOf(part.token) ?? 0), 0);
+    return parts.reduce((sum, part) => sum + Math.max(0, priceOf(part.token) ?? 0), 0);
   }
 
   /** Locked work on the turntable: looking is allowed, keeping is not. */
@@ -278,18 +279,26 @@ export class GaragePanel {
     const worn = known ? this.worn() : [];
     const trying = worn.length > 0;
     const cost = formatCoins(this.costOf(worn));
+    // Nothing on the kart that money can buy: what is locked is earned, and the chip says so.
+    const earnedOnly = trying && this.costOf(worn) === 0;
     this.stateChip.textContent = !known
       ? t('garage.loading')
-      : trying
-        ? t('garage.tryingOnCoins', { n: cost })
-        : owned
-          ? t('garage.owned')
-          : t('garage.coinHint');
+      : earnedOnly
+        ? t('garage.tryingOnEarn')
+        : trying
+          ? t('garage.tryingOnCoins', { n: cost })
+          : owned
+            ? t('garage.owned')
+            : t('garage.coinHint');
     this.stateChip.classList.toggle('owned', known && owned && !trying);
     this.stateChip.classList.toggle('trying', trying);
     this.coinChip.replaceChildren(icon('coin'), document.createTextNode(formatCoins(getCoins())));
     this.unlockBtn.classList.toggle('hidden', !known || (owned && !trying));
-    setButtonContent(this.unlockBtn, trying ? t('garage.buyWorn', { n: cost }) : t('garage.unlock'), trying ? 'coin' : 'cart');
+    setButtonContent(
+      this.unlockBtn,
+      earnedOnly ? t('garage.howToGet') : trying ? t('garage.buyWorn', { n: cost }) : t('garage.unlock'),
+      earnedOnly ? 'lock' : trying ? 'coin' : 'cart',
+    );
     // The offer is loudest at the moment the player is looking at what it buys.
     this.unlockBtn.classList.toggle('wanted', trying);
   }
@@ -307,13 +316,18 @@ export class GaragePanel {
       this.sheet.hide();
       return;
     }
-    const items: PurchaseItem[] = worn.map((part) => ({
-      token: part.token,
-      group: tk(`garage.tab.${part.field}`),
-      name: tk(`cos.${part.field}.${part.id}`),
-      price: priceOf(part.token) ?? null,
-    }));
-    this.sheet.show(items, getCoins(), !this.premium);
+    const items: PurchaseItem[] = worn.map((part) => {
+      const price = priceOf(part.token) ?? 0;
+      return {
+        token: part.token,
+        group: tk(`garage.tab.${part.field}`),
+        name: tk(`cos.${part.field}.${part.id}`),
+        price: price > 0 ? price : null,
+        condition: earnCondition(part.token) ?? undefined,
+      };
+    });
+    // The pass is only worth offering for what it would open.
+    this.sheet.show(items, getCoins(), !this.premium && worn.some((part) => !part.entry.earn));
   }
 
   /**
@@ -412,7 +426,10 @@ export class GaragePanel {
         if (glyph) b.appendChild(glyph);
       }
       el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
-      if (locked) this.lockChip(b, priceOf(cosmeticToken(field, entry.id) ?? ''));
+      if (locked) {
+        const token = cosmeticToken(field, entry.id) ?? '';
+        this.lockChip(b, priceOf(token), entry.earn ? earnChip(token) : null);
+      }
       b.addEventListener('click', () => {
         // Locked or not, it goes on the kart: see the note at the top of the file.
         if (entry.id === first) delete this.draft[field];
@@ -448,12 +465,18 @@ export class GaragePanel {
     }
   }
 
-  /** The mark on a locked entry: its price in coins, or a bare padlock when it has none. */
-  private lockChip(host: HTMLElement, price: number | undefined): void {
+  /**
+   * The mark on a locked entry: its price in coins, the level or check-in total that awards it,
+   * or a bare padlock when there is nothing to say.
+   */
+  private lockChip(host: HTMLElement, price: number | undefined, condition: string | null = null): void {
     const chip = el('span', 'chip lock garage-option-lock', undefined, host);
     if (price && price > 0) {
       chip.classList.add('price');
       chip.append(icon('coin'), document.createTextNode(formatCoins(price)));
+    } else if (condition) {
+      chip.classList.add('earn');
+      chip.append(icon('lock'), document.createTextNode(condition));
     } else {
       chip.appendChild(icon('lock'));
     }

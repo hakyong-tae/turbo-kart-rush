@@ -13,7 +13,7 @@ import { badgeElement } from './badges';
 import { CHARACTERS } from '../kart/roster';
 import { getLookThumbnail } from './kartThumbnails';
 import { button, cssHex, el, FocusRing, setButtonContent, TextField } from './dom';
-import { formatCoins } from '../core/economy';
+import { formatCoins, type LevelInfo } from '../core/economy';
 import { icon } from './icons';
 
 const CONFETTI_COUNT = 56;
@@ -38,6 +38,20 @@ export interface RewardView {
   rate?: number;
   /** Which race of the day this was. */
   races?: number;
+  /** Experience this race added, and where the level bar stands after it. */
+  xp?: { earned: number; after: LevelInfo; levelUps: number; levelCoins: number };
+  /** Missions this race completed, already worded, with what each paid. */
+  missions?: readonly { title: string; coins: number }[];
+  /** Coins of the all-three bonus, when this race earned it. */
+  bonus?: number;
+  /** Missions done today out of how many, after this race. */
+  missionCount?: { done: number; total: number };
+  /** Names of garage entries this race's level-ups awarded. */
+  unlocked?: readonly string[];
+  /** The "watch an ad, double the coins" offer is open for this race. */
+  canDouble?: boolean;
+  /** Coins a doubling added (the offer was taken). */
+  doubled?: number;
 }
 
 /** What the results screen needs to know about an in-progress cup. */
@@ -53,6 +67,8 @@ export class ResultsScreen {
   onChangeTrack: (() => void) | null = null;
   onMainMenu: (() => void) | null = null;
   onRecords: (() => void) | null = null;
+  /** Watch an ad to double this race's coins. Game owns the ad and calls `showRewards` again. */
+  onDouble: (() => void | Promise<void>) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly panel: HTMLElement;
@@ -249,19 +265,39 @@ export class ResultsScreen {
       el('span', 'reward-note', t(view.state === 'pending' ? 'rewards.pending' : 'rewards.failed'), row);
       return;
     }
-    const coins = Math.max(0, Math.floor(view.coins ?? 0));
+    const doubled = Math.max(0, Math.floor(view.doubled ?? 0));
+    const coins = Math.max(0, Math.floor(view.coins ?? 0)) + doubled;
     el('span', 'reward-label', t('rewards.race'), row);
     const amount = el('span', 'reward-amount', undefined, row);
     amount.appendChild(icon('coin'));
     const number = el('span', 'reward-number', '+0', amount);
+    if (view.xp) {
+      // Level plate, the bar toward the next one, and what this race put into it.
+      const xp = el('span', 'reward-xp', undefined, row);
+      el('span', 'plate reward-level', t('profile.level', { n: view.xp.after.level }), xp);
+      const fill = el('i', '', undefined, el('span', 'reward-xp-bar', undefined, xp));
+      fill.style.width = view.xp.after.need > 0 ? `${Math.round((view.xp.after.into / view.xp.after.need) * 100)}%` : '100%';
+      el('span', 'reward-xp-n', t('rewards.xp', { n: view.xp.earned }), xp);
+    }
     if (view.balance !== undefined) el('span', 'reward-balance', t('rewards.balance', { n: formatCoins(view.balance) }), row);
+    if (view.canDouble) {
+      const b = button(t('rewards.double'), 'reward-double', () => void this.double(b), 'ad');
+      row.appendChild(b);
+    }
+
+    // Everything else the race did, one short line each: they wrap, and on a phone they scroll.
+    const notes = el('div', 'reward-notes', undefined, this.rewards);
+    const note = (text: string, cls = ''): HTMLElement => el('span', `reward-note${cls ? ` ${cls}` : ''}`, text, notes);
+    if (doubled > 0) note(t('rewards.doubled', { n: formatCoins(doubled) }), 'good');
+    if (view.xp && view.xp.levelUps > 0) {
+      note(t('rewards.levelUp', { n: view.xp.after.level, coins: formatCoins(view.xp.levelCoins) }), 'level-up');
+    }
+    for (const m of view.missions ?? []) note(t('rewards.mission', { name: m.title, n: formatCoins(m.coins) }), 'good');
+    if (view.bonus) note(t('rewards.bonus', { n: formatCoins(view.bonus) }), 'good');
+    for (const name of view.unlocked ?? []) note(t('rewards.unlocked', { name }), 'good');
+    if (view.missionCount) note(t('rewards.missions', { done: view.missionCount.done, n: view.missionCount.total }));
     if (view.rate !== undefined && view.rate < 100) {
-      el(
-        'div',
-        'reward-note',
-        t(view.rate > 0 ? 'rewards.reduced' : 'rewards.capped', { n: String(view.races ?? 0), pct: String(view.rate) }),
-        this.rewards,
-      );
+      note(t(view.rate > 0 ? 'rewards.reduced' : 'rewards.capped', { n: String(view.races ?? 0), pct: String(view.rate) }));
     }
     // Counted on a timer, not on animation frames: a results screen opened in a background tab
     // must still end up showing the real number.
@@ -273,6 +309,17 @@ export class ResultsScreen {
     };
     this.countTimer = window.setInterval(tick, 40);
     tick();
+  }
+
+  private async double(b: HTMLButtonElement): Promise<void> {
+    if (b.disabled) return;
+    b.disabled = true;
+    try {
+      await this.onDouble?.();
+    } finally {
+      // Game redraws the line on success; on a declined ad the same offer is live again.
+      if (b.isConnected) b.disabled = false;
+    }
   }
 
   private stopCount(): void {

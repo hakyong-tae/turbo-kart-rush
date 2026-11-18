@@ -68,7 +68,19 @@ import { GaragePanel } from '../ui/GaragePanel';
 import type { CupView, RewardView } from '../ui/ResultsScreen';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
-import { PLACEMENT_REWARDED_PREMIUM, requestRewardedAd } from '../verse8/ads';
+import {
+  PLACEMENT_REWARDED_DOUBLE,
+  PLACEMENT_REWARDED_MISSION,
+  PLACEMENT_REWARDED_PREMIUM,
+  PLACEMENT_REWARDED_STREAK,
+  requestRewardedAd,
+} from '../verse8/ads';
+import { AttendancePanel } from '../ui/AttendancePanel';
+import { MissionPanel } from '../ui/MissionPanel';
+import { missionTitle, tokenName } from '../ui/progression/text';
+import { RaceStatsTracker } from './RaceStatsTracker';
+import { LEVEL_COINS, formatCoins, levelInfo, parseMissionKey } from '../core/economy';
+import { computeTeamResult, teamOf } from '../core/teams';
 import { submitDailyTime } from '../verse8/server';
 import { buyPremium, initShop } from '../verse8/shop';
 import { inVerse8Host } from '../verse8/embed';
@@ -91,7 +103,12 @@ import {
   abandonRace,
   beginRace,
   buyKart,
+  claimAttendance,
+  doubleRaceCoins,
   finishRace,
+  getMissions,
+  getStreak,
+  swapMission,
 } from '../verse8/entitlements';
 
 const MIN_LOADING_SECONDS = 0.8;
@@ -103,10 +120,37 @@ const SUN_DISTANCE = 90;
 const SHADOW_HALF_EXTENT = 30;
 const EMPTY_KARTS: readonly IKart[] = [];
 
+/** Display name of a circuit, for mission wording. Unknown ids read as themselves. */
+function trackName(trackId: string): string {
+  return TRACKS.find((tr) => tr.id === trackId)?.name ?? trackId;
+}
+
 /** The reward line for a settlement reply. A refusal reads as a failure: nothing was paid. */
 function rewardViewOf(award: RaceAward | null): RewardView {
   if (!award || !award.ok) return { state: 'failed' };
-  return { state: 'paid', coins: award.earned?.race ?? 0, balance: award.coins, rate: award.rate, races: award.races };
+  const view: RewardView = {
+    state: 'paid',
+    coins: award.earned?.race ?? 0,
+    balance: award.coins,
+    rate: award.rate,
+    races: award.races,
+    canDouble: (award.doublesLeft ?? 0) > 0 && (award.earned?.race ?? 0) > 0,
+  };
+  if (award.xp !== undefined) {
+    const levelUps = award.levelUps ?? 0;
+    view.xp = { earned: award.xpEarned ?? 0, after: levelInfo(award.xp), levelUps, levelCoins: levelUps * LEVEL_COINS };
+  }
+  if (award.missions) {
+    const list = award.missions.list;
+    view.missionCount = { done: list.filter((m) => m.done).length, total: list.length };
+    view.missions = (award.completed ?? []).map((key) => ({
+      title: missionTitle(key, trackName),
+      coins: list.find((m) => m.key === key)?.coins ?? 0,
+    }));
+    if (award.bonus) view.bonus = award.missions.bonusCoins;
+  }
+  if (award.unlocked?.length) view.unlocked = award.unlocked.map(tokenName);
+  return view;
 }
 
 function framingFor(panel: MenuPanel): MenuFraming {
@@ -151,6 +195,13 @@ interface RaceContext {
   localKartId: number;
   /** The player's finish has been sent for settlement (once per race). */
   settled?: boolean;
+  /** What the local player did this race, for the missions. */
+  stats?: RaceStatsTracker;
+  /**
+   * A finish held back until the race is over: a points team race is not won or lost until
+   * everyone is in. Settled from the results screen, or on leaving if the player does not wait.
+   */
+  heldFinish?: { place: number; retired: boolean; seconds: number };
   /** Items are disabled in online races (phase 2). */
   itemsEnabled: boolean;
 }
@@ -184,6 +235,12 @@ export class Game {
    * until the server answers. Shown on the results screen whichever of the two arrives first.
    */
   private reward: RewardView | null = null;
+  /** The settled race the double-coins offer applies to. */
+  private rewardRaceId: string | null = null;
+  private missions: MissionPanel;
+  private attendance: AttendancePanel;
+  /** The check-in window has opened by itself once this session; after that it is the button's job. */
+  private attendanceOffered = false;
   private online: OnlineController | null = null;
   private onlinePanel: OnlinePanel;
 
@@ -306,6 +363,9 @@ export class Game {
     this.settings = this.buildSettings();
     this.garage = this.buildGarage();
     this.daily = this.buildDaily();
+    this.missions = this.buildMissions();
+    this.attendance = this.buildAttendance();
+    this.unsubs.push(onEntitlementsChange(() => this.maybeOfferAttendance()));
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
     this.muteIndicator.appendChild(icon('mute'));
@@ -379,6 +439,8 @@ export class Game {
     this.settings.dispose();
     this.garage.dispose();
     this.daily.dispose();
+    this.missions.dispose();
+    this.attendance.dispose();
     this.onlinePanel.dispose();
     this.online?.dispose();
     this.input.dispose();
@@ -407,6 +469,8 @@ export class Game {
     menu.onSettings = () => this.settings.show();
     menu.onGarage = () => this.garage.show(this.garageCharacterId);
     menu.onDaily = () => this.daily.show();
+    menu.onMissions = () => this.missions.show();
+    menu.onAttendance = () => this.attendance.show();
     menu.onStartCup = (cupId, settings) => {
       this.dailyRun = null;
       this.cup = { id: cupId, index: 0, table: [], settings };
@@ -468,6 +532,7 @@ export class Game {
       if (this.race?.online) void this.online?.leave();
       this.returnToMenu('title');
     };
+    results.onDouble = () => this.doubleReward();
     return results;
   }
 
@@ -670,6 +735,81 @@ export class Game {
     return daily;
   }
 
+  private buildMissions(): MissionPanel {
+    const panel = new MissionPanel(this.uiRoot, trackName);
+    panel.onSwap = async (index) => {
+      if (!(await requestRewardedAd(PLACEMENT_REWARDED_MISSION))) {
+        showToast(t('v8.lock.adFailed'), 'error');
+        return;
+      }
+      const r = await swapMission(index);
+      showToast(t(r?.ok ? 'mis.swapped' : 'mis.swapFailed'), r?.ok ? 'info' : 'error');
+    };
+    return panel;
+  }
+
+  private buildAttendance(): AttendancePanel {
+    const panel = new AttendancePanel(this.uiRoot);
+    panel.onClaim = async (recover) => {
+      // Carrying a broken run on is what the ad pays for; restarting or an unbroken run is free.
+      if (recover === true && !(await requestRewardedAd(PLACEMENT_REWARDED_STREAK))) {
+        showToast(t('v8.lock.adFailed'), 'error');
+        return;
+      }
+      const r = await claimAttendance(recover);
+      if (!r) {
+        showToast(t('att.failed'), 'error');
+        return;
+      }
+      if (!r.ok) return; // already claimed, or the choice is still open: the panel shows which
+      showToast(t('att.got', { n: formatCoins(r.reward) }), 'info');
+      for (const token of r.unlocked) showToast(t('rewards.unlocked', { name: tokenName(token) }), 'info', 6000);
+    };
+    return panel;
+  }
+
+  /**
+   * Opens the check-in window by itself, once a session, the first time the lobby is on screen
+   * with today unclaimed. Not during dev auto-runs, which are driven by scripts that expect the
+   * lobby to be the lobby.
+   */
+  private maybeOfferAttendance(): void {
+    if (this.attendanceOffered || this.state !== 'title') return;
+    const streak = getStreak();
+    if (!streak || streak.claimed) return;
+    if (new URLSearchParams(location.search).has('auto')) return;
+    const busy =
+      this.settings.isVisible ||
+      this.garage.isVisible ||
+      this.daily.isVisible ||
+      this.missions.isVisible ||
+      this.leaderboard.isVisible ||
+      this.lockSheet.isVisible ||
+      this.onlinePanel.isVisible;
+    if (busy) return;
+    this.attendanceOffered = true;
+    this.attendance.show();
+  }
+
+  /** The results screen's "watch an ad, double the coins". */
+  private async doubleReward(): Promise<void> {
+    const raceId = this.rewardRaceId;
+    const view = this.reward;
+    if (!raceId || !view || view.state !== 'paid' || !view.canDouble) return;
+    if (!(await requestRewardedAd(PLACEMENT_REWARDED_DOUBLE))) {
+      showToast(t('v8.lock.adFailed'), 'error');
+      return;
+    }
+    const r = await doubleRaceCoins(raceId);
+    if (!r || !r.ok) {
+      showToast(t('rewards.doubleFailed'), 'error');
+      // Spent, or the day's five are used: either way the offer is gone.
+      if (r && this.reward === view) this.showReward({ ...view, canDouble: false });
+      return;
+    }
+    if (this.reward === view) this.showReward({ ...view, canDouble: false, doubled: r.added, balance: r.coins });
+  }
+
   private buildGarage(): GaragePanel {
     const garage = new GaragePanel(this.uiRoot);
     // The showcase kart on the title screen is the same kart the garage just painted. Wired here
@@ -760,20 +900,60 @@ export class Game {
    * Sends the player's finish to the server, which decides what it was worth. Only the facts go:
    * place, whether they retired, and the race clock. See the progression server design, section 5.
    */
-  private settleRace(r: RaceContext, place: number, retired: boolean, seconds: number): void {
+  private settleRace(r: RaceContext, place: number, retired: boolean, seconds: number, standings?: readonly RaceStanding[]): void {
     if (r.settled) return;
+    const mode = r.settings.mode ?? 'solo';
+    // A points team race is decided by everyone's placing, which is not known at the player's own
+    // finish. Hold the report until the standings are final.
+    if (mode === 'teamPoints' && !r.online && !standings) {
+      r.heldFinish = { place, retired, seconds };
+      if (!this.isUnrankedRun(r)) this.showReward({ state: 'pending' });
+      return;
+    }
     r.settled = true;
+    r.heldFinish = undefined;
     if (this.isUnrankedRun(r)) {
       abandonRace();
       return;
     }
     // A retired kart has no finish time; the race clock at that moment is how long it ran.
     const clock = retired || !(seconds > 0) ? r.raceManager.raceTime : seconds;
+    // "First place wins" is settled the moment anyone has won, so the live standings will do.
+    const table = standings ?? (isTeamMode(mode) && !r.online ? r.raceManager.getStandings() : null);
+    const me = table?.find((s) => s.isPlayer);
+    const teamWon = Boolean(table && me && isTeamMode(mode) && computeTeamResult(table, mode).winner === (me.team ?? teamOf(me.kartId)));
+    const cup = this.cup;
     this.showReward({ state: 'pending' });
-    void finishRace({ place, retired, timeMs: Math.round(clock * 1000) }).then((award) => {
+    void finishRace({
+      place,
+      retired,
+      timeMs: Math.round(clock * 1000),
+      stats: { ...(r.stats?.stats ?? {}) },
+      daily: Boolean(this.dailyRun),
+      teamWon,
+      cupDone: Boolean(cup && cup.index >= getCup(cup.id).trackIds.length - 1),
+    }).then((award) => {
       if (this.race !== r) return;
+      this.rewardRaceId = award?.ok ? (award.raceId ?? null) : null;
       this.showReward(rewardViewOf(award));
     });
+  }
+
+  /**
+   * A counter mission reached its target mid-race. The coins arrive with the finish; this is the
+   * moment the player did the thing, which is when they want to hear about it.
+   */
+  private announceMissions(r: RaceContext, announced: Set<string>): void {
+    const missions = getMissions();
+    const stats = r.stats?.stats;
+    if (!missions || !stats || this.isUnrankedRun(r)) return;
+    for (const m of missions.list) {
+      const stat = parseMissionKey(m.key)?.def.stat;
+      if (!stat || m.done || announced.has(m.key)) continue;
+      if (m.progress + stats[stat] < m.target) continue;
+      announced.add(m.key);
+      showToast(t('mis.toast', { name: missionTitle(m.key, trackName) }), 'info', 3000);
+    }
   }
 
   private showReward(view: RewardView): void {
@@ -850,6 +1030,14 @@ export class Game {
     this.daily.dispose();
     this.daily = this.buildDaily();
     if (dailyWasOpen) this.daily.show();
+    const missionsWereOpen = this.missions.isVisible;
+    this.missions.dispose();
+    this.missions = this.buildMissions();
+    if (missionsWereOpen) this.missions.show();
+    const attendanceWasOpen = this.attendance.isVisible;
+    this.attendance.dispose();
+    this.attendance = this.buildAttendance();
+    if (attendanceWasOpen) this.attendance.show();
     const onlineWasOpen = this.onlinePanel.isVisible;
     this.onlinePanel.dispose();
     this.onlinePanel = this.buildOnlinePanel();
@@ -892,6 +1080,8 @@ export class Game {
       this.settings.isVisible ||
       this.garage.isVisible ||
       this.daily.isVisible ||
+      this.missions.isVisible ||
+      this.attendance.isVisible ||
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
       this.onlinePanel.isVisible
@@ -899,6 +1089,8 @@ export class Game {
       if (this.settings.isVisible) this.settings.handleInput(input);
       else if (this.garage.isVisible) this.garage.handleInput(input);
       else if (this.daily.isVisible) this.daily.handleInput(input);
+      else if (this.missions.isVisible) this.missions.handleInput(input);
+      else if (this.attendance.isVisible) this.attendance.handleInput(input);
       else if (this.leaderboard.isVisible) this.leaderboard.handleInput(input);
       else if (this.lockSheet.isVisible) {
         if (input.back) this.lockSheet.hide();
@@ -1237,6 +1429,7 @@ export class Game {
     this.mainMenu.show(panel);
     this.setState(panel);
     this.playMusic('menu');
+    this.maybeOfferAttendance();
   }
 
   private onMenuPanel(panel: MenuPanel): void {
@@ -1281,6 +1474,7 @@ export class Game {
     this.pendingSettings = { ...settings, trackId: trackDef.id };
     this.lastSubmit = null;
     this.reward = null;
+    this.rewardRaceId = null;
     // Open the race on the server now, so its clock covers the whole race by the time the
     // finish is reported. Fire-and-forget: a slow server must not hold up the start lights.
     if (this.isUnrankedRun(null)) abandonRace();
@@ -1506,7 +1700,12 @@ export class Game {
     followCamera.snapTo(karts[localKartId]);
     this.updateSun(r, karts[localKartId]);
 
+    const stats = new RaceStatsTracker(localKartId);
+    const announced = new Set<string>();
+    stats.onChange = () => this.announceMissions(r, announced);
+    r.stats = stats;
     r.unsubs.push(
+      () => stats.dispose(),
       events.on('race:start', () => {
         if (this.race === r && this.state === 'countdown') this.setState('racing');
       }),
@@ -1600,6 +1799,7 @@ export class Game {
       };
       if (cupView.isFinal) this.finishCup();
     }
+    if (r.heldFinish) this.settleRace(r, r.heldFinish.place, r.heldFinish.retired, r.heldFinish.seconds, standings);
     this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
     if (this.reward) this.results.showRewards(this.reward);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
@@ -1640,6 +1840,12 @@ export class Game {
   }
 
   private disposeRace(): void {
+    // Leaving a points team race before the table is final: settle what is known, without the win.
+    const leaving = this.race;
+    if (leaving?.heldFinish) {
+      const held = leaving.heldFinish;
+      this.settleRace(leaving, held.place, held.retired, held.seconds, []);
+    }
     // Before anything is freed: nothing may go on waiting for this race's shaders.
     this.endWarm();
     const r = this.race;

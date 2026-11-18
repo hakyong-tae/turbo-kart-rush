@@ -15,6 +15,10 @@ import { t } from '../core/i18n';
 import { inVerse8Host } from './embed';
 
 export const PLACEMENT_REWARDED_PREMIUM = 'rewarded_premium_kart';
+/** Progression: double a race's coins, mend a check-in run broken by one day, trade a mission. */
+export const PLACEMENT_REWARDED_DOUBLE = 'rewarded_double_coins';
+export const PLACEMENT_REWARDED_STREAK = 'rewarded_streak_recover';
+export const PLACEMENT_REWARDED_MISSION = 'rewarded_mission_swap';
 
 export function adsSupported(): boolean {
   return inVerse8Host();

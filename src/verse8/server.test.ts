@@ -232,11 +232,15 @@ describe('server.js', () => {
     afterEach(() => vi.useRealTimers());
 
     /** One honest race: opened, driven for `seconds` of real time, reported. */
-    async function race(srv: any, place: number, opts: { difficulty?: string; retired?: boolean; seconds?: number } = {}) {
-      const { raceId } = await srv.beginRace('sunny_circuit', 'zippy', opts.difficulty ?? 'normal', 'solo');
+    async function race(
+      srv: any,
+      place: number,
+      opts: { difficulty?: string; retired?: boolean; seconds?: number; report?: Row; track?: string; kart?: string; mode?: string } = {},
+    ) {
+      const { raceId } = await srv.beginRace(opts.track ?? 'sunny_circuit', opts.kart ?? 'zippy', opts.difficulty ?? 'normal', opts.mode ?? 'solo');
       const seconds = opts.seconds ?? 90;
       vi.setSystemTime(Date.now() + (seconds + 8) * 1000);
-      return srv.finishRace(raceId, { place, retired: !!opts.retired, timeMs: seconds * 1000 });
+      return srv.finishRace(raceId, { place, retired: !!opts.retired, timeMs: seconds * 1000, ...(opts.report ?? {}) });
     }
 
     it('pays by place and difficulty from its own table', async () => {
@@ -247,8 +251,9 @@ describe('server.js', () => {
       // A retirement pays the retirement rate whatever place it was classified in.
       expect((await race(me, 3, { retired: true })).earned.race).toBe(5);
       const state = await me.getMyEntitlements();
-      expect(state.coins).toBe(60 + 10 + 59 + 22 + 5);
-      expect(state.eco).toEqual({ day: '2026-11-18', races: 5 });
+      // Race coins only: missions and level-ups are counted in their own tests.
+      expect(state.coins).toBeGreaterThanOrEqual(60 + 10 + 59 + 22 + 5);
+      expect(state.eco).toEqual({ day: '2026-11-18', races: 5, doubles: 0, swaps: 0 });
     });
 
     it('a race is paid once, and only against the ticket that opened it', async () => {
@@ -284,7 +289,7 @@ describe('server.js', () => {
       expect(paid.slice(60)).toEqual([0, 0]);
       expect((await me.getMyEntitlements()).eco.races).toBe(62);
       vi.setSystemTime(Date.parse('2026-11-19T00:00:05Z'));
-      expect((await me.getMyEntitlements()).eco).toEqual({ day: '2026-11-19', races: 0 });
+      expect((await me.getMyEntitlements()).eco).toEqual({ day: '2026-11-19', races: 0, doubles: 0, swaps: 0 });
       const next = await race(me, 1);
       expect(next).toMatchObject({ rate: 100, races: 1 });
       expect(next.earned.race).toBe(60);
@@ -332,6 +337,247 @@ describe('server.js', () => {
       await g.updateUserState('0xAAAA1111', { own: 'p:f,k:zippy,k:rosa,zz' });
       expect((await me.getMyEntitlements()).own).toBe('p:f,k:rosa');
       expect((await me.setCosmetics('p:f,f:8')).cos).toBe('p:f');
+    });
+  });
+
+  describe('progression', () => {
+    // 2026-11-18: the date seed picks `start`, `drift` and `hardPodium`.
+    const T0 = Date.parse('2026-11-18T10:00:00Z');
+    const DAY = 86400000;
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T0);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    async function race(srv: any, place: number, opts: { difficulty?: string; retired?: boolean; report?: Row; mode?: string } = {}) {
+      const { raceId } = await srv.beginRace('sunny_circuit', 'zippy', opts.difficulty ?? 'normal', opts.mode ?? 'solo');
+      vi.setSystemTime(Date.now() + 98000);
+      return srv.finishRace(raceId, { place, retired: !!opts.retired, timeMs: 90000, ...(opts.report ?? {}) });
+    }
+
+    it('experience by place; a level gained pays 100 coins; level 5 awards its badge', async () => {
+      const first = await race(me, 4);
+      expect(first).toMatchObject({ xpEarned: 30, xp: 30, level: 1, levelUps: 0 });
+      expect(first.earned).toMatchObject({ race: 28, levels: 0 });
+      // 700 experience is level 5. Start just short of it.
+      await g.updateUserState('0xAAAA1111', { xp: 690, coins: 0 });
+      expect((await me.getMyEntitlements()).own).toBe('');
+      const up = await race(me, 1);
+      expect(up).toMatchObject({ xp: 750, level: 5, levelUps: 1, unlocked: ['g:9'] });
+      expect(up.earned).toEqual({ race: 60, missions: 0, levels: 100, total: 160 });
+      expect(up.coins).toBe(160);
+      expect(up.own).toBe('g:9');
+      // The badge is owned by level, not stored: it stays even though nothing was written to `own`.
+      expect(g.users['0xAAAA1111'].own).toBeUndefined();
+      expect((await me.setCosmetics('g:9,g:a')).cos).toBe('g:9');
+      // Several levels in one race pay for each of them.
+      await g.updateUserState('0xAAAA1111', { xp: 0, coins: 0 });
+      await g.updateUserState('0xAAAA1111', { xp: 95 });
+      const two = await race(me, 1, { retired: true });
+      expect(two).toMatchObject({ xpEarned: 10, level: 2, levelUps: 1 });
+      // A retirement earns the retirement experience, and the daily rate applies to it too.
+      await g.updateUserState('0xAAAA1111', { eco: { day: '2026-11-18', races: 10 } });
+      expect((await race(me, 1)).xpEarned).toBe(18);
+    });
+
+    it('the pass does not open earn-only entries; the coin shelf sells them, rewards are not for sale', async () => {
+      await g.updateUserState('0xAAAA1111', { premium: true, coins: 3000 });
+      expect((await me.setCosmetics('p:w,g:9,f:c')).cos).toBe('p:w');
+      expect(await me.buyCosmetic('g:9')).toMatchObject({ ok: false, reason: 'earn', coins: 3000 });
+      expect(await me.buyCosmetic('f:c')).toMatchObject({ ok: true, coins: 500, own: 'f:c' });
+      expect((await me.setCosmetics('p:w,g:9,f:c')).cos).toBe('p:w,f:c');
+    });
+
+    it("today's missions come from the date, move with the race report and pay when reached", async () => {
+      const view = (await me.getMyEntitlements()).missions;
+      expect(view.list.map((m: Row) => m.key)).toEqual(['start', 'drift', 'hardPodium']);
+      expect(view.list.map((m: Row) => [m.tier, m.target, m.coins, m.xp])).toEqual([[0, 2, 40, 20], [1, 10, 70, 35], [2, 1, 120, 60]]);
+      expect(view).toMatchObject({ day: '2026-11-18', bonus: false, bonusCoins: 100, swapsLeft: 1 });
+
+      // Counters are clamped: five start boosts in one race is one.
+      const a = await race(me, 5, { report: { stats: { start: 5, drift: 6, items: 99 } } });
+      expect(a.missions.list.map((m: Row) => m.progress)).toEqual([1, 6, 0]);
+      expect(a.completed).toEqual([]);
+      expect(a.earned.missions).toBe(0);
+
+      const b = await race(me, 5, { report: { stats: { start: 1, drift: 3.9, hits: 'x' } } });
+      expect(b.missions.list.map((m: Row) => m.done)).toEqual([true, false, false]);
+      expect(b.completed).toEqual(['start']);
+      expect(b.earned.missions).toBe(40);
+      expect(b.xpEarned).toBe(30 + 20);
+
+      // Top three on Hard finishes the hard one; drift reaches ten in the same race: all three, plus the bonus.
+      const c = await race(me, 3, { difficulty: 'hard', report: { stats: { drift: 2 } } });
+      expect(c.completed).toEqual(['drift', 'hardPodium']);
+      expect(c.bonus).toBe(true);
+      expect(c.earned.missions).toBe(70 + 120 + 100);
+      expect(c.missions.bonus).toBe(true);
+      // Nothing is paid twice.
+      const d = await race(me, 1, { difficulty: 'hard', report: { stats: { drift: 50, start: 1 } } });
+      expect(d.completed).toEqual([]);
+      expect(d.bonus).toBe(false);
+      expect(d.earned.missions).toBe(0);
+
+      // A new UTC day is a new set with nothing on it.
+      vi.setSystemTime(T0 + DAY);
+      const next = (await me.getMyEntitlements()).missions;
+      expect(next.day).toBe('2026-11-19');
+      expect(next.list.map((m: Row) => m.key)).toEqual(['items', 'draft', 'team']);
+      expect(next.list.every((m: Row) => m.progress === 0 && !m.done)).toBe(true);
+      expect(next.bonus).toBe(false);
+    });
+
+    it('each mission counts only the races that meet it', () => {
+      const race0 = { trackId: 'coral_coast', characterId: 'bram', difficulty: 'hard', mode: 'teamPoints' };
+      const gain = (key: string, rep: Row, place = 2, retired = false, over: Row = {}) =>
+        me._missionGain(key, { ...race0, ...over }, rep, place, retired);
+      expect(gain('finish', {})).toBe(1);
+      expect(gain('finish', {}, 8, true)).toBe(0);
+      expect(gain('track:coral_coast', {})).toBe(1);
+      expect(gain('track:dune_drift', {})).toBe(0);
+      expect(gain('class:heavy', {})).toBe(1);
+      expect(gain('class:light', {})).toBe(0);
+      expect(gain('podium', {}, 3)).toBe(1);
+      expect(gain('podium', {}, 4)).toBe(0);
+      expect(gain('win', {}, 1)).toBe(1);
+      expect(gain('win', {}, 2)).toBe(0);
+      expect(gain('hardPodium', {}, 3)).toBe(1);
+      expect(gain('hardPodium', {}, 3, false, { difficulty: 'normal' })).toBe(0);
+      expect(gain('hardPodium', {}, 3, true)).toBe(0);
+      // Clean: three wall hits are allowed, four are not, and an absent count is not a clean race.
+      expect(gain('clean', { stats: { walls: 3 } })).toBe(1);
+      expect(gain('clean', { stats: { walls: 4 } })).toBe(0);
+      expect(gain('clean', {})).toBe(0);
+      expect(gain('clean', { stats: { walls: 0 } }, 2, true)).toBe(0);
+      expect(gain('daily', { daily: true })).toBe(1);
+      expect(gain('daily', { daily: 'yes' })).toBe(0);
+      expect(gain('team', { teamWon: true })).toBe(1);
+      expect(gain('team', { teamWon: true }, 2, false, { mode: 'solo' })).toBe(0);
+      expect(gain('team', {})).toBe(0);
+      expect(gain('cup', { cupDone: true })).toBe(1);
+      expect(gain('cup', { cupDone: true }, 2, true)).toBe(0);
+      // Counters: summed, floored, clamped, and counted even in a race that was not finished.
+      expect(gain('items', { stats: { items: 7.9 } })).toBe(7);
+      expect(gain('items', { stats: { items: 500 } })).toBe(30);
+      expect(gain('items', { stats: { items: -3 } })).toBe(0);
+      expect(gain('hits', { stats: { hits: 2 } }, 8, true)).toBe(2);
+      expect(gain('tricks', { stats: { tricks: 5 } })).toBe(5);
+      expect(gain('draft', { stats: {} })).toBe(0);
+    });
+
+    it('swapMission trades one unfinished mission a day for the next of its tier', async () => {
+      const swapped = await me.swapMission(0);
+      expect(swapped.ok).toBe(true);
+      // After `start` in the easy tier comes `track`, with the day's circuit.
+      expect(swapped.missions.list[0].key).toMatch(/^track:[a-z_]+$/);
+      expect(swapped.missions.list[0].progress).toBe(0);
+      expect(swapped.missions.swapsLeft).toBe(0);
+      expect(swapped.missions.list.slice(1).map((m: Row) => m.key)).toEqual(['drift', 'hardPodium']);
+      expect((await me.swapMission(1)).reason).toBe('limit');
+      expect((await me.swapMission(7)).reason).toBe('unknown');
+      // The traded set is what the day's races now count against.
+      expect((await me.getMyEntitlements()).missions.list[0].key).toBe(swapped.missions.list[0].key);
+      vi.setSystemTime(T0 + DAY);
+      await race(me, 1, { report: { stats: { items: 8 } } });
+      expect((await me.swapMission(0)).reason).toBe('done');
+      expect((await me.swapMission(1)).ok).toBe(true);
+    });
+
+    it('swapMission keeps the progress of the missions it did not touch', async () => {
+      await race(me, 5, { report: { stats: { drift: 4 } } });
+      const swapped = await me.swapMission(2);
+      expect(swapped.missions.list.map((m: Row) => m.progress)).toEqual([0, 4, 0]);
+      expect(swapped.missions.list[2].key).toBe('team');
+    });
+
+    it('doubleRaceCoins pays the last race again, once, five times a day', async () => {
+      expect((await me.doubleRaceCoins('nothing-yet')).reason).toBe('no-race');
+      const first = await race(me, 1);
+      expect(first.doublesLeft).toBe(5);
+      const before = (await me.getMyEntitlements()).coins;
+      expect(await me.doubleRaceCoins(first.raceId)).toEqual({ ok: true, coins: before + 60, added: 60, doublesLeft: 4 });
+      expect(await me.doubleRaceCoins(first.raceId)).toMatchObject({ ok: false, reason: 'done', added: 0 });
+      expect((await me.doubleRaceCoins('some-other-race')).reason).toBe('no-race');
+      for (let i = 0; i < 4; i++) expect((await me.doubleRaceCoins((await race(me, 8)).raceId)).ok).toBe(true);
+      const sixth = await race(me, 1);
+      expect(sixth.doublesLeft).toBe(0);
+      expect(await me.doubleRaceCoins(sixth.raceId)).toMatchObject({ ok: false, reason: 'limit', doublesLeft: 0 });
+      // Tomorrow the count starts over; a race that paid nothing has nothing to double.
+      vi.setSystemTime(T0 + DAY);
+      await g.updateUserState('0xAAAA1111', { eco: { day: '2026-11-19', races: 60 } });
+      const dry = await race(me, 1);
+      expect(dry.earned.race).toBe(0);
+      expect(dry.doublesLeft).toBe(0);
+      expect((await me.doubleRaceCoins(dry.raceId)).reason).toBe('nothing');
+    });
+
+    it('check-in: one a day, a seven-day cycle, a badge at seven days in total', async () => {
+      expect((await me.getMyEntitlements()).streak).toEqual({ last: '', n: 0, total: 0, claimed: false, canRecover: false, next: 1 });
+      const rewards: number[] = [];
+      for (let d = 0; d < 8; d++) {
+        vi.setSystemTime(T0 + d * DAY);
+        const r = await me.claimAttendance();
+        expect(r.ok, `day ${d + 1}`).toBe(true);
+        expect(r.streak).toMatchObject({ n: d + 1, total: d + 1, claimed: true, next: d + 1 });
+        expect(r.unlocked).toEqual(d === 6 ? ['g:b'] : []);
+        rewards.push(r.reward);
+        // A second claim the same day changes nothing.
+        expect(await me.claimAttendance()).toMatchObject({ ok: false, reason: 'claimed', reward: 0 });
+      }
+      expect(rewards).toEqual([50, 60, 80, 100, 120, 150, 300, 50]);
+      const state = await me.getMyEntitlements();
+      expect(state.coins).toBe(910);
+      expect(state.own).toBe('g:b');
+      // The next morning the run is alive and waiting for day nine.
+      vi.setSystemTime(T0 + 8 * DAY);
+      expect((await me.getMyEntitlements()).streak).toMatchObject({ n: 8, claimed: false, canRecover: false, next: 9 });
+    });
+
+    it('check-in: one missed day is a choice, more than one starts over', async () => {
+      await me.claimAttendance();
+      vi.setSystemTime(T0 + DAY);
+      await me.claimAttendance();
+      // Day three is skipped. On day four the run is broken by exactly one day.
+      vi.setSystemTime(T0 + 3 * DAY);
+      expect((await me.getMyEntitlements()).streak).toMatchObject({ n: 2, claimed: false, canRecover: true, next: 1 });
+      const asked = await me.claimAttendance();
+      expect(asked).toMatchObject({ ok: false, reason: 'choose', reward: 0 });
+      expect((await me.getMyEntitlements()).coins).toBe(110);
+      // Recovering (after an ad) carries on to day three of the run.
+      const kept = await me.claimAttendance(true);
+      expect(kept).toMatchObject({ ok: true, reward: 80 });
+      expect(kept.streak).toMatchObject({ n: 3, total: 3, claimed: true });
+
+      // Another account declines: day one again, but the total still counts every day claimed.
+      const other = loadServer(g, { account: '0xBBBB2222' });
+      vi.setSystemTime(T0);
+      await other.claimAttendance();
+      vi.setSystemTime(T0 + 2 * DAY);
+      const restarted = await other.claimAttendance(false);
+      expect(restarted).toMatchObject({ ok: true, reward: 50 });
+      expect(restarted.streak).toMatchObject({ n: 1, total: 2 });
+      // Two missed days: no choice to make, and `recover` cannot conjure one.
+      vi.setSystemTime(T0 + 5 * DAY);
+      expect((await other.getMyEntitlements()).streak).toMatchObject({ canRecover: false, next: 1 });
+      const late = await other.claimAttendance(true);
+      expect(late).toMatchObject({ ok: true, reward: 50 });
+      expect(late.streak).toMatchObject({ n: 1, total: 3 });
+    });
+
+    it('check-in rewards at 14 and 30 days in total arrive even when the run was broken', async () => {
+      await g.updateUserState('0xAAAA1111', { streak: { last: '2026-11-01', n: 2, total: 13 } });
+      const r = await me.claimAttendance();
+      expect(r.streak).toMatchObject({ n: 1, total: 14 });
+      expect(r.unlocked).toEqual(['f:a']);
+      expect(r.own.split(',').sort()).toEqual(['f:a', 'g:b']);
+      await g.updateUserState('0xAAAA1111', { streak: { last: '2026-11-17', n: 9, total: 29 } });
+      vi.setSystemTime(T0);
+      // `last` is yesterday, so the run continues: day ten of the run, thirty in total.
+      const thirty = await me.claimAttendance();
+      expect(thirty.streak).toMatchObject({ n: 10, total: 30 });
+      expect(thirty.reward).toBe(80);
+      expect(thirty.unlocked).toEqual(['t:d']);
     });
   });
 

@@ -66,6 +66,11 @@ const TRAIL_STYLES: readonly (TrailStyle | null)[] = [
   { atlas: ATLAS_RING, additive: true, rate: 21, life0: 0.45, life1: 0.65, size0: 0.3, size1: 1.45, gravity: 0, drag: 2.4, spread: 0.12, rise: 0.2, spin: 0.4, align: 0, alpha: 1, gain: 1.7 },
   { atlas: ATLAS_FLAME, additive: true, rate: 76, life0: 0.5, life1: 0.9, size0: 0.22, size1: 0.03, gravity: -1.4, drag: 1.5, spread: 0.6, rise: 1.3, spin: 1.0, align: 0, alpha: 1, gain: 2.2 },
   { atlas: ATLAS_SQUARE, additive: true, rate: 64, life0: 0.3, life1: 0.5, size0: 0.2, size1: 0.2, gravity: 0, drag: 1.0, spread: 0.8, rise: 0.8, spin: 0, align: 0, alpha: 1, gain: 2.2 },
+  // earn-only (progression), in TRAILS order: comet, confetti, snow, meteor
+  { atlas: ATLAS_STREAK, additive: true, rate: 110, life0: 0.8, life1: 1.2, size0: 1.25, size1: 0.14, gravity: 0, drag: 1.0, spread: 0.05, rise: 0.15, spin: 0, align: 1, alpha: 1, gain: 2.4 },
+  { atlas: ATLAS_SQUARE, additive: true, rate: 72, life0: 0.6, life1: 1.0, size0: 0.17, size1: 0.1, gravity: 3.0, drag: 1.2, spread: 1.3, rise: 2.4, spin: 5.0, align: 0, alpha: 1, gain: 2.0 },
+  { atlas: ATLAS_DOT, additive: true, rate: 60, life0: 0.9, life1: 1.4, size0: 0.12, size1: 0.06, gravity: 0.8, drag: 2.2, spread: 1.2, rise: 1.0, spin: 0, align: 0, alpha: 1, gain: 2.0 },
+  { atlas: ATLAS_FLAME, additive: true, rate: 110, life0: 0.45, life1: 0.8, size0: 0.5, size1: 0.06, gravity: -0.6, drag: 1.2, spread: 0.25, rise: 0.5, spin: 1.5, align: 0, alpha: 1, gain: 2.6 },
 ];
 
 /** Speed below which a trail stops emitting entirely, in m/s. */

@@ -19,6 +19,9 @@
 //   beginRace(trackId, characterId, difficulty, mode)    — stamps the start of a race, returns { raceId }
 //   finishRace(raceId, report)                           — pays coins for it, from the server's own tables
 //   buyCosmetic(token) / buyKart(characterId)            — spends coins on one garage item / one premium kart
+//   doubleRaceCoins(raceId)                              — pays the last race's coins again (5/day, after an ad)
+//   claimAttendance(recover)                             — daily check-in, seven-day coin cycle
+//   swapMission(index)                                   — trades one unfinished mission (1/day, after an ad)
 //
 // Economy: docs/superpowers/specs/2026-11-18-progression-server-design.md. Coins are computed here and
 // only here; the client reports what happened in a race and never an amount.
@@ -95,22 +98,125 @@ const RACE_CAP = 60;
 const MIN_RACE_MS = 30000;
 const RACE_CLOCK_SLACK = 0.95;
 const KART_PRICE = 2500;
+/** Rewarded-ad doublings of a race's coins, and mission swaps, per UTC day. */
+const DOUBLES_PER_DAY = 5;
+const SWAPS_PER_DAY = 1;
+
+/** Experience by finishing place; a retirement earns RETIRE_XP. Not scaled by difficulty. */
+const RACE_XP = [60, 50, 40, 30, 30, 30, 30, 30];
+const RETIRE_XP = 10;
+/** Level curve: LEVEL_BASE to reach level 2, LEVEL_STEP more for each level after, up to MAX_LEVEL. */
+const LEVEL_BASE = 100;
+const LEVEL_STEP = 50;
+const MAX_LEVEL = 30;
+const LEVEL_COINS = 100;
+function levelOf(xp) {
+  let level = 1;
+  let need = LEVEL_BASE;
+  let left = Number.isFinite(xp) && xp > 0 ? Math.floor(xp) : 0;
+  while (level < MAX_LEVEL && left >= need) {
+    left -= need;
+    level += 1;
+    need += LEVEL_STEP;
+  }
+  return level;
+}
+
+/** Check-in coins for day 1..7 of the cycle; the eighth day in a row is day 1 again. */
+const STREAK_COINS = [50, 60, 80, 100, 120, 150, 300];
 
 const run = (n, price) => new Array(n).fill(price);
 /**
  * Coin price of every garage entry, by packed key and catalogue index (src/core/cosmetics.ts).
- * 0 = free. Catalogue arrays are append-only, so an index is a permanent id.
+ * 0 = free, -1 = not for sale (earned by level or by check-ins). Catalogue arrays are append-only,
+ * so an index is a permanent id. The entries after the gap in each row are the earn-only ones.
  */
 const COS_PRICES = {
   // none · stripes · racing + geometric · organic · fades · special
   p: [0, ...run(5, 400), ...run(11, 500), ...run(6, 600), ...run(5, 700), ...run(5, 1000)],
   u: [0, ...run(6, 500)],
-  t: [0, ...run(10, 600)],
-  f: [0, ...run(8, 700)],
-  w: [0, ...run(4, 400)],
+  t: [0, ...run(10, 600), /* comet, confetti, snow, meteor */ -1, -1, -1, 2000],
+  f: [0, ...run(8, 700), /* aurora, dawn, inferno, supernova */ -1, -1, 2000, 2500],
+  w: [0, ...run(4, 400), /* goldRim, neonRim */ -1, 1500],
   e: [0, ...run(5, 800)],
-  g: [0, ...run(8, 300)],
+  g: [0, ...run(8, 300), /* medal, laurel, sun, trophy */ -1, -1, -1, 1500],
 };
+/** Level reached -> entry it awards. */
+const LEVEL_REWARDS = { 5: 'g:9', 10: 'w:5', 15: 't:b', 20: 'f:9', 25: 't:c', 30: 'g:a' };
+/** Total days checked in (not the current run) -> entry it awards. */
+const STREAK_REWARDS = { 7: 'g:b', 14: 'f:a', 30: 't:d' };
+/** Coin-only shelf: for sale, but like the rewards above not covered by the 100 VX pass. */
+const SHOWCASE = ['w:6', 'g:c', 'f:b', 't:e', 'f:c'];
+/** Everything the pass does not open. */
+const EARN_ONLY = new Set([...Object.values(LEVEL_REWARDS), ...Object.values(STREAK_REWARDS), ...SHOWCASE]);
+
+// ── Daily missions ────────────────────────────────────────────────────────────
+// Three a day, one per tier, picked from the date so every player gets the same set. A mission
+// with `stat` adds up a counter the client reports (clamped by STAT_CAP); one without counts races
+// that met its condition. `track` and `class` carry a parameter in their key: `track:coral_coast`.
+const MISSIONS = [
+  { id: 'finish', tier: 0, target: 3 },
+  { id: 'items', tier: 0, target: 8, stat: 'items' },
+  { id: 'start', tier: 0, target: 2, stat: 'start' },
+  { id: 'track', tier: 0, target: 1 },
+  { id: 'class', tier: 0, target: 1 },
+  { id: 'podium', tier: 1, target: 2 },
+  { id: 'drift', tier: 1, target: 10, stat: 'drift' },
+  { id: 'draft', tier: 1, target: 3, stat: 'draft' },
+  { id: 'hits', tier: 1, target: 3, stat: 'hits' },
+  { id: 'tricks', tier: 1, target: 5, stat: 'tricks' },
+  { id: 'clean', tier: 1, target: 1 },
+  { id: 'daily', tier: 1, target: 1 },
+  { id: 'win', tier: 2, target: 1 },
+  { id: 'hardPodium', tier: 2, target: 1 },
+  { id: 'team', tier: 2, target: 1 },
+  { id: 'cup', tier: 2, target: 1 },
+];
+/** Reward by tier (easy, normal, hard), and the bonus for finishing all three. */
+const MISSION_COINS = [40, 70, 120];
+const MISSION_XP = [20, 35, 60];
+const MISSION_BONUS = 100;
+/** Most of each counter one race may report. */
+const STAT_CAP = { items: 30, start: 1, drift: 60, draft: 30, hits: 30, tricks: 40, walls: 999 };
+/** A "clean" finish allows this many wall or obstacle hits. */
+const CLEAN_WALLS = 3;
+/** Mirror of each racer's weight class in src/kart/roster.ts. */
+const CLASS_OF = {
+  zippy: 'light', pixel: 'light', fennec: 'light', max: 'medium', juno: 'medium', kai: 'medium', bram: 'heavy', rosa: 'heavy',
+  tubby: 'light', coco: 'light', rusty: 'medium', zorp: 'medium', vera: 'medium', lou: 'heavy', dot: 'heavy', brine: 'heavy',
+};
+const CLASSES = ['light', 'medium', 'heavy'];
+
+/** FNV-1a, the same hash as src/core/daily.ts `seedOf`. */
+function seedOf(day) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < day.length; i++) {
+    h ^= day.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+const missionDef = (key) => MISSIONS.find((m) => m.id === String(key).split(':')[0]);
+/** The stored key of a mission: its id, plus the day's circuit or class where it needs one. */
+function missionKey(def, seed) {
+  if (def.id === 'track') {
+    const tracks = [...TRACKS];
+    return 'track:' + tracks[(seed >>> 3) % tracks.length];
+  }
+  if (def.id === 'class') return 'class:' + CLASSES[(seed >>> 7) % CLASSES.length];
+  return def.id;
+}
+/** Today's three keys, easy to hard. */
+function missionsFor(day) {
+  const seed = seedOf(day);
+  return [0, 1, 2].map((tier) => {
+    const pool = MISSIONS.filter((m) => m.tier === tier);
+    return missionKey(pool[(seed >>> (tier * 5)) % pool.length], seed);
+  });
+}
+function dayBefore(day, n) {
+  return new Date(Date.parse(day + 'T00:00:00Z') - n * 86400000).toISOString().slice(0, 10);
+}
 const TOKEN_RE = /^([a-z]):([a-z0-9]+)$/;
 
 /** `p:0f` → `p:f`; null for anything that is not a known garage entry. */
@@ -201,8 +307,26 @@ class Server {
     return state && Number.isFinite(state.coins) ? Math.max(0, Math.floor(state.coins)) : 0;
   }
 
-  /** Everything bought with coins: garage tokens (`p:f`) and karts (`k:rosa`). */
+  _xp(state) {
+    return state && Number.isFinite(state.xp) ? Math.max(0, Math.floor(state.xp)) : 0;
+  }
+
+  /**
+   * Everything the account owns item by item: what it bought with coins (garage tokens `p:f`,
+   * karts `k:rosa`) and what its level and check-in total have earned. The earned ones are worked
+   * out here every time rather than stored, so a reward can never fail to arrive.
+   */
   _ownSet(state) {
+    const out = this._boughtSet(state);
+    const level = levelOf(this._xp(state));
+    for (const at of Object.keys(LEVEL_REWARDS)) if (level >= Number(at)) out.add(LEVEL_REWARDS[at]);
+    const total = this._streak(state).total;
+    for (const at of Object.keys(STREAK_REWARDS)) if (total >= Number(at)) out.add(STREAK_REWARDS[at]);
+    return out;
+  }
+
+  /** The stored half of `_ownSet`: only what was paid for. This is what gets written back. */
+  _boughtSet(state) {
     const out = new Set();
     const raw = state && typeof state.own === 'string' && COS_RE.test(state.own) ? state.own : '';
     for (const part of raw.split(',')) {
@@ -218,12 +342,13 @@ class Server {
     return out;
   }
 
-  /** The one ownership rule: free, bought, or covered by the 100 VX pass. */
+  /** The one ownership rule: free, owned, or covered by the 100 VX pass (which skips EARN_ONLY). */
   _owns(state, token, own) {
     const price = cosPrice(token);
     if (price === undefined) return false;
     if (price === 0) return true;
-    return (own || this._ownSet(state)).has(token) || this._premium(state);
+    if ((own || this._ownSet(state)).has(token)) return true;
+    return this._premium(state) && !EARN_ONLY.has(token);
   }
 
   /** A packed look with every entry the account does not own taken out. Colours always stay. */
@@ -248,7 +373,99 @@ class Server {
     const day = todayKey();
     const e = state && state.eco && state.eco.day === day ? state.eco : null;
     const n = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-    return { day, races: e ? n(e.races) : 0 };
+    return { day, races: e ? n(e.races) : 0, doubles: e ? n(e.doubles) : 0, swaps: e ? n(e.swaps) : 0 };
+  }
+
+  /** Check-in record: last day claimed, length of the current run, days claimed in total. */
+  _streak(state) {
+    const st = state && state.streak;
+    const n = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    const last = st && typeof st.last === 'string' && /^\d{4}-\d\d-\d\d$/.test(st.last) ? st.last : '';
+    return last ? { last, n: Math.max(1, n(st.n)), total: Math.max(1, n(st.total)) } : { last: '', n: 0, total: 0 };
+  }
+
+  /**
+   * The check-in record as the client needs it: can today be claimed, which day of the cycle
+   * would it be, and is the run broken by exactly one missed day (the only break an ad can mend).
+   */
+  _streakView(state) {
+    const st = this._streak(state);
+    const today = todayKey();
+    const claimed = st.last === today;
+    const canRecover = !claimed && st.n > 0 && st.last === dayBefore(today, 2);
+    const next = claimed ? st.n : st.last === dayBefore(today, 1) ? st.n + 1 : 1;
+    return { last: st.last, n: st.n, total: st.total, claimed, canRecover, next };
+  }
+
+  /** Today's missions. A stored set from another UTC day (or a malformed one) reads as a new day. */
+  _mis(state) {
+    const day = todayKey();
+    const m = state && state.mis;
+    if (m && m.day === day && Array.isArray(m.ids) && m.ids.length === 3 && m.ids.every((k) => missionDef(k))) {
+      const p = [0, 1, 2].map((i) => (Array.isArray(m.p) && Number.isFinite(m.p[i]) && m.p[i] > 0 ? Math.floor(m.p[i]) : 0));
+      const done = [0, 1, 2].map((i) => !!(Array.isArray(m.done) && m.done[i]));
+      return { day, ids: m.ids.slice(), p, done, bonus: !!m.bonus };
+    }
+    return { day, ids: missionsFor(day), p: [0, 0, 0], done: [false, false, false], bonus: false };
+  }
+
+  _misView(mis, eco) {
+    return {
+      day: mis.day,
+      list: mis.ids.map((key, i) => {
+        const def = missionDef(key);
+        return {
+          key,
+          tier: def.tier,
+          target: def.target,
+          progress: Math.min(def.target, mis.p[i]),
+          done: mis.done[i],
+          coins: MISSION_COINS[def.tier],
+          xp: MISSION_XP[def.tier],
+        };
+      }),
+      bonus: mis.bonus,
+      bonusCoins: MISSION_BONUS,
+      swapsLeft: Math.max(0, SWAPS_PER_DAY - eco.swaps),
+    };
+  }
+
+  /** How far one race moves one mission. `race` is what beginRace stored, `rep` the finish report. */
+  _missionGain(key, race, rep, place, retired) {
+    const def = missionDef(key);
+    const param = String(key).split(':')[1];
+    const finished = !retired;
+    const stats = rep.stats && typeof rep.stats === 'object' ? rep.stats : {};
+    const stat = (name) => {
+      const v = Math.floor(Number(stats[name]));
+      return Number.isFinite(v) && v > 0 ? Math.min(STAT_CAP[name], v) : 0;
+    };
+    if (def.stat) return stat(def.stat);
+    switch (def.id) {
+      case 'finish':
+        return finished ? 1 : 0;
+      case 'track':
+        return finished && race.trackId === param ? 1 : 0;
+      case 'class':
+        return finished && CLASS_OF[race.characterId] === param ? 1 : 0;
+      case 'podium':
+        return finished && place <= 3 ? 1 : 0;
+      case 'clean':
+        // No report of wall hits is not a clean race: the claim has to be made.
+        return finished && Number.isFinite(Number(stats.walls)) && stat('walls') <= CLEAN_WALLS ? 1 : 0;
+      case 'daily':
+        return finished && rep.daily === true ? 1 : 0;
+      case 'win':
+        return finished && place === 1 ? 1 : 0;
+      case 'hardPodium':
+        return finished && race.difficulty === 'hard' && place <= 3 ? 1 : 0;
+      case 'team':
+        return race.mode !== 'solo' && rep.teamWon === true ? 1 : 0;
+      case 'cup':
+        return finished && rep.cupDone === true ? 1 : 0;
+      default:
+        return 0;
+    }
   }
 
   // ── Race rewards ─────────────────────────────────────────────────────────
@@ -288,34 +505,177 @@ class Server {
     if (!(place >= 1 && place <= MAX_PLACE)) return refuse('bad-place');
 
     const rate = eco.races < FULL_RACES ? 100 : eco.races < RACE_CAP ? REDUCED_PCT : 0;
-    const base = retired ? RETIRE_COINS : RACE_COINS[place - 1];
-    const earned = Math.round((base * DIFF_PCT[race.difficulty] * rate) / 10000);
-    const next = coins + earned;
-    const races = eco.races + 1;
-    await $global.updateUserState($sender.account, {
+    const raceCoins = Math.round(((retired ? RETIRE_COINS : RACE_COINS[place - 1]) * DIFF_PCT[race.difficulty] * rate) / 10000);
+    const raceXp = Math.round(((retired ? RETIRE_XP : RACE_XP[place - 1]) * rate) / 100);
+
+    // Missions: every unfinished one moves by what this race did; a finished one pays at once.
+    const mis = this._mis(s);
+    let missionCoins = 0;
+    let missionXp = 0;
+    const completed = [];
+    for (let i = 0; i < 3; i++) {
+      if (mis.done[i]) continue;
+      const def = missionDef(mis.ids[i]);
+      mis.p[i] = Math.min(def.target, mis.p[i] + this._missionGain(mis.ids[i], race, rep, place, retired));
+      if (mis.p[i] < def.target) continue;
+      mis.done[i] = true;
+      missionCoins += MISSION_COINS[def.tier];
+      missionXp += MISSION_XP[def.tier];
+      completed.push(mis.ids[i]);
+    }
+    let bonus = false;
+    if (!mis.bonus && mis.done.every(Boolean)) {
+      mis.bonus = true;
+      bonus = true;
+      missionCoins += MISSION_BONUS;
+    }
+
+    // Levels: every level gained pays LEVEL_COINS; the entries a level awards follow from xp.
+    const xpBefore = this._xp(s);
+    const xp = xpBefore + raceXp + missionXp;
+    const levelBefore = levelOf(xpBefore);
+    const level = levelOf(xp);
+    const levelCoins = (level - levelBefore) * LEVEL_COINS;
+    const unlocked = [];
+    for (let l = levelBefore + 1; l <= level; l++) if (LEVEL_REWARDS[l]) unlocked.push(LEVEL_REWARDS[l]);
+
+    const next = coins + raceCoins + missionCoins + levelCoins;
+    const day = { ...eco, races: eco.races + 1 };
+    const patch = {
       coins: next,
+      xp,
       race: null,
-      eco: { ...eco, races },
-      award: { id: race.id, coins: earned, doubled: false },
+      eco: day,
+      mis,
+      award: { id: race.id, coins: raceCoins, doubled: false },
+    };
+    await $global.updateUserState($sender.account, patch);
+    return {
+      ok: true,
+      raceId: race.id,
+      coins: next,
+      earned: { race: raceCoins, missions: missionCoins, levels: levelCoins, total: raceCoins + missionCoins + levelCoins },
+      races: day.races,
+      rate,
+      xp,
+      xpEarned: raceXp + missionXp,
+      level,
+      levelUps: level - levelBefore,
+      missions: this._misView(mis, day),
+      completed,
+      bonus,
+      unlocked,
+      own: [...this._ownSet({ ...s, ...patch })].join(','),
+      doublesLeft: raceCoins > 0 ? Math.max(0, DOUBLES_PER_DAY - day.doubles) : 0,
+    };
+  }
+
+  /**
+   * Pays the last race's coins a second time. Called only after the host has verified a rewarded
+   * ad (the trust model of grantPremiumRaces); what is counted here is how often.
+   */
+  async doubleRaceCoins(raceId) {
+    const s = await this._state();
+    const coins = this._coins(s);
+    const eco = this._eco(s);
+    const award = s.award;
+    const left = Math.max(0, DOUBLES_PER_DAY - eco.doubles);
+    const refuse = (reason) => ({ ok: false, reason, coins, added: 0, doublesLeft: left });
+    if (!award || typeof raceId !== 'string' || award.id !== raceId) return refuse('no-race');
+    if (award.doubled) return refuse('done');
+    if (left <= 0) return refuse('limit');
+    const added = Number.isFinite(award.coins) && award.coins > 0 ? Math.floor(award.coins) : 0;
+    if (added <= 0) return refuse('nothing');
+    await $global.updateUserState($sender.account, {
+      coins: coins + added,
+      award: { ...award, doubled: true },
+      eco: { ...eco, doubles: eco.doubles + 1 },
     });
-    return { ok: true, raceId: race.id, coins: next, earned: { race: earned, total: earned }, races, rate };
+    return { ok: true, coins: coins + added, added, doublesLeft: left - 1 };
+  }
+
+  // ── Check-in ─────────────────────────────────────────────────────────────
+
+  /**
+   * Claims today's check-in. A run continues from yesterday. A run broken by exactly one missed
+   * day is the caller's choice: `recover === true` (after a rewarded ad) carries it on,
+   * `recover === false` starts over at day 1, and saying neither changes nothing and reports that
+   * the choice exists. Anything older starts over.
+   */
+  async claimAttendance(recover) {
+    const s = await this._state();
+    const coins = this._coins(s);
+    const st = this._streak(s);
+    const view = this._streakView(s);
+    if (view.claimed) return { ok: false, reason: 'claimed', coins, reward: 0, streak: view, unlocked: [] };
+    let n = 1;
+    if (st.last === dayBefore(todayKey(), 1)) n = st.n + 1;
+    else if (view.canRecover) {
+      if (recover === true) n = st.n + 1;
+      else if (recover !== false) return { ok: false, reason: 'choose', coins, reward: 0, streak: view, unlocked: [] };
+    }
+    const reward = STREAK_COINS[(n - 1) % STREAK_COINS.length];
+    const total = st.total + 1;
+    const streak = { last: todayKey(), n, total };
+    await $global.updateUserState($sender.account, { coins: coins + reward, streak });
+    const next = { ...s, coins: coins + reward, streak };
+    return {
+      ok: true,
+      coins: coins + reward,
+      reward,
+      streak: this._streakView(next),
+      unlocked: STREAK_REWARDS[total] ? [STREAK_REWARDS[total]] : [],
+      own: [...this._ownSet(next)].join(','),
+    };
+  }
+
+  // ── Missions ─────────────────────────────────────────────────────────────
+
+  /**
+   * Trades one unfinished mission for the next candidate of the same tier (after a rewarded ad).
+   * Progress on the traded mission is lost, which is the price of the trade.
+   */
+  async swapMission(index) {
+    const s = await this._state();
+    const eco = this._eco(s);
+    const mis = this._mis(s);
+    const refuse = (reason) => ({ ok: false, reason, missions: this._misView(mis, eco) });
+    const i = Math.floor(Number(index));
+    if (!(i >= 0 && i <= 2)) return refuse('unknown');
+    if (mis.done[i]) return refuse('done');
+    if (eco.swaps >= SWAPS_PER_DAY) return refuse('limit');
+    const current = missionDef(mis.ids[i]);
+    const pool = MISSIONS.filter((m) => m.tier === current.tier);
+    const replacement = pool[(pool.indexOf(current) + 1) % pool.length];
+    mis.ids[i] = missionKey(replacement, seedOf(mis.day));
+    mis.p[i] = 0;
+    const day = { ...eco, swaps: eco.swaps + 1 };
+    await $global.updateUserState($sender.account, { mis, eco: day });
+    return { ok: true, missions: this._misView(mis, day) };
   }
 
   // ── Spending ─────────────────────────────────────────────────────────────
 
-  /** Unlocks one garage entry for coins. Already open (bought, free, or the pass) costs nothing. */
+  /** Unlocks one garage entry for coins. Already open (owned, free, or the pass) costs nothing. */
   async buyCosmetic(rawToken) {
     const s = await this._state();
     const coins = this._coins(s);
-    const own = this._ownSet(s);
-    const reply = (ok, reason, c) => ({ ok, reason, coins: c === undefined ? coins : c, own: [...own].join(',') });
+    const bought = this._boughtSet(s);
+    const reply = (ok, reason, c) => ({
+      ok,
+      reason,
+      coins: c === undefined ? coins : c,
+      own: [...this._ownSet({ ...s, own: [...bought].join(',') })].join(','),
+    });
     const token = cosToken(rawToken);
     if (!token) return reply(false, 'unknown');
-    if (this._owns(s, token, own)) return reply(true, 'owned');
+    if (this._owns(s, token)) return reply(true, 'owned');
     const price = cosPrice(token);
+    // Not for sale at any price: it comes with a level or a check-in total.
+    if (price < 0) return reply(false, 'earn');
     if (coins < price) return reply(false, 'short');
-    own.add(token);
-    await $global.updateUserState($sender.account, { coins: coins - price, own: [...own].join(',') });
+    bought.add(token);
+    await $global.updateUserState($sender.account, { coins: coins - price, own: [...bought].join(',') });
     return reply(true, undefined, coins - price);
   }
 
@@ -323,14 +683,19 @@ class Server {
   async buyKart(characterId) {
     const s = await this._state();
     const coins = this._coins(s);
-    const own = this._ownSet(s);
-    const reply = (ok, reason, c) => ({ ok, reason, coins: c === undefined ? coins : c, own: [...own].join(',') });
+    const bought = this._boughtSet(s);
+    const reply = (ok, reason, c) => ({
+      ok,
+      reason,
+      coins: c === undefined ? coins : c,
+      own: [...this._ownSet({ ...s, own: [...bought].join(',') })].join(','),
+    });
     if (!PREMIUM.has(characterId)) return reply(false, 'unknown');
     const token = 'k:' + characterId;
-    if (this._premium(s) || own.has(token)) return reply(true, 'owned');
+    if (this._premium(s) || bought.has(token)) return reply(true, 'owned');
     if (coins < KART_PRICE) return reply(false, 'short');
-    own.add(token);
-    await $global.updateUserState($sender.account, { coins: coins - KART_PRICE, own: [...own].join(',') });
+    bought.add(token);
+    await $global.updateUserState($sender.account, { coins: coins - KART_PRICE, own: [...bought].join(',') });
     return reply(true, undefined, coins - KART_PRICE);
   }
 
@@ -477,6 +842,9 @@ class Server {
       coins: this._coins(s),
       own: [...this._ownSet(s)].join(','),
       eco: this._eco(s),
+      xp: this._xp(s),
+      streak: this._streakView(s),
+      missions: this._misView(this._mis(s), this._eco(s)),
     };
   }
 
