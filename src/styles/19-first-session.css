@@ -303,13 +303,17 @@
 /* ----------------------------------------------------------------------------
    Garage: a ladder rung says what earns it, and that the account's progress is kept here.
    --------------------------------------------------------------------------- */
+/* The card keeps its one row (name, price); what earns the entry goes on a line of its own under it. */
+.garage-option.rung {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
 .garage-option-rung {
-  display: block;
-  margin-top: 2px;
+  flex: 0 0 100%;
   font: 700 10px/1.2 var(--body);
   letter-spacing: 0.02em;
   color: var(--yellow);
-  white-space: normal;
+  word-break: keep-all;
 }
 .garage-option-rung.have {
   color: var(--ink-faint);

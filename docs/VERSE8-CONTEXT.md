@@ -13,6 +13,8 @@
 4. `src/verse8/embed.ts`의 GAME_SIZE 핸드셰이크 제거 금지(iframe 뷰포트 0 방지).
 5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환) + 진행 시스템 키 `coins` / `own` / `eco` / `race` / `award` / `xp` / `mis` / `streak`(15·16번). **광고권·구매 상태·코인은 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
 6. `src/core/**`는 프로즌 계약(추가만, 값 변경 금지). 튠 값은 `src/core/balance.ts`.
+8. **빌드 타깃은 둘이다** (`src/core/platform.ts`). `npm run build`가 이 문서가 다루는 Verse8·원스토어판(이름 DRIFT DASH GP, `dist/`)이고, `npm run build:crazygames`는 CrazyGames판(이름 DRIFT KART, `dist-crazygames/`)이다. CrazyGames판은 VX 결제·보상형 광고 버튼·온라인이 없고, Verse8 SDK 대신 `src/verse8/stubs/sdk.ts`가 들어가며, 계정은 브라우저 저장소의 `server.js`(localServer)가 맡는다. 게임 이름은 문자열로 적지 말고 `GAME_TITLE` / `PLATFORM.name` / 문구의 `{game}`을 쓴다. 타깃별로 달라야 하는 문구는 `'<키>@crazygames'` 항목을 하나 더 둔다.
+9. **첫 세션 사다리**(2026-11-20): 유저스테이트 키 `lad`(레이스·완주·3위 안·1등·드리프트 부스트 횟수, 가입일). 새 계정은 서킷 4개로 시작해 완주마다 하나씩 열리고, 사다리 조건을 채우면 차고 항목이 무료로 열린다. **`lad`가 없으면서 다른 키가 하나라도 있거나 `tkr_times`에 기록이 있는 계정은 `lad.all = true`로 16개 전부 열린 채 시작한다.** 표는 `server.js`(`LADDER`, `TRACK_ORDER`, `START_TRACKS`, `INTRO_RACES`, `FIRST_DAY_MISSIONS`)와 `src/core/economy.ts` 두 곳이며 `serverEconomy.test.ts`가 맞춘다. `TRACK_ORDER`는 `TRACKS_BY_DIFFICULTY` 순서와 같아야 한다.
 7. 닉네임 규칙은 `src/verse8/nickname.ts`와 `server.js` 두 곳에 복제 — 함께 수정.
 
 ## 3. 빌드 / 검증
@@ -26,7 +28,7 @@ npm run build       # dist/ ; grep -c '"@agent8/gameserver' dist/assets/*.js →
 ## 4. 크리에이터 콘솔 체크리스트
 - VXShop 상품: id **`premium-garage`**, 100 VX, 비소모(non-consumable), Lifetime Limit 1. 게임 내 표기 "차고 해금 · 100 VX" — 차고의 유료 항목(라이버리·언더글로우·트레일·배기 화염·휠·엔진음)과 프리미엄 카트 3종 영구 해금. 구 id `remove-ads`는 폐기(구매자 0명)이나 서버는 계속 인정.
 - 광고 placement(전부 리워드, 전면 광고 없음): **`rewarded_premium_kart`**(프리미엄 카트 3회권), **`rewarded_double_coins`**(레이스 코인 2배, 하루 5회), **`rewarded_streak_recover`**(끊긴 출석 이어가기), **`rewarded_mission_swap`**(미션 교체, 하루 1회). 뒤의 셋은 진행 시스템에서 추가 — 콘솔에 등록해야 한다.
-- 서버 함수 배포 확인: `ping`, `submitTime`, `getTopTimes`, `getMyEntitlements`, `grantPremiumRaces`, `consumePremiumRace`, `setNickname`, `$onItemPurchased`, 진행 시스템 `beginRace`, `finishRace`, `buyCosmetic`, `buyKart`, `doubleRaceCoins`, `claimAttendance`, `swapMission`.
+- 서버 함수 배포 확인: `ping`, `submitTime`, `getTopTimes`, `getMyEntitlements`, `grantPremiumRaces`, `consumePremiumRace`, `setNickname`, `$onItemPurchased`, 진행 시스템 `beginRace`(5번째 인자 = 레이스 종류), `finishRace`, `buyCosmetic`, `buyKart`, `doubleRaceCoins`, `claimAttendance`, `swapMission`. `getMyEntitlements`와 `finishRace`의 응답에 `ladder`가 있어야 한다(없으면 구버전 server.js가 배포된 것).
 
 ## 5. 배포
 - `gitlab.verse8.io` 레포의 **`develop`** 브랜치로 push → 자동 빌드. V8가 만든 스캐폴드 위에 오버레이할 때 `.env`, `.agent8.lock`, `committedAt` 등 플랫폼 파일은 보존.

@@ -28,6 +28,10 @@ async function newPage(w = 1280, h = 800, lang = 'ko') {
   }, lang);
   await page.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
   await sleep(2500);
+  // The check-in window opens by itself on a profile that has not claimed today, and sits over
+  // everything these checks click. Close it: it is not what is being tested here.
+  await page.evaluate(() => document.querySelector('.attendance-close')?.click());
+  await sleep(200);
   return page;
 }
 

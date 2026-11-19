@@ -298,6 +298,8 @@
 .results-next-btn .btn-label {
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Room for the slant of the last italic letter, which the clip would otherwise shave. */
+  padding-right: 0.2em;
 }
 
 /* One column when the window is too narrow for two tables side by side. */
