@@ -381,6 +381,8 @@ export class ItemManager implements IItemManager {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
+      // One pass: additive, so face order cannot matter (see the exhaust flame in KartModel).
+      forceSinglePass: true,
     });
     this.ringMesh = new THREE.InstancedMesh(this.ringGeometry, this.ringMaterial, n);
     this.ringMesh.frustumCulled = false;

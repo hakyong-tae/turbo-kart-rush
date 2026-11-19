@@ -942,6 +942,7 @@ function buildLightning(): THREE.Object3D {
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           toneMapped: false,
+          forceSinglePass: true,
         }),
     ),
   );

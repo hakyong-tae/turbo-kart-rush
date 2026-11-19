@@ -944,6 +944,14 @@ export class Game {
     }
     this.scene.add(warm);
     this.warmGroup = warm;
+    // `compile` skips hidden objects, and exhaust flames are hidden until a kart boosts. Show them
+    // for the compile pass, or the first boost of the race pays for their program (the next
+    // `updateVisuals` hides them again).
+    for (const k of this.race.karts) {
+      k.object.traverse((o) => {
+        if (o.name === 'neonFlame') o.visible = true;
+      });
+    }
     try {
       // The synchronous half only: every program is created and starts compiling off-thread.
       // Whether they have finished is asked from the loading loop (pollShaders), not by three's
@@ -1165,9 +1173,11 @@ export class Game {
     this.results.hide();
     this.pauseMenu.hide();
     this.loading.hide();
-    this.backdrop.setCharacter(this.mainMenu.highlightedCharacter);
     this.backdrop.setFraming(framingFor(panel), true);
     this.backdrop.attach(this.scene, this.camera, this.renderer);
+    // Straight away, not after the hover rest: the menu must never open on an empty turntable.
+    this.backdrop.setCharacter(this.mainMenu.highlightedCharacter, true);
+    this.backdrop.prewarm(CHARACTERS as readonly CharacterDef[]);
     this.mainMenu.show(panel);
     this.setState(panel);
     this.playMusic('menu');

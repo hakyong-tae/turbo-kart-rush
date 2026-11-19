@@ -191,6 +191,8 @@ function addAurora(ctx: BuildContext, group: THREE.Group): void {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
+    // One pass: additive, so face order cannot matter (see the exhaust flame in KartModel).
+    forceSinglePass: true,
     fog: false,
   });
   ctx.disposables.push(mat);
@@ -223,6 +225,7 @@ function addSearchlights(ctx: BuildContext, group: THREE.Group): void {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
       fog: false,
     });
     ctx.disposables.push(mat);

@@ -5,6 +5,14 @@
  * decides where the kart sits on screen so the DOM menus can be composed around it.
  *
  * Deliberately plain: no bokeh, no stars, no glowing rings. The kart is the only thing lit.
+ *
+ * Karts are built once and kept. Building one costs 8-60 ms and the frame after it pays for the
+ * texture upload and the shader programs, so building on every highlight made the racer grid
+ * stutter under a moving pointer (QA: 90 frames over 50 ms in five sweeps of the sixteen cards).
+ * Now: a kart is only built once the highlight has rested on a card, the whole roster is built
+ * in the background while the menu idles, and a kart that exists is shown at once. A kept kart
+ * remembers the look it was painted with and is repainted when it is next shown, if the saved
+ * look has changed since.
  */
 import * as THREE from 'three';
 import type { CharacterDef, IKart } from '../core/types';
@@ -54,6 +62,17 @@ const FRAMING_LAMBDA = 3.2;
 /** `--asphalt` in the stylesheet. Sky, fog and the far floor are all this one colour. */
 const ASPHALT = 0x15161a;
 const RACE_YELLOW = '#ffd400';
+/** The highlight must rest this long on a card before its kart is built (seconds). */
+const HOVER_REST = 0.12;
+/** Background build of the roster: wait this long after the menu opens, then one kart per gap. */
+const WARM_DELAY = 0.8;
+const WARM_GAP = 0.18;
+
+interface KeptKart {
+  kart: IKart;
+  /** The look it is painted with, as `JSON.stringify(cosmetics)`. */
+  cosKey: string;
+}
 /** Painted start grid: a strip of track this wide and long (metres), centred on the kart. */
 const GRID_WIDTH = 12;
 const GRID_LENGTH = 48;
@@ -63,6 +82,16 @@ export class MenuBackdrop {
 
   private kart: IKart | null = null;
   private currentId: string | null = null;
+  /** Every kart built so far, by racer id. Kept until `dispose`. */
+  private readonly kept = new Map<string, KeptKart>();
+  /** The racer the highlight is on, when its kart has not been built yet. */
+  private pending: CharacterDef | null = null;
+  private pendingTimer = 0;
+  private readonly warmQueue: CharacterDef[] = [];
+  private warmTimer = 0;
+  private scene: THREE.Scene | null = null;
+  private renderer: THREE.WebGLRenderer | null = null;
+  private camera: THREE.PerspectiveCamera | null = null;
   private readonly kartHolder = new THREE.Group();
   private readonly disposables: { dispose(): void }[] = [];
   private readonly fog = new THREE.FogExp2(ASPHALT, 0.03);
@@ -168,13 +197,56 @@ export class MenuBackdrop {
   /**
    * Swap the displayed kart to a character (no-op if unchanged), wearing the player's saved look.
    * The showcase is the first thing anyone sees after painting, so it has to reflect the garage.
+   *
+   * A kart that already exists is shown at once. One that does not is built when the highlight
+   * has rested on its card for `HOVER_REST` — or straight away with `immediate`, which is for
+   * opening the menu, where an empty turntable for a tenth of a second would show.
    */
-  setCharacter(def: CharacterDef): void {
-    if (def.id === this.currentId) return;
+  setCharacter(def: CharacterDef, immediate = false): void {
+    if (def.id === this.currentId) {
+      this.pending = null;
+      return;
+    }
+    if (immediate || !this.kart || this.kept.has(def.id)) {
+      this.pending = null;
+      this.show(def);
+      return;
+    }
+    this.pending = def;
+    this.pendingTimer = HOVER_REST;
+  }
+
+  /**
+   * Build the rest of the roster in the background, one kart every `WARM_GAP`, so that by the
+   * time the player reaches the racer grid there is nothing left to build.
+   */
+  prewarm(defs: readonly CharacterDef[]): void {
+    this.warmQueue.length = 0;
+    for (const def of defs) if (!this.kept.has(def.id)) this.warmQueue.push(def);
+    this.warmTimer = WARM_DELAY;
+  }
+
+  private show(def: CharacterDef): void {
+    const entry = this.kept.get(def.id) ?? this.build(def);
+    if (this.kart) this.kartHolder.remove(this.kart.object);
     this.currentId = def.id;
-    this.disposeKart();
+    this.kart = entry ? entry.kart : null;
+    if (!entry) return;
+    // Painted before the garage was last saved, or before the account's look arrived?
+    const cos = getCosmetics();
+    const key = JSON.stringify(cos);
+    if (entry.cosKey !== key) {
+      entry.kart.applyCosmetics?.(cos);
+      entry.cosKey = key;
+    }
+    this.kartHolder.add(entry.kart.object);
+  }
+
+  /** Builds a kart, uploads its textures and compiles its programs, and keeps it. Not shown. */
+  private build(def: CharacterDef): KeptKart | null {
     try {
-      const kart: IKart = new Kart(0, def, true, getCosmetics());
+      const cos = getCosmetics();
+      const kart: IKart = new Kart(0, def, true, cos);
       kart.setFrozen(true);
       kart.resetTo(this.origin, this.identity);
       kart.object.traverse((o) => {
@@ -184,11 +256,42 @@ export class MenuBackdrop {
           m.receiveShadow = true;
         }
       });
-      this.kartHolder.add(kart.object);
-      this.kart = kart;
+      const entry: KeptKart = { kart, cosKey: JSON.stringify(cos) };
+      this.kept.set(def.id, entry);
+      this.prepare(kart);
+      return entry;
     } catch (err) {
       console.error('[MenuBackdrop] failed to build kart', err);
-      this.kart = null;
+      return null;
+    }
+  }
+
+  /**
+   * Pays the GPU cost of a kart now rather than on the frame it first appears: texture uploads
+   * and shader programs. Compiled against the menu scene, so the programs match its lights and
+   * fog. Skipped when the backdrop is not on screen (nothing to compile against); the first
+   * frame then pays, as it always did.
+   */
+  private prepare(kart: IKart): void {
+    const renderer = this.renderer;
+    if (!renderer || !this.scene || !this.camera) return;
+    try {
+      kart.object.traverse((o) => {
+        const material = (o as THREE.Mesh).material;
+        if (!material) return;
+        for (const m of Array.isArray(material) ? material : [material]) {
+          for (const value of Object.values(m)) {
+            if (value && (value as THREE.Texture).isTexture) renderer.initTexture(value as THREE.Texture);
+          }
+        }
+      });
+      // Compile in place: the holder gives the kart its place in the scene's light setup.
+      this.kartHolder.add(kart.object);
+      renderer.compile(kart.object, this.camera, this.scene);
+    } catch (err) {
+      console.warn('[MenuBackdrop] kart warm-up failed; it will compile on first show', err);
+    } finally {
+      if (kart !== this.kart) this.kartHolder.remove(kart.object);
     }
   }
 
@@ -199,6 +302,9 @@ export class MenuBackdrop {
   }
 
   attach(scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer?: THREE.WebGLRenderer): void {
+    this.scene = scene;
+    this.camera = camera;
+    if (renderer) this.renderer = renderer;
     scene.add(this.group);
     scene.fog = this.fog;
     scene.background = this.background;
@@ -211,6 +317,8 @@ export class MenuBackdrop {
   }
 
   detach(scene: THREE.Scene): void {
+    this.scene = null;
+    this.pending = null;
     scene.remove(this.group);
     if (scene.fog === this.fog) scene.fog = null;
     if (scene.environment === this.envTexture) scene.environment = null;
@@ -220,6 +328,23 @@ export class MenuBackdrop {
     this.time += dt;
     this.angle += dt * ORBIT_SPEED;
     this.kartHolder.rotation.y += dt * KART_SPIN;
+
+    if (this.pending) {
+      this.pendingTimer -= dt;
+      if (this.pendingTimer <= 0) {
+        const def = this.pending;
+        this.pending = null;
+        this.show(def);
+      }
+    } else if (this.warmQueue.length > 0 && dt > 0) {
+      // Never while the player is waiting on a kart of their own: that one goes first.
+      this.warmTimer -= dt;
+      if (this.warmTimer <= 0) {
+        this.warmTimer = WARM_GAP;
+        const def = this.warmQueue.shift();
+        if (def && !this.kept.has(def.id)) this.build(def);
+      }
+    }
 
     if (this.kart) {
       this.kart.updateVisuals(dt);
@@ -262,7 +387,7 @@ export class MenuBackdrop {
   }
 
   dispose(): void {
-    this.disposeKart();
+    this.disposeKarts();
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
     if (this.envTexture) {
@@ -274,20 +399,32 @@ export class MenuBackdrop {
 
   // ----------------------------------------------------------------- private
 
-  /** Repaints the showcase kart in place — called when the garage saves. */
+  /**
+   * Repaints the showcase kart in place — called when the garage saves and when the account's
+   * look arrives. Only the kart on show is painted now; the kept ones are repainted when they
+   * are next shown (`show` compares the look they wear with the saved one).
+   */
   applyCosmetics(cos: KartCosmetics): void {
-    this.kart?.applyCosmetics?.(cos);
+    if (!this.kart || !this.currentId) return;
+    this.kart.applyCosmetics?.(cos);
+    const entry = this.kept.get(this.currentId);
+    if (entry) entry.cosKey = JSON.stringify(cos);
   }
 
-  private disposeKart(): void {
-    if (!this.kart) return;
-    this.kartHolder.remove(this.kart.object);
-    try {
-      this.kart.dispose();
-    } catch (err) {
-      console.warn('[MenuBackdrop] kart dispose failed', err);
+  private disposeKarts(): void {
+    if (this.kart) this.kartHolder.remove(this.kart.object);
+    for (const entry of this.kept.values()) {
+      try {
+        entry.kart.dispose();
+      } catch (err) {
+        console.warn('[MenuBackdrop] kart dispose failed', err);
+      }
     }
+    this.kept.clear();
+    this.warmQueue.length = 0;
+    this.pending = null;
     this.kart = null;
+    this.currentId = null;
   }
 
   /**

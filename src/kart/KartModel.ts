@@ -302,11 +302,15 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   const neonRingMaterial = mat(
     new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
   );
+  // Additive and not depth-written: the order the two faces are drawn in cannot change the result,
+  // so draw them in one pass (`forceSinglePass`). three's default for a transparent double-sided
+  // material is two passes with `needsUpdate` set each time, which re-checks the shader program
+  // every frame, for every kart in view — about a tenth of the race's CPU when the field bunches.
   const neonFlameMaterial = mat(
-    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, forceSinglePass: true }),
   );
   const neonHaloMaterial = mat(
-    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, forceSinglePass: true }),
   );
   const ringGeo = track(new THREE.TorusGeometry(0.06, 0.014, 6, 18));
   ringGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.002);
@@ -571,8 +575,11 @@ export function setAfterburner(p: KartModelPartsEx, glow: number, flicker: numbe
   p.neonRingMaterial.opacity = 0.5 + 0.5 * glow;
   p.neonHaloMaterial.opacity *= (p.neonHaloMaterial.userData.strength as number | undefined) ?? 1;
   const flameLen = (0.55 + 0.75 * glow * (0.8 + 0.2 * flicker)) * p.neonLength;
+  // A flame nobody can see is not drawn at all: at rest it used to go to the GPU fully transparent.
+  const lit = p.neonFlameMaterial.opacity > 0.002 || p.neonHaloMaterial.opacity > 0.002;
   for (let i = 0; i < p.neonFlames.length; i++) {
     const f = p.neonFlames[i];
+    f.visible = lit;
     const ls = (f.userData.lengthScale as number | undefined) ?? 1;
     f.scale.set(0.8 + 0.4 * glow, 0.8 + 0.4 * glow, flameLen / ls);
   }
