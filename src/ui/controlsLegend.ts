@@ -23,7 +23,8 @@ const KEYBOARD: readonly { keys: readonly Key[]; label: Parameters<typeof t>[0] 
   { keys: ['M'], label: 'legend.mute' },
 ];
 
-export function buildControlsLegend(parent: HTMLElement, touch: boolean): HTMLElement {
+/** `autoAccel`: the touch legend describes the stick as steer-and-brake, the throttle being held for the player. */
+export function buildControlsLegend(parent: HTMLElement, touch: boolean, autoAccel = false): HTMLElement {
   const legend = el('div', `controls-legend${touch ? ' touch' : ''}`, undefined, parent);
   if (touch) {
     const row = (name: HTMLElement | string, text: string): void => {
@@ -33,7 +34,7 @@ export function buildControlsLegend(parent: HTMLElement, touch: boolean): HTMLEl
       else cell.appendChild(name);
       el('span', 'legend-text', text, r);
     };
-    row(t('legend.touch.stickName'), t('legend.touch.stick'));
+    row(t('legend.touch.stickName'), t(autoAccel ? 'legend.touch.stickAuto' : 'legend.touch.stick'));
     row(t('touch.drift'), t('legend.touch.drift'));
     row(t('touch.item'), t('legend.touch.item'));
     const pause = el('span', 'chip');

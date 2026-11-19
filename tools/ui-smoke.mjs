@@ -20,7 +20,12 @@ async function newPage(w = 1280, h = 800, lang = 'ko') {
   const page = await browser.newPage();
   await page.setViewport({ width: w, height: h });
   page.on('pageerror', (e) => console.log('  [pageerror]', e.message));
-  await page.evaluateOnNewDocument((l) => localStorage.setItem('tkr.lang', l), lang);
+  // `tkr.firstRace`: this device has been here before, so a fresh profile opens on the lobby
+  // these checks drive instead of being sent straight into its first race.
+  await page.evaluateOnNewDocument((l) => {
+    localStorage.setItem('tkr.lang', l);
+    localStorage.setItem('tkr.firstRace', '1');
+  }, lang);
   await page.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
   await sleep(2500);
   return page;

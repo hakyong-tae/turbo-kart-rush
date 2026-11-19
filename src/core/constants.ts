@@ -23,7 +23,7 @@ export const KART_COUNT = 8;
  * Nothing else was removed: `src/net/` and the lobby all still build and are covered by tests, so
  * turning this back on is a one-line change.
  */
-export const ONLINE_ENABLED = false && PLATFORM.online;
+export const ONLINE_ENABLED = false;
 
 /** Default number of laps per race (tracks may override via TrackDefinition.laps). */
 export const DEFAULT_LAPS = 3;

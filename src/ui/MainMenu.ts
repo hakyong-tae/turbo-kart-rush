@@ -5,6 +5,7 @@
 import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinition, RaceMode } from '../core/types';
 import { events } from '../core/events';
 import { DEFAULT_LAPS, ONLINE_ENABLED } from '../core/constants';
+import { PLATFORM } from '../core/platform';
 import { button, cssHex, el, TextField } from './dom';
 import { icon } from './icons';
 import { showToast } from './toast';
@@ -16,14 +17,16 @@ import {
   getCoins,
   getCupProgress,
   getEntitlements,
+  getLadder,
   getMissions,
   getStreak,
   getXp,
   isPremium,
   onEntitlementsChange,
+  openTrackCount,
   ownsKart,
 } from '../verse8/entitlements';
-import { formatCoins, levelInfo } from '../core/economy';
+import { finishesToOpen, formatCoins, levelInfo } from '../core/economy';
 import { setButtonContent } from './dom';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
@@ -64,7 +67,7 @@ const STAT_BLOCKS = 5;
 /** Default character-grid column count (the stylesheet drops to 2 columns on phones). */
 const CHAR_COLUMNS = 4;
 const TRACK_COLUMNS = 4;
-/** The lobby's small buttons sit two to a row (13-lobby-gate.css). */
+/** The lobby's middle buttons sit two to a row (13-lobby-gate.css); the icon row under them is one row. */
 const LOBBY_COLUMNS = 2;
 
 export class MainMenu {
@@ -117,6 +120,9 @@ export class MainMenu {
   /** Which language button the keyboard cursor is on, or null while it is on the lobby buttons. */
   private langFocus: number | null = null;
   private readonly lobbyButtons: HTMLButtonElement[] = [];
+  /** The lobby buttons as rows of indices into `lobbyButtons`, top to bottom, for the cursor. */
+  private readonly lobbyRows: number[][] = [];
+  private readonly trackLocks: { chip: HTMLElement; text: TextField }[] = [];
   private readonly modeButtons: HTMLButtonElement[] = [];
   private readonly cupButtons: HTMLButtonElement[] = [];
   private cupIndex = 0;
@@ -150,10 +156,11 @@ export class MainMenu {
     this.streakText = new TextField(el('span', 'profile-streak-n', '', this.streakChip));
     buildLogo(title);
     el('div', 'logo-sub', t('title.sub'), title);
-    // Lobby: one big RACE plate, the rest as a grid of small icon + label plates underneath.
-    // (The missions button of the progression update joins the grid; it flows without a relayout.)
+    // Lobby: one big RACE plate, the two things a race feeds (garage, missions) under it, and
+    // everything else as a row of small icon buttons. Four choices to read, not eight.
     const lobby = el('nav', 'lobby', undefined, title);
     const lobbyGrid = el('div', 'lobby-grid');
+    const lobbyIcons = el('div', 'lobby-icons');
     const lobbyEntry = (label: string, cls: string, host: HTMLElement, action: () => void, iconName?: IconName): HTMLButtonElement => {
       const b = button(
         label,
@@ -170,18 +177,35 @@ export class MainMenu {
       return b;
     };
     // "Single race" only means something next to an online mode.
-    lobbyEntry(ONLINE_ENABLED ? t('lobby.single') : t('lobby.race'), 'primary start lobby-btn single-toggle', lobby, () =>
+    // Online needs the ship switch and a build target that has a relay to race over.
+    const online = ONLINE_ENABLED && PLATFORM.online;
+    lobbyEntry(online ? t('lobby.single') : t('lobby.race'), 'primary start lobby-btn single-toggle', lobby, () =>
       this.goTo('characterSelect', true),
     );
-    lobby.appendChild(lobbyGrid);
-    if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
-    // The two reasons to come back tomorrow sit first in the grid.
-    this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
-    this.attendanceButton = lobbyEntry(t('lobby.checkin'), 'lobby-btn attendance-toggle', lobbyGrid, () => this.onAttendance?.(), 'flame');
-    lobbyEntry(t('lobby.daily'), 'lobby-btn daily-toggle', lobbyGrid, () => this.onDaily?.(), 'calendar');
+    lobby.append(lobbyGrid, lobbyIcons);
     lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => this.onGarage?.(), 'wrench');
-    lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', lobbyGrid, () => this.onRecords?.(), 'trophy');
-    lobbyEntry(t('lobby.settings'), 'lobby-btn settings-toggle', lobbyGrid, () => this.onSettings?.(), 'gear');
+    this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
+    if (online) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
+    const gridEnd = this.lobbyButtons.length;
+    // The icon row: its buttons keep their labels for assistive tech and as tooltips.
+    const iconEntry = (label: string, cls: string, action: () => void, iconName: IconName): HTMLButtonElement => {
+      const b = lobbyEntry(label, `lobby-btn lobby-icon icon-only ${cls}`, lobbyIcons, action, iconName);
+      b.title = label;
+      return b;
+    };
+    this.attendanceButton = iconEntry(t('lobby.checkin'), 'attendance-toggle', () => this.onAttendance?.(), 'flame');
+    iconEntry(t('lobby.daily'), 'daily-toggle', () => this.onDaily?.(), 'calendar');
+    iconEntry(t('lb.button'), 'records-toggle', () => this.onRecords?.(), 'trophy');
+    iconEntry(t('lobby.settings'), 'settings-toggle', () => this.onSettings?.(), 'gear');
+    this.lobbyRows.push([0]);
+    for (let i = 1; i < gridEnd; i += LOBBY_COLUMNS) {
+      const row: number[] = [];
+      for (let k = i; k < Math.min(gridEnd, i + LOBBY_COLUMNS); k++) row.push(k);
+      this.lobbyRows.push(row);
+    }
+    const iconRow: number[] = [];
+    for (let k = gridEnd; k < this.lobbyButtons.length; k++) iconRow.push(k);
+    this.lobbyRows.push(iconRow);
     this.setLobby(0);
     // Language, on the first screen and each in its own name: nobody should have to find it inside
     // a settings panel written in a language they cannot read. It sits directly above RACE, the
@@ -263,6 +287,8 @@ export class MainMenu {
         else {
           this.trackRow = 0;
           this.setTrack(i, true);
+          // A tap on a locked circuit says straight away what opens it.
+          if (this.isTrackLocked(i)) this.explainLock(i);
         }
       });
       trackGrid.appendChild(card);
@@ -349,9 +375,11 @@ export class MainMenu {
     this.panels = { title, characterSelect: chars, trackSelect: tr };
     this.unsubEntitlements = onEntitlementsChange(() => {
       this.refreshLocks();
+      this.refreshTrackLocks();
       this.refreshProfile();
     });
     this.refreshLocks();
+    this.refreshTrackLocks();
     this.refreshProfile();
     this.setCharacter(0);
     this.setTrack(0);
@@ -598,7 +626,7 @@ export class MainMenu {
       this.setLobby(0);
       events.emit('ui:move', {});
     } else if (input.menuUp) {
-      this.setLobby(this.lobbyButtons.length - 1);
+      this.setLobby(this.lobbyRows[this.lobbyRows.length - 1]?.[0] ?? 0);
       events.emit('ui:move', {});
     } else if (input.confirm) {
       this.langButtons[i]?.click();
@@ -610,29 +638,30 @@ export class MainMenu {
    * under it. Up / down step a row, left / right step a cell.
    */
   private moveLobby(dx: number, dy: number): void {
-    const n = this.lobbyButtons.length;
+    const rows = this.lobbyRows;
     const i = this.lobbyIndex;
+    const r = Math.max(0, rows.findIndex((row) => row.includes(i)));
+    const c = Math.max(0, rows[r].indexOf(i));
     let next = i;
-    if (i === 0) {
-      if (dy > 0) next = Math.min(1, n - 1);
-      else if (dy < 0 && this.langButtons.length) {
-        // The language row sits above RACE: the cursor lands on the language not in use.
-        this.setLangFocus(Math.max(0, this.langButtons.findIndex((b) => !b.classList.contains('selected'))));
-        events.emit('ui:move', {});
-        return;
-      } else if (dy < 0) next = n - 1;
-    } else if (dx !== 0) {
-      next = Math.min(n - 1, Math.max(1, i + dx));
-    } else if (dy < 0) {
-      next = i - LOBBY_COLUMNS >= 1 ? i - LOBBY_COLUMNS : 0;
-    } else if (dy > 0) {
-      // Off the bottom wraps to the top of the column, which is the language row.
-      if (i + LOBBY_COLUMNS <= n - 1) next = i + LOBBY_COLUMNS;
-      else if (this.langButtons.length) {
-        this.setLangFocus(Math.max(0, this.langButtons.findIndex((b) => !b.classList.contains('selected'))));
-        events.emit('ui:move', {});
-        return;
-      } else next = 0;
+    if (dx !== 0) {
+      next = rows[r][Math.min(rows[r].length - 1, Math.max(0, c + dx))];
+    } else {
+      const to = r + dy;
+      if (to < 0 || to >= rows.length) {
+        // Off the top or the bottom is the language row, which sits above RACE; the cursor lands
+        // on the language not in use.
+        if (this.langButtons.length) {
+          this.setLangFocus(Math.max(0, this.langButtons.findIndex((b) => !b.classList.contains('selected'))));
+          events.emit('ui:move', {});
+          return;
+        }
+        next = rows[to < 0 ? rows.length - 1 : 0][0];
+      } else {
+        // Keep roughly the same place across rows of different lengths.
+        const from = rows[r].length;
+        const into = rows[to].length;
+        next = rows[to][from > 1 ? Math.round((c * (into - 1)) / (from - 1)) : 0];
+      }
     }
     if (next === i) return;
     this.setLobby(next);
@@ -698,10 +727,39 @@ export class MainMenu {
     });
   }
 
+  /** Circuits open in picker order; `index` is locked while the account has not reached it. */
+  private isTrackLocked(index: number): boolean {
+    return index >= openTrackCount(this.tracks.length);
+  }
+
+  private explainLock(index: number): void {
+    const need = finishesToOpen(index);
+    showToast(t('track.locked', { n: need, i: Math.min(need, getLadder()?.finishes ?? 0) }), 'info', 3200);
+  }
+
+  /** Padlock and "2/5 races" on the circuits still to open. Cups and the daily ignore the lock. */
+  private refreshTrackLocks(): void {
+    const finishes = getLadder()?.finishes ?? 0;
+    this.trackCards.forEach((card, i) => {
+      const locked = this.isTrackLocked(i);
+      card.classList.toggle('locked', locked);
+      const lock = this.trackLocks[i];
+      if (!lock) return;
+      lock.chip.classList.toggle('hidden', !locked);
+      const need = finishesToOpen(i);
+      if (locked) lock.text.set(t('track.lockedChip', { i: Math.min(need, finishes), n: need }));
+    });
+  }
+
   private start(): void {
     const track = this.tracks[this.trackIndex];
     const character = this.characters[this.charIndex];
     if (!track || !character) return;
+    if (this.isTrackLocked(this.trackIndex)) {
+      events.emit('ui:back', {});
+      this.explainLock(this.trackIndex);
+      return;
+    }
     events.emit('ui:select', {});
     this.onStart?.({
       characterId: character.id,
@@ -791,6 +849,10 @@ export class MainMenu {
     thumb.getContext('2d')?.drawImage(buildTrackThumbnail(t), 0, 0);
     art.appendChild(thumb);
     el('div', 'track-theme-chip chip', tt(`theme.${t.theme}` as StringKey), art);
+    // Hidden unless the circuit is still to open (refreshTrackLocks).
+    const lock = el('div', 'chip lock track-lock hidden', undefined, art);
+    lock.appendChild(icon('lock'));
+    this.trackLocks.push({ chip: lock, text: new TextField(el('span', 'track-lock-text', '', lock)) });
     const body = el('div', 'track-body', undefined, card);
     const nameRow = el('div', 'track-name-row', undefined, body);
     el('div', 'card-name', t.name.toUpperCase(), nameRow);

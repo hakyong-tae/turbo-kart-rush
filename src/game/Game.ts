@@ -41,7 +41,7 @@ import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
 import { tickPatternTime } from '../kart/patternShader';
 import { OrientationGate } from './OrientationGate';
-import { COACH_KEY, FIRST_RACE_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume } from './settingsStore';
+import { COACH_KEY, FIRST_RACE_KEY, TOMORROW_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume } from './settingsStore';
 import { PLATFORM } from '../core/platform';
 import { RaceCoach } from '../ui/RaceCoach';
 
@@ -67,7 +67,9 @@ import type { DailyChallenge } from '../core/daily';
 import { DailyPanel } from '../ui/DailyPanel';
 import { RescueDrones } from '../fx/RescueDrones';
 import { GaragePanel } from '../ui/GaragePanel';
-import type { CupView, RewardView } from '../ui/ResultsScreen';
+import type { CupView, NextUnlock, RewardView, TomorrowView, UnlockCard } from '../ui/ResultsScreen';
+import { buildTrackThumbnail } from '../ui/trackThumbnails';
+import { getLookThumbnail } from '../ui/kartThumbnails';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { consumePremiumRace, grantPremiumRaces, isPremium, onEntitlementsChange, serverReachable } from '../verse8/entitlements';
 import {
@@ -79,9 +81,20 @@ import {
 } from '../verse8/ads';
 import { AttendancePanel } from '../ui/AttendancePanel';
 import { MissionPanel } from '../ui/MissionPanel';
-import { missionTitle, tokenName } from '../ui/progression/text';
+import { ladderCondition, missionTitle, tokenFullName, tokenName } from '../ui/progression/text';
 import { RaceStatsTracker } from './RaceStatsTracker';
-import { LEVEL_COINS, formatCoins, levelInfo, parseMissionKey, type MissionStat } from '../core/economy';
+import {
+  LEVEL_COINS,
+  LEVEL_REWARDS,
+  formatCoins,
+  levelInfo,
+  nextLadderStep,
+  parseMissionKey,
+  streakCoins,
+  streakGift,
+  type LadderView,
+  type MissionStat,
+} from '../core/economy';
 import { computeTeamResult, teamOf } from '../core/teams';
 import { submitDailyTime } from '../verse8/server';
 import { buyPremium, initShop } from '../verse8/shop';
@@ -92,12 +105,16 @@ import { OnlinePanel } from '../ui/OnlinePanel';
 import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
-import { sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
+import { cosmeticOf, isUnlocked, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { addRaceToCup, cupPlaceOf, getCup, type CupEntry, type CupId } from '../core/cups';
 import { botName, localRacerName } from '../core/racerNames';
 import {
   getCosmetics,
   getEntitlements,
+  getLadder,
+  getOwned,
+  getXp,
+  openTrackCount,
   refreshEntitlements,
   watchForeground,
   saveCupResult,
@@ -133,7 +150,56 @@ function trackName(trackId: string): string {
  * The reward line for a settlement reply. Nothing paid is never left unexplained: no answer, a
  * start the server never saw, and a result it would not accept each say so in their own words.
  */
-function rewardViewOf(award: RaceAward | null): RewardView {
+/** A circuit's thumbnail as its own canvas: the builder hands out one shared, cached canvas. */
+function trackThumbCopy(def: TrackDefinition): HTMLCanvasElement {
+  const source = buildTrackThumbnail(def);
+  const copy = source.cloneNode(false) as HTMLCanvasElement;
+  copy.getContext('2d')?.drawImage(source, 0, 0);
+  return copy;
+}
+
+/** A picture of one garage entry: the player's kart wearing just that. */
+function tokenPicture(token: string, characterId: string): string | undefined {
+  return getLookThumbnail(characterId, token, CHARACTERS.find((c) => c.id === characterId) as CharacterDef | undefined);
+}
+
+/**
+ * The closest thing still to earn: a ladder rung the account does not already have, then the next
+ * circuit, then the next level reward.
+ */
+function nextUnlockOf(ladder: LadderView | null): NextUnlock | null {
+  if (!ladder) return null;
+  const premium = getEntitlements().premium;
+  const owned = getOwned();
+  const rung = nextLadderStep(ladder, getStreak()?.total ?? 0, (step) => {
+    const ref = cosmeticOf(step.token);
+    return !ref || isUnlocked(ref.field, ref.id, premium, owned);
+  });
+  if (rung) return { text: ladderCondition(rung.step), value: rung.value, target: rung.step.at, reward: tokenFullName(rung.step.token) };
+  const upcoming = TRACKS_BY_DIFFICULTY[ladder.tracks];
+  if (upcoming) return { text: t('ladder.track'), value: 0, target: 1, reward: upcoming.name };
+  const level = levelInfo(getXp()).level;
+  const at = Object.keys(LEVEL_REWARDS)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .find((l) => l > level);
+  return at ? { text: t('ladder.level', { n: at }), value: level, target: at, reward: tokenFullName(LEVEL_REWARDS[at]) } : null;
+}
+
+/** Tomorrow's check-in, assuming today's is (or will be) claimed. Null while the record is unknown. */
+function tomorrowOf(characterId: string): TomorrowView | null {
+  const streak = getStreak();
+  if (!streak) return null;
+  const day = (streak.claimed ? streak.n : streak.next) + 1;
+  const gift = streakGift(streak.total + (streak.claimed ? 1 : 2));
+  return {
+    coins: streakCoins(day),
+    gift: gift ? tokenFullName(gift) : undefined,
+    image: gift ? tokenPicture(gift, characterId) : undefined,
+  };
+}
+
+function rewardViewOf(award: RaceAward | null, characterId: string): RewardView {
   if (!award) return { state: 'failed' };
   if (!award.ok) {
     const lateStart = award.reason === 'no-race' || award.reason === 'bad-time';
@@ -162,6 +228,17 @@ function rewardViewOf(award: RaceAward | null): RewardView {
     if (award.bonus) view.bonus = award.missions.bonusCoins;
   }
   if (award.unlocked?.length) view.unlocked = award.unlocked.map(tokenName);
+  // What the race opened, each with its picture: circuits first, then garage entries.
+  const opened: UnlockCard[] = [];
+  for (const id of award.newTracks ?? []) {
+    const def = TRACKS.find((tr) => tr.id === id);
+    if (def) opened.push({ kind: 'track', name: def.name, image: trackThumbCopy(def) });
+  }
+  for (const token of award.unlocked ?? []) opened.push({ kind: 'item', name: tokenFullName(token), image: tokenPicture(token, characterId) });
+  view.opened = opened;
+  view.nextUnlock = nextUnlockOf(award.ladder ?? getLadder());
+  // The day's second race is where tomorrow is mentioned: one race in, they are staying a while.
+  view.tomorrow = award.races === 2 ? tomorrowOf(characterId) : null;
   return view;
 }
 
@@ -249,6 +326,8 @@ export class Game {
   private reward: RewardView | null = null;
   /** The settled race the double-coins offer applies to. */
   private rewardRaceId: string | null = null;
+  /** The circuit the settled race opened, if it opened one: NEXT RACE goes there. */
+  private openedTrackId: string | null = null;
   private missions: MissionPanel;
   private attendance: AttendancePanel;
   /** The check-in window has opened by itself once this session; after that it is the button's job. */
@@ -533,9 +612,21 @@ export class Game {
 
   private buildResults(): ResultsScreen {
     const results = new ResultsScreen(this.uiRoot);
-    results.onRaceAgain = () => {
+    results.onNextRace = () => {
       if (this.race?.online) this.returnToRoom();
       else if (this.cup) void this.advanceCup();
+      else if (this.race) {
+        this.dailyRun = null;
+        const next = this.nextTrackFor(this.race);
+        void this.startRaceGated({
+          ...this.race.settings,
+          trackId: next.id,
+          laps: next.laps > 0 ? next.laps : this.race.settings.laps,
+        });
+      }
+    };
+    results.onRaceAgain = () => {
+      if (this.race?.online) this.returnToRoom();
       else if (this.race) {
         this.dailyRun = null;
         void this.startRaceGated(this.race.settings);
@@ -551,6 +642,7 @@ export class Game {
     results.onMainMenu = () => {
       if (this.race?.online) void this.online?.leave();
       this.returnToMenu('title');
+      this.offerTomorrow();
     };
     results.onDouble = () => this.doubleReward();
     return results;
@@ -770,6 +862,7 @@ export class Game {
 
   private buildAttendance(): AttendancePanel {
     const panel = new AttendancePanel(this.uiRoot);
+    panel.pictureOf = (token) => tokenPicture(token, this.garageCharacterId);
     panel.onClaim = async (recover) => {
       // Carrying a broken run on is what the ad pays for; restarting or an unbroken run is free.
       // Where there are no rewarded ads, carrying the run on is simply offered.
@@ -784,7 +877,7 @@ export class Game {
       }
       if (!r.ok) return; // already claimed, or the choice is still open: the panel shows which
       showToast(t('att.got', { n: formatCoins(r.reward) }), 'info');
-      for (const token of r.unlocked) showToast(t('rewards.unlocked', { name: tokenName(token) }), 'info', 6000);
+      for (const token of r.unlocked) showToast(t('rewards.unlocked', { name: tokenFullName(token) }), 'info', 6000);
     };
     return panel;
   }
@@ -954,6 +1047,39 @@ export class Game {
     };
   }
 
+  /**
+   * Where NEXT RACE goes: the circuit this race just opened, else the next open one after it in
+   * the picker's easy-to-hard order, wrapping from the last open one to the first.
+   */
+  private nextTrackFor(r: RaceContext): TrackDefinition {
+    const order = TRACKS_BY_DIFFICULTY;
+    const opened = this.openedTrackId ? order.find((tr) => tr.id === this.openedTrackId) : undefined;
+    if (opened) return opened;
+    const open = openTrackCount(order.length);
+    const at = order.findIndex((tr) => tr.id === r.trackDef.id);
+    // A cup or the daily may have run on a circuit that is not open yet: start from the top.
+    return order[at >= 0 && at < open ? (at + 1) % open : 0] ?? r.trackDef;
+  }
+
+  /**
+   * Coming back to the lobby from a race: once a day, the check-in window opens on its "tomorrow"
+   * side even though today is claimed, so the player leaves knowing what tomorrow is worth. (With
+   * today unclaimed it opens anyway, and shows the same thing after the claim.)
+   */
+  private offerTomorrow(): void {
+    if (this.state !== 'title' || this.attendance.isVisible || this.overlayOpen()) return;
+    const streak = getStreak();
+    if (!streak?.claimed) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      if (localStorage.getItem(TOMORROW_KEY) === today) return;
+      localStorage.setItem(TOMORROW_KEY, today);
+    } catch {
+      return;
+    }
+    this.attendance.show();
+  }
+
   /** Spend a premium race ticket (server-authoritative) before starting with a premium kart. */
   private async startRaceGated(settings: RaceSettings): Promise<void> {
     if (isPremium(settings.characterId)) {
@@ -1028,7 +1154,12 @@ export class Game {
     }).then((award) => {
       if (this.race !== r) return;
       this.rewardRaceId = award?.ok ? (award.raceId ?? null) : null;
-      this.showReward(rewardViewOf(award));
+      // A circuit this finish opened is where NEXT RACE goes.
+      this.openedTrackId = award?.ok ? (award.newTracks?.[0] ?? null) : null;
+      this.showReward(rewardViewOf(award, r.settings.characterId));
+      this.results.setNextTrack(this.nextTrackFor(r).name);
+      // Five finishes: the emblem is on its card; the cup it points at is worth a sentence.
+      if (award?.ok && !r.settings.intro && award.ladder?.finishes === 5 && !award.ladder.all) showToast(t('ladder.cup'), 'info', 6500);
     });
   }
 
@@ -1600,6 +1731,7 @@ export class Game {
     this.lastSubmit = null;
     this.reward = null;
     this.rewardRaceId = null;
+    this.openedTrackId = null;
     // Open the race on the server now, so its clock covers the whole race by the time the
     // finish is reported. Fire-and-forget: a slow server must not hold up the start lights.
     if (unranked) abandonRace();
@@ -1842,7 +1974,11 @@ export class Game {
       }),
       events.on('race:lap', (e) => {
         if (this.race !== r || !e.isPlayer) return;
-        if (e.isFinalLap) this.playMusic('finalLap');
+        if (!e.isFinalLap) return;
+        this.playMusic('finalLap');
+        // The last lap gets one more row of boxes. Offline only: a mirrored race keeps the boxes
+        // both ends were built with.
+        if (!r.online) r.items.openFinalLapBoxes?.();
       }),
       events.on('race:finish', (e) => {
         if (this.race !== r || !e.isPlayer) return;
@@ -1951,6 +2087,7 @@ export class Game {
     }
     if (r.heldFinish) this.settleRace(r, r.heldFinish.place, r.heldFinish.retired, r.heldFinish.seconds, standings);
     this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
+    this.results.setNextTrack(this.nextTrackFor(r).name);
     if (this.reward) this.results.showRewards(this.reward);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));

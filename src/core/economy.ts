@@ -207,10 +207,15 @@ export function ladderStepOf(token: string): LadderStep | null {
  * The rung to point at next: of those not reached, the one furthest along, table order breaking
  * ties. Check-in rungs are left out — they are tomorrow's business, and have their own card.
  */
-export function nextLadderStep(view: LadderView, days: number): { step: LadderStep; value: number } | null {
+export function nextLadderStep(
+  view: LadderView,
+  days: number,
+  /** Rungs to pass over: entries the account already has some other way (bought, or the pass). */
+  skip?: (step: LadderStep) => boolean,
+): { step: LadderStep; value: number } | null {
   let best: { step: LadderStep; value: number } | null = null;
   for (const step of LADDER) {
-    if (step.stat === 'days') continue;
+    if (step.stat === 'days' || skip?.(step)) continue;
     const value = ladderValue(step, view, days);
     if (value >= step.at) continue;
     if (!best || value / step.at > best.value / best.step.at) best = { step, value };

@@ -99,7 +99,12 @@ interface BoxSlot {
   respawnTimer: number;
   scale: number;
   phase: number;
+  /** The final-lap row: built with the rest, kept out of the race until `openFinalLapBoxes`. */
+  dormant?: boolean;
 }
+
+/** Boxes across the extra row that opens on the last lap. */
+const BONUS_ROW_SIZE = 3;
 
 /** Roulette tick intervals (seconds), decelerating and summing to ~ITEM_ROULETTE_SECONDS. */
 const TICK_INTERVALS: number[] = (() => {
@@ -286,6 +291,13 @@ export class ItemManager implements IItemManager {
   reset(): void {
     this.clearAll();
     for (const b of this.boxes) {
+      if (b.dormant !== undefined) {
+        // The final-lap row goes back into waiting.
+        b.dormant = true;
+        b.active = false;
+        b.scale = 0;
+        continue;
+      }
       b.active = true;
       b.respawnTimer = 0;
       b.scale = 1;
@@ -307,6 +319,16 @@ export class ItemManager implements IItemManager {
 
   setGentleAi(on: boolean): void {
     this.gentleAi = on;
+  }
+
+  openFinalLapBoxes(): void {
+    for (const b of this.boxes) {
+      if (!b.dormant) continue;
+      b.dormant = false;
+      b.active = true;
+      b.scale = 0;
+      events.emit('item:boxRespawn', { position: b.world.clone() });
+    }
   }
 
   setRaceMode(mode: RaceMode): void {
@@ -353,6 +375,20 @@ export class ItemManager implements IItemManager {
         respawnTimer: 0,
         scale: 1,
         phase: (i * 0.73) % TAU,
+      });
+    }
+    // One more row, for the last lap: where the gap between two rows is widest.
+    for (const p of this.bonusRow(track)) {
+      const q = track.query(p, undefined, _query);
+      this.boxes.push({
+        base: p,
+        groundY: q.groundY,
+        world: new THREE.Vector3(p.x, q.groundY + BOX_HOVER, p.z),
+        active: false,
+        respawnTimer: 0,
+        scale: 0,
+        phase: (this.boxes.length * 0.73) % TAU,
+        dormant: true,
       });
     }
 
@@ -449,8 +485,37 @@ export class ItemManager implements IItemManager {
     this.questionTexture = null;
   }
 
+  /**
+   * Where the final-lap row goes: the middle of the widest gap between two rows that is plain road
+   * and not the run-up to a jump. Empty when the circuit has no such place.
+   */
+  private bonusRow(track: ITrack): THREE.Vector3[] {
+    const rows = track.def.itemBoxRows.map((t) => wrap01(t)).sort((a, b) => a - b);
+    if (rows.length === 0) return [];
+    const gaps = rows
+      .map((t, i) => {
+        const next = i + 1 < rows.length ? rows[i + 1] : rows[0] + 1;
+        return { mid: wrap01((t + next) / 2), size: next - t };
+      })
+      .sort((a, b) => b.size - a.size);
+    for (const gap of gaps) {
+      if (track.isRespawnSafe && !track.isRespawnSafe(gap.mid)) continue;
+      const s = track.sample(gap.mid, _sample);
+      const row: THREE.Vector3[] = [];
+      for (let k = 0; k < BONUS_ROW_SIZE; k++) {
+        const lat = lerp(-0.5, 0.5, k / (BONUS_ROW_SIZE - 1)) * s.halfWidth;
+        const p = new THREE.Vector3(s.position.x + s.binormal.x * lat, s.position.y + 1, s.position.z + s.binormal.z * lat);
+        if (track.query(p, undefined, _query2).surface !== 'road') break;
+        row.push(p);
+      }
+      if (row.length === BONUS_ROW_SIZE) return row;
+    }
+    return [];
+  }
+
   private updateBoxes(dt: number): void {
     for (const b of this.boxes) {
+      if (b.dormant) continue;
       if (!b.active) {
         b.respawnTimer -= dt;
         if (b.respawnTimer <= 0) {
@@ -519,7 +584,8 @@ export class ItemManager implements IItemManager {
       _v1.set(b.base.x, b.groundY + 0.03, b.base.z);
       _e.set(-Math.PI / 2, 0, this.time * 0.5);
       _q.setFromEuler(_e);
-      _scale.setScalar(b.active ? pulse * (0.6 + 0.4 * b.scale) : pulse * 0.5);
+      // A waiting box leaves no ring on the road: there is nothing there yet.
+      _scale.setScalar(b.dormant ? 0 : b.active ? pulse * (0.6 + 0.4 * b.scale) : pulse * 0.5);
       _m.compose(_v1, _q, _scale);
       this.ringMesh.setMatrixAt(i, _m);
     }

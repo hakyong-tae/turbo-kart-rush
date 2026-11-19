@@ -4,7 +4,7 @@
  * mid-race toast cannot describe the same mission three ways.
  */
 import { cosmeticOf } from '../../core/cosmetics';
-import { CLEAN_WALLS, earnRule, formatCoins, parseMissionKey } from '../../core/economy';
+import { CLEAN_WALLS, earnRule, formatCoins, parseMissionKey, type LadderStep } from '../../core/economy';
 import { t } from '../../core/i18n';
 
 /** Keys built from ids at runtime; `progression.test.ts` checks every one of them exists. */
@@ -30,6 +30,21 @@ export function missionTitle(key: string, trackName: TrackNamer): string {
 export function tokenName(token: string): string {
   const ref = cosmeticOf(token);
   return ref ? tk(`cos.${ref.field}.${ref.id}`) : token;
+}
+
+/** A token's name with what it is: "Sparks trail", "스파크 트레일". Used where the kind is not obvious. */
+export function tokenFullName(token: string): string {
+  const ref = cosmeticOf(token);
+  return ref ? tk('item.named', { name: tk(`cos.${ref.field}.${ref.id}`), kind: tk(`kind.${ref.field}`) }) : token;
+}
+
+/** What a ladder rung asks for: "Finish 3 races", "Fire 10 drift boosts". */
+export function ladderCondition(step: LadderStep): string {
+  if (step.stat === 'f') return step.at === 1 ? t('ladder.f1') : t('ladder.f', { n: step.at });
+  if (step.stat === 'p') return t('ladder.p');
+  if (step.stat === 'w') return t('ladder.w');
+  if (step.stat === 'd') return t('ladder.d', { n: step.at });
+  return t('ladder.days');
 }
 
 /** How an earn-only entry is come by, short enough for a chip: "LV 20", "7 DAYS", "1,500". */

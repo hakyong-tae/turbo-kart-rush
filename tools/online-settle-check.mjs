@@ -102,7 +102,8 @@ async function open(account) {
     if (op === 'joinRoom') members.set(args[0], page);
     return hub[op](...args) ?? null;
   });
-  await page.evaluateOnNewDocument((acct) => { window.__netAccount = acct; localStorage.setItem('tkr.lang', 'ko'); }, account);
+  // `tkr.firstRace`: open on the lobby, not in a fresh profile's first race.
+  await page.evaluateOnNewDocument((acct) => { window.__netAccount = acct; localStorage.setItem('tkr.lang', 'ko'); localStorage.setItem('tkr.firstRace', '1'); }, account);
   await page.setRequestInterception(true);
   page.on('request', (req) => {
     const path = new URL(req.url()).pathname;

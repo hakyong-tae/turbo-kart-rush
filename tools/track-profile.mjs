@@ -10,7 +10,8 @@ const i = argv.indexOf('--track');
 const TRACK = i >= 0 ? argv[i + 1] : 'all';
 const browser = await puppeteer.launch({ headless: 'new', args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=metal', '--mute-audio'] });
 const page = await browser.newPage();
-await page.goto(`${BASE}/`, { waitUntil: 'load' });
+// ?lobby: stay on the lobby (a fresh profile would otherwise be sent into its first race).
+await page.goto(`${BASE}/?lobby=1`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__turboKartRush);
 const out = await page.evaluate(async (which) => {
   const THREE = await import('/@id/three');

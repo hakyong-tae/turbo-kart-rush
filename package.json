@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "build:crazygames": "vite build --mode crazygames",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

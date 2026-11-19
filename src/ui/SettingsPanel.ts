@@ -8,6 +8,7 @@ import { entitlementsPending, getEntitlements, onEntitlementsChange, serverReach
 import { currentAccount } from '../verse8/server';
 import { isAnonymousAccount } from '../verse8/identity';
 import { normalizeNickname } from '../verse8/nickname';
+import { readAutoAccel, writeAutoAccel } from '../game/settingsStore';
 import { button, el, TextField } from './dom';
 import { buildControlsLegend } from './controlsLegend';
 import { ItemGuide } from './ItemGuide';
@@ -36,6 +37,8 @@ export class SettingsPanel {
   private readonly sliders = new Map<VolumeKind, { input: HTMLInputElement; value: HTMLElement }>();
   private readonly guide: ItemGuide;
   private readonly controlsHost: HTMLElement;
+  private readonly autoField: HTMLElement;
+  private readonly autoButtons: HTMLButtonElement[] = [];
   private readonly unsubEntitlements: () => void;
   /** True once the player has touched the field, so a late arrival never overwrites their typing. */
   private nickEdited = false;
@@ -97,6 +100,22 @@ export class SettingsPanel {
 
     this.buildSlider(panel, 'music', t('settings.music'));
     this.buildSlider(panel, 'sfx', t('settings.sfx'));
+
+    // Auto-accelerate: on by default for whoever drives by touch, and theirs to turn off. Shown
+    // only on a touch device (decided when the panel opens), where it does something.
+    this.autoField = el('div', 'settings-field settings-auto hidden', undefined, panel);
+    el('span', 'settings-label', t('settings.autoAccel'), this.autoField);
+    const autoSeg = el('div', 'segmented', undefined, this.autoField);
+    for (const on of [true, false]) {
+      const b = el('button', 'seg', t(on ? 'settings.on' : 'settings.off'), autoSeg);
+      b.type = 'button';
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        writeAutoAccel(on);
+        this.syncAuto();
+      });
+      this.autoButtons.push(b);
+    }
 
     // The item guide is a sibling screen rather than another field: it is a page of reading, and
     // burying it under the volume sliders would make settings scroll for everyone.
@@ -166,12 +185,24 @@ export class SettingsPanel {
     this.fillFromRecord();
     this.langButtons.forEach((b) => b.classList.toggle('selected', b.textContent?.toLowerCase() === getLang()));
     this.syncSliders();
-    this.controlsHost.replaceChildren();
-    const touch = Boolean(this.rootNode.parentElement?.classList.contains('touch')) || softKeyboardLikely();
-    buildControlsLegend(this.controlsHost, touch);
+    this.autoField.classList.toggle('hidden', !this.touchDevice());
+    this.syncAuto();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
     if (!softKeyboardLikely()) this.nickInput.focus();
+  }
+
+  private touchDevice(): boolean {
+    return Boolean(this.rootNode.parentElement?.classList.contains('touch')) || softKeyboardLikely();
+  }
+
+  /** The toggle's two halves, and the legend under it: the stick's job changes with the setting. */
+  private syncAuto(): void {
+    const on = readAutoAccel();
+    this.autoButtons.forEach((b, i) => b.classList.toggle('selected', (i === 0) === on));
+    this.controlsHost.replaceChildren();
+    const touch = this.touchDevice();
+    buildControlsLegend(this.controlsHost, touch, touch && on);
   }
 
   /** Nickname and account, from whatever the record currently says — called again when it changes. */

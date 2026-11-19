@@ -1,0 +1,473 @@
+/* Results screen, second pass (CrazyGames relaunch): what the race did for the player beside the
+   table instead of under it, unlock cards, the next unlock, tomorrow's check-in. Loaded last, so
+   it settles the layout the earlier files (06, 11, 18) set up for the old single column.
+   Design: docs/superpowers/specs/2026-11-20-drift-kart-crazygames-relaunch.md, section 4.2. */
+
+/* A button taken out of a flow (`hidden`) really goes: `.btn` sets its own display. */
+.btn[hidden] {
+  display: none;
+}
+
+.results-panel {
+  width: min(96vw, 1060px);
+  /* `.panel` caps every panel at 760px; this one holds two columns. */
+  max-width: min(96vw, 1060px);
+}
+
+.results-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  gap: 0 clamp(14px, 2.4vw, 30px);
+  align-items: start;
+}
+.results-main,
+.results-side {
+  min-width: 0;
+}
+.results-head {
+  margin: 4px 0 10px;
+}
+.results-plate {
+  font-size: clamp(40px, 5.6vw, 68px);
+}
+.results-title {
+  font-size: clamp(26px, 3.6vw, 44px);
+}
+.results-winner {
+  width: clamp(84px, 11vw, 132px);
+}
+
+/* The table: every row that fits beside the left column; it scrolls before the buttons move. */
+.results-side .standings {
+  max-height: calc(100dvh - 190px);
+}
+.results-side .standing-row {
+  grid-template-columns: 46px 14px 1fr auto;
+  padding: 6px 10px 6px 8px;
+}
+.results-side .standings.points .standing-row {
+  grid-template-columns: 46px 14px 1fr auto auto;
+}
+
+/* What the race paid: the biggest thing on the left after the place itself. */
+.results-rewards {
+  padding: 10px 12px 10px;
+  border-top: 0;
+  border-left: 4px solid var(--yellow);
+  background: var(--asphalt);
+}
+.reward-row {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.reward-label {
+  flex-basis: 100%;
+}
+.reward-amount {
+  font-size: clamp(34px, 4.4vw, 50px);
+  gap: 8px;
+}
+.reward-amount .icon {
+  width: 0.78em;
+  height: 0.78em;
+}
+.reward-xp-bar {
+  width: clamp(70px, 9vw, 130px);
+  height: 8px;
+}
+.reward-level {
+  font-size: 15px;
+  padding: 3px 9px;
+}
+.reward-balance {
+  font-size: 13px;
+}
+.reward-notes {
+  margin-top: 6px;
+  gap: 3px 14px;
+}
+.reward-note {
+  font-size: 13px;
+}
+
+/* What it opened: one card each, yellow, with a picture. */
+.results-opened,
+.results-next,
+.results-tomorrow {
+  margin-top: 8px;
+}
+.results-opened:empty,
+.results-next:empty,
+.results-tomorrow:empty {
+  display: none;
+}
+.results-opened {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.unlock-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 200px;
+  padding: 5px 12px 5px 5px;
+  background: var(--yellow);
+  color: var(--on-yellow);
+  animation: unlock-in 0.45s var(--ease-pop) both;
+}
+@keyframes unlock-in {
+  from { opacity: 0; transform: scale(0.86); }
+  to { opacity: 1; transform: none; }
+}
+.unlock-art {
+  flex: none;
+  width: 76px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--asphalt);
+  color: var(--yellow);
+}
+.unlock-art canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.unlock-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.unlock-art .icon {
+  width: 24px;
+  height: 24px;
+}
+.unlock-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.unlock-label {
+  font: 800 10px/1 var(--body);
+  letter-spacing: 0.12em;
+}
+.unlock-name {
+  overflow: hidden;
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 19px;
+  line-height: 1.05;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The closest thing still to earn. */
+.results-next {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 7px 10px;
+  background: var(--asphalt);
+  font-size: 13px;
+}
+.next-label,
+.tomorrow-label {
+  font: 700 10px/1 var(--body);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.next-text {
+  font-weight: 700;
+  word-break: keep-all;
+}
+.next-bar {
+  display: block;
+  flex: 1 1 50px;
+  min-width: 40px;
+  height: 6px;
+  background: var(--line);
+}
+.next-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--yellow);
+}
+.next-count {
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.next-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--yellow);
+  font-weight: 700;
+}
+.next-reward .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+/* Tomorrow's check-in (results, and the check-in window once today is claimed). */
+.results-tomorrow,
+.attendance-tomorrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 2px dashed var(--line);
+}
+.attendance-tomorrow.hidden {
+  display: none;
+}
+.tomorrow-art {
+  flex: none;
+  width: 70px;
+  height: 44px;
+  object-fit: contain;
+}
+.tomorrow-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.tomorrow-label {
+  color: var(--yellow);
+}
+.tomorrow-what {
+  font-size: 13px;
+  font-weight: 700;
+  /* Korean breaks between words, not inside one. */
+  word-break: keep-all;
+}
+.tomorrow-in {
+  font-size: 11px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Check-in window: a day that hands over a garage entry names it; the next such day is pictured. */
+.attendance-cell.gift {
+  border-top-color: var(--yellow);
+}
+.attendance-gift {
+  max-width: 100%;
+  padding: 0 2px;
+  font: 700 10px/1.15 var(--body);
+  color: var(--yellow);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.attendance-milestone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.attendance-gift-art {
+  flex: none;
+  width: 64px;
+  height: 40px;
+  object-fit: contain;
+}
+
+/* Foot: the primary is the widest thing in the row. */
+.results-foot > .actions {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.results-foot > .actions .btn {
+  white-space: nowrap;
+}
+.results-foot > .actions .results-next-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.results-next-btn .btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One column when the window is too narrow for two tables side by side. */
+@media (max-width: 759px) {
+  .results-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .results-side {
+    margin-top: 8px;
+  }
+  .results-side .standings {
+    max-height: none;
+  }
+  .results-foot > .actions {
+    flex-wrap: wrap;
+  }
+}
+
+/* Landscape phone: the whole screen at once. The table drops to the top three and the player,
+   everything else is a size down, and nothing scrolls. */
+@media (max-height: 480px) {
+  .results-panel {
+    --pad-y: 8px;
+    width: min(98vw, 1060px);
+  }
+  .results-panel > .panel-kicker {
+    display: none;
+  }
+  .results-head {
+    margin: 0 0 6px;
+  }
+  .results-plate {
+    font-size: 34px;
+  }
+  .results-title {
+    font-size: 24px;
+  }
+  .results-winner {
+    width: 70px;
+  }
+  .results-side .standings,
+  .results-panel:has(.results-rewards:not(:empty)) .standings,
+  .results-panel:has(.reward-notes:not(:empty)) .standings {
+    max-height: none;
+    overflow: visible;
+  }
+  .standing-row.extra {
+    display: none;
+  }
+  .results-body {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 0 14px;
+  }
+  .results-rewards {
+    padding: 4px 10px;
+  }
+  .reward-label,
+  .reward-balance {
+    display: none;
+  }
+  .reward-row {
+    flex-wrap: nowrap;
+    gap: 4px 10px;
+  }
+  .reward-amount {
+    font-size: 28px;
+  }
+  .reward-xp-bar {
+    width: 48px;
+  }
+  .reward-xp-n {
+    font-size: 11px;
+  }
+  .btn.reward-double {
+    min-height: 28px;
+    margin-left: auto;
+    padding: 0 10px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .btn.reward-double .btn-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .reward-notes {
+    max-height: none;
+    overflow: visible;
+    font-size: 11px;
+    margin-top: 3px;
+  }
+  .reward-note {
+    font-size: 11px;
+  }
+  .results-opened,
+  .results-next,
+  .results-tomorrow {
+    margin-top: 5px;
+  }
+  .results-opened {
+    gap: 4px;
+  }
+  .unlock-card {
+    flex-basis: 140px;
+    padding: 2px 8px 2px 2px;
+    gap: 6px;
+  }
+  .unlock-art {
+    width: 44px;
+    height: 28px;
+  }
+  .unlock-text {
+    gap: 2px;
+  }
+  .unlock-label {
+    font-size: 8px;
+    white-space: nowrap;
+  }
+  .unlock-name {
+    font-size: 13px;
+  }
+  /* One line: what, how far, and what it earns. */
+  .results-next {
+    flex-wrap: nowrap;
+    padding: 3px 8px;
+    gap: 3px 7px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .results-next .next-label {
+    display: none;
+  }
+  .results-next .next-reward {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .results-tomorrow {
+    padding: 3px 8px;
+  }
+  .results-tomorrow .tomorrow-art {
+    width: 48px;
+    height: 30px;
+  }
+  .tomorrow-what {
+    font-size: 11px;
+  }
+  .tomorrow-in {
+    font-size: 10px;
+  }
+  .results-foot > .actions {
+    padding-top: 6px;
+    gap: 6px;
+  }
+  .results-foot > .actions .btn {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .attendance-gift {
+    font-size: 9px;
+  }
+  .attendance-tomorrow {
+    padding: 3px 8px;
+  }
+  .attendance-tomorrow .tomorrow-art,
+  .attendance-gift-art {
+    width: 48px;
+    height: 30px;
+  }
+  .attendance-milestone {
+    font-size: 11px;
+  }
+}

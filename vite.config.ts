@@ -2,7 +2,8 @@ import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { defineConfig } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, type Plugin } from 'vite';
 
 /**
  * A stamp the running game can show.
@@ -60,15 +61,109 @@ function buildId(): string {
   return `${day}-${parts.join('-')}`;
 }
 
-export default defineConfig({
-  base: './',
-  define: {
-    __BUILD_ID__: JSON.stringify(buildId()),
-  },
-  server: { port: 5178, strictPort: false, open: false },
-  build: {
-    target: 'es2022',
-    sourcemap: false,
-    chunkSizeWarningLimit: 2000,
-  },
+/**
+ * Build targets (src/core/platform.ts). `vite build` is the Verse8 / ONE store edition and goes to
+ * `dist/`. `vite build --mode crazygames` is the CrazyGames edition: another name, no purchase UI,
+ * the account kept in the browser. It goes to `dist-crazygames/` so the two never overwrite each
+ * other, and its page title and tab icon carry its own name.
+ */
+const TARGETS: Record<string, { outDir: string; title: string; initial: string }> = {
+  crazygames: { outDir: 'dist-crazygames', title: 'Drift Kart', initial: 'K' },
+};
+
+/** Wording that belongs to the Verse8 edition: the VX pass, rewarded ads, the host itself. */
+const OTHER_EDITION = /\bVX\b|\bads?\b|Verse8|광고/i;
+
+/**
+ * Rewrites the two locale tables for a target that is not Verse8. An entry with a `<key>@<target>`
+ * variant takes the variant's wording, the variants themselves are dropped, and whatever still
+ * talks about the VX pass, ads or Verse8 is removed: those lines sit behind buttons this edition
+ * does not have, and a build that cannot show them should not ship them either. (If one is ever
+ * reached, `t()` prints the bare key, which is a bug that cannot be missed.)
+ */
+function targetLocales(target: string): Plugin {
+  const suffix = `@${target}`;
+  return {
+    name: 'target-locales',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/src\/core\/locales\/(en|ko)\.ts$/.test(id.split('?')[0])) return null;
+      const start = code.indexOf('{', code.indexOf('export const'));
+      const end = code.lastIndexOf('}');
+      const table = new Function(`return (${code.slice(start, end + 1)});`)() as Record<string, string>;
+      const out: Record<string, string> = {};
+      for (const [key, value] of Object.entries(table)) {
+        if (key.includes('@')) continue;
+        const text = table[key + suffix] ?? value;
+        if (!OTHER_EDITION.test(text)) out[key] = text;
+      }
+      return { code: code.slice(0, start) + JSON.stringify(out) + code.slice(end + 1), map: null };
+    },
+  };
+}
+
+/**
+ * server.js travels inside the page as text (`?raw`, for the in-page server of localServer.ts).
+ * Its comments are written for whoever maintains the Verse8 deployment; a build for somewhere else
+ * ships the code without them. Whole-line comments only, which is every comment the file has that
+ * says anything: nothing here parses JavaScript.
+ */
+function serverWithoutComments(): Plugin {
+  return {
+    name: 'server-without-comments',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/\/server\.js\?raw$/.test(id)) return null;
+      // By the time a `?raw` module reaches a plugin it is `export default "<the text>"`.
+      const match = /^export default (".*")\s*;?\s*$/s.exec(code);
+      if (!match) return null;
+      const text = (JSON.parse(match[1]) as string)
+        .split('\n')
+        .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+        .join('\n');
+      return { code: `export default ${JSON.stringify(text)};`, map: null };
+    },
+  };
+}
+
+/** Sends the Verse8 SDK imports to the local stand-ins (src/verse8/stubs/sdk.ts). */
+const SDK_STUB = fileURLToPath(new URL('./src/verse8/stubs/sdk.ts', import.meta.url));
+const SDK_ALIASES = [
+  { find: /^@agent8\/gameserver(\/.*)?$/, replacement: SDK_STUB },
+  { find: /^@verse8\/platform\/vanilla$/, replacement: SDK_STUB },
+  { find: /^@verse8\/ads$/, replacement: SDK_STUB },
+];
+
+export default defineConfig(({ mode }) => {
+  const target = TARGETS[mode];
+  return {
+    base: './',
+    define: {
+      __BUILD_ID__: JSON.stringify(buildId()),
+      // A bare boolean the minifier can fold: code behind `if (!__VX__) return` leaves the bundle.
+      __VX__: JSON.stringify(!target),
+    },
+    resolve: { alias: target ? SDK_ALIASES : [] },
+    server: { port: 5178, strictPort: false, open: false },
+    build: {
+      target: 'es2022',
+      sourcemap: false,
+      chunkSizeWarningLimit: 2000,
+      outDir: target?.outDir ?? 'dist',
+    },
+    plugins: target
+      ? [
+          targetLocales(mode),
+          serverWithoutComments(),
+          {
+            name: 'target-brand',
+            // index.html is written for the default edition; an edition with its own name gets it here.
+            transformIndexHtml: (html: string) =>
+              html
+                .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
+                .replace(/(fill='%23ffd400'%3E)D(%3C\/text%3E)/, `$1${target.initial}$2`),
+          },
+        ]
+      : [],
+  };
 });

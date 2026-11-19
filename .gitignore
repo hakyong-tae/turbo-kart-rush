@@ -3,6 +3,7 @@ node_modules/
 
 # build output (rebuilt by CI for GitHub Pages)
 dist/
+dist-crazygames/
 
 # local env / secrets
 .env

@@ -7,7 +7,7 @@
  */
 import type { TrackDefinition } from '../core/types';
 import { clamp01 } from '../core/math';
-import { hasSeenControls, markControlsSeen } from '../game/settingsStore';
+import { hasSeenControls, markControlsSeen, readAutoAccel } from '../game/settingsStore';
 import { buildControlsLegend } from './controlsLegend';
 import { el, TextField } from './dom';
 import { icon } from './icons';
@@ -65,7 +65,7 @@ export class LoadingScreen {
     if (firstRace) {
       markControlsSeen();
       el('div', 'loading-tip-label', t('settings.controls'), this.controlsBox);
-      buildControlsLegend(this.controlsBox, touch);
+      buildControlsLegend(this.controlsBox, touch, touch && readAutoAccel());
     }
     this.controlsBox.classList.toggle('hidden', !firstRace);
     this.tipNode.classList.toggle('hidden', firstRace);

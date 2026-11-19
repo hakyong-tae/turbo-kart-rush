@@ -32,7 +32,8 @@ import {
   type CosmeticRef,
   type KartCosmetics,
 } from '../core/cosmetics';
-import { formatCoins, priceOf } from '../core/economy';
+import { formatCoins, ladderStepOf, ladderValue, priceOf } from '../core/economy';
+import { PLATFORM } from '../core/platform';
 import { t } from '../core/i18n';
 import type { CharacterDef, InputState } from '../core/types';
 import { getCharacter } from '../kart/roster';
@@ -42,7 +43,9 @@ import {
   getCoins,
   getCosmetics,
   getEntitlements,
+  getLadder,
   getOwned,
+  getStreak,
   onEntitlementsChange,
   refreshEntitlements,
   saveCosmetics,
@@ -53,7 +56,7 @@ import { button, el, setButtonContent } from './dom';
 import { icon } from './icons';
 import { GaragePreview } from './garage/GaragePreview';
 import { PurchaseSheet, type PurchaseItem } from './garage/PurchaseSheet';
-import { earnChip, earnCondition } from './progression/text';
+import { earnChip, earnCondition, ladderCondition } from './progression/text';
 import { showToast } from './toast';
 
 /** Everything the paid tier owns, lifted off a stored look so a save can carry it through. */
@@ -167,6 +170,9 @@ export class GaragePanel {
     this.saveBtn = button(t('garage.save'), 'primary garage-save', () => void this.save());
     actions.appendChild(this.saveBtn);
     actions.appendChild(button(t('menu.back'), 'ghost garage-close', () => this.close(), 'chevron-left'));
+
+    // Outside a Verse8 host the account lives in this browser: say so where the kart is dressed.
+    if (!inVerse8Host()) el('div', 'garage-autosave', t('garage.autosave'), panel);
 
     this.sheet = new PurchaseSheet(this.rootNode);
     this.sheet.onBuy = (tokens) => this.buy(tokens);
@@ -293,7 +299,8 @@ export class GaragePanel {
     this.stateChip.classList.toggle('owned', known && owned && !trying);
     this.stateChip.classList.toggle('trying', trying);
     this.coinChip.replaceChildren(icon('coin'), document.createTextNode(formatCoins(getCoins())));
-    this.unlockBtn.classList.toggle('hidden', !known || (owned && !trying));
+    // Where the pass is not sold, the button only exists as the till for what is on the kart.
+    this.unlockBtn.classList.toggle('hidden', !known || (owned && !trying) || (!PLATFORM.vx && !trying));
     setButtonContent(
       this.unlockBtn,
       earnedOnly ? t('garage.howToGet') : trying ? t('garage.buyWorn', { n: cost }) : t('garage.unlock'),
@@ -327,7 +334,7 @@ export class GaragePanel {
       };
     });
     // The pass is only worth offering for what it would open.
-    this.sheet.show(items, getCoins(), !this.premium && worn.some((part) => !part.entry.earn));
+    this.sheet.show(items, getCoins(), PLATFORM.vx && !this.premium && worn.some((part) => !part.entry.earn));
   }
 
   /**
@@ -426,9 +433,16 @@ export class GaragePanel {
         if (glyph) b.appendChild(glyph);
       }
       el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
-      if (locked) {
-        const token = cosmeticToken(field, entry.id) ?? '';
-        this.lockChip(b, priceOf(token), entry.earn ? earnChip(token) : null);
+      const token = cosmeticToken(field, entry.id) ?? '';
+      if (locked) this.lockChip(b, priceOf(token), entry.earn ? earnChip(token) : null);
+      // A rung of the first-session ladder: free for doing something, so the card says what and
+      // how far along it is. Once the account has it (earned, bought or by the pass) it says so.
+      const rung = ladderStepOf(token);
+      const ladder = rung ? getLadder() : null;
+      if (rung && ladder) {
+        b.classList.add('rung');
+        const at = Math.min(rung.at, ladderValue(rung, ladder, getStreak()?.total ?? 0));
+        el('span', `garage-option-rung${locked ? '' : ' have'}`, locked ? `${ladderCondition(rung)} · ${at}/${rung.at}` : t('ladder.have'), b);
       }
       b.addEventListener('click', () => {
         // Locked or not, it goes on the kart: see the note at the top of the file.

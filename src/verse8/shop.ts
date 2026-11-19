@@ -21,10 +21,11 @@ import { inVerse8Host } from './embed';
 import { mockStore, refreshEntitlements } from './entitlements';
 
 export const PRODUCT_PREMIUM = 'premium-garage';
-export const PRICE_LABEL = '100 VX';
+/** Empty on a build with no VX shop (`__VX__`, vite.config.ts): there is no price to print. */
+export const PRICE_LABEL = __VX__ ? '100 VX' : '';
 
 export function initShop(): void {
-  if (!inVerse8Host()) return;
+  if (!__VX__ || !inVerse8Host()) return;
   try {
     VXShop.init({ autoRefresh: true });
     VXShop.onClose((payload: { purchased?: boolean; action?: string }) => {
@@ -44,6 +45,8 @@ export type BuyResult = 'opened' | 'unregistered' | 'blocked';
  * 'blocked' when the platform refuses it (limit reached / not purchasable / SDK error).
  */
 export function buyPremium(): BuyResult {
+  // No VX shop on this build target: nothing is for sale, and the code below is not shipped.
+  if (!__VX__) return 'blocked';
   if (!inVerse8Host()) {
     mockPurchase();
     return 'opened';

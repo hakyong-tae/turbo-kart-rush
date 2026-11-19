@@ -111,7 +111,10 @@ describe('item sync (host authority → client mirror)', () => {
     hostBox0.respawnTimer = 30; // keep it collected long enough to observe on the client
     for (let i = 0; i < 40; i++) step();
     expect(cliItems.getNetItems().boxes[0]).toBe(false);
-    expect(cliItems.getActiveBoxPositions().length).toBe(hostBoxes.length - 1);
+    // The boxes that were live on the host, less the one collected. (The final-lap row is in the
+    // list too, waiting, and stays out on both ends of an online race.)
+    expect(cliItems.getActiveBoxPositions().length).toBe(hostBoxes.filter(Boolean).length - 1);
+    expect(cliItems.getNetItems().boxes).toEqual(hostItems.getNetItems().boxes);
 
     // Mirror never simulates: requestUse on the client is a no-op.
     cliKarts[1].state.item = 'banana';

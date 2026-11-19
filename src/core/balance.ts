@@ -344,7 +344,7 @@ export function createDefaultBalance(): Balance {
         easeThrottle: 0.55,
         usesMushrooms: false,
         startThrottleBeforeGo: 0.4,
-        rubber: { base: 0.74, amp: 0.1, scale: 60, min: 0.64, max: 0.84 },
+        rubber: { base: 0.7, amp: 0.09, scale: 50, min: 0.6, max: 0.79 },
       },
       kP: 2.2,
       kD: 0.15,

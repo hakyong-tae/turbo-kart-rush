@@ -7,6 +7,7 @@
  */
 import { formatCoins } from '../core/economy';
 import { t } from '../core/i18n';
+import { PLATFORM } from '../core/platform';
 import type { InputState } from '../core/types';
 import { getMissions, onEntitlementsChange, refreshEntitlements } from '../verse8/entitlements';
 import type { MissionView } from '../verse8/server';
@@ -111,7 +112,8 @@ export class MissionPanel {
       return;
     }
     this.shownDay = missions.day;
-    missions.list.forEach((m, i) => this.card(m, i, missions.swapsLeft > 0));
+    // The swap is paid for with a rewarded ad: where there are none, it is not offered.
+    missions.list.forEach((m, i) => this.card(m, i, PLATFORM.rewardedAds && missions.swapsLeft > 0));
     this.bonus.textContent = missions.bonus ? t('mis.bonusDone') : t('mis.bonus', { n: formatCoins(missions.bonusCoins) });
     this.bonus.classList.toggle('done', missions.bonus);
   }

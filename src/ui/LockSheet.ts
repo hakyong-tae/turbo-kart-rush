@@ -6,6 +6,7 @@
 import type { CharacterDef } from '../core/types';
 import { t } from '../core/i18n';
 import { KART_PRICE, formatCoins } from '../core/economy';
+import { PLATFORM } from '../core/platform';
 import { getCoins, getEntitlements } from '../verse8/entitlements';
 import { button, el, TextField } from './dom';
 import { icon } from './icons';
@@ -43,6 +44,10 @@ export class LockSheet {
     this.buyBtn = button(t('v8.lock.buy'), '', () => void this.run(this.handlers?.onBuy), 'cart');
     this.otherBtn = button(t('v8.lock.other'), 'ghost', () => this.handlers?.onOther());
     actions.append(this.watchBtn, this.coinsBtn, this.buyBtn, this.otherBtn);
+    // A build with no rewarded ads or no VX shop offers the kart for coins and nothing else.
+    this.watchBtn.hidden = !PLATFORM.rewardedAds;
+    this.buyBtn.hidden = !PLATFORM.vx;
+    if (!PLATFORM.rewardedAds) this.coinsBtn.classList.add('primary');
   }
 
   get isVisible(): boolean {
@@ -53,7 +58,7 @@ export class LockSheet {
     this.handlers = handlers;
     this.title.set(character.name.toUpperCase());
     const n = getEntitlements().premiumRaces;
-    this.body.set(t('v8.lock.body', { name: character.name }) + (n > 0 ? `  ${t('v8.ticketsLeft', { n })}` : ''));
+    this.body.set(t('v8.lock.body', { name: character.name }) + (n > 0 && PLATFORM.rewardedAds ? `  ${t('v8.ticketsLeft', { n })}` : ''));
     this.wallet.replaceChildren(icon('coin'), document.createTextNode(t('v8.lock.have', { n: formatCoins(getCoins()) })));
     this.setBusy(false);
     this.rootNode.classList.remove('hidden');

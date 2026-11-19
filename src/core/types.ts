@@ -606,6 +606,11 @@ export interface IItemManager {
    * The player's own roulette is untouched.
    */
   setGentleAi?(on: boolean): void;
+  /**
+   * Contract addition (final lap): brings in the extra row of boxes kept back for the last lap.
+   * Offline only; a mirrored race never calls it, so both ends keep the same boxes.
+   */
+  openFinalLapBoxes?(): void;
   getNetItems?(): NetItems;
   applyNetItems?(items: NetItems): void;
 }

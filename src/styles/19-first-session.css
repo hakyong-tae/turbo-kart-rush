@@ -237,3 +237,95 @@
     padding: 2px 7px 3px;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   Lobby: RACE, then garage and missions, then a row of four icon buttons.
+   --------------------------------------------------------------------------- */
+.lobby-icons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.lobby-icons .lobby-btn.lobby-icon {
+  min-height: 42px;
+  padding: 0;
+  justify-content: center;
+}
+.lobby-icons .lobby-icon .btn-label {
+  display: none;
+}
+.lobby-icons .lobby-icon .icon {
+  width: 20px;
+  height: 20px;
+}
+/* Today's check-in is still to claim: a yellow dot on the flame. */
+.lobby-icons .attendance-toggle.attn {
+  position: relative;
+}
+.lobby-icons .attendance-toggle.attn::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--yellow);
+}
+
+/* ----------------------------------------------------------------------------
+   Circuit picker: a circuit still to open keeps its card, dimmed, with what opens it.
+   --------------------------------------------------------------------------- */
+.track-card.locked .track-thumb {
+  filter: grayscale(1) brightness(0.55);
+}
+.track-card.locked .card-name,
+.track-card.locked .stars,
+.track-card.locked .track-meta {
+  opacity: 0.55;
+}
+.track-lock {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.track-lock.hidden {
+  display: none;
+}
+.track-lock .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* ----------------------------------------------------------------------------
+   Garage: a ladder rung says what earns it, and that the account's progress is kept here.
+   --------------------------------------------------------------------------- */
+.garage-option-rung {
+  display: block;
+  margin-top: 2px;
+  font: 700 10px/1.2 var(--body);
+  letter-spacing: 0.02em;
+  color: var(--yellow);
+  white-space: normal;
+}
+.garage-option-rung.have {
+  color: var(--ink-faint);
+}
+.garage-autosave {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: right;
+}
+@media (max-height: 480px) {
+  .lobby-icons .lobby-btn.lobby-icon {
+    min-height: 34px;
+  }
+  .garage-autosave {
+    margin-top: 2px;
+    font-size: 10px;
+  }
+}

@@ -1,6 +1,8 @@
 /**
- * Post-race screen: the player's place on a big number plate, the standings table, confetti for
- * a podium finish and Race Again / Change Circuit / Lobby actions (records as an icon button).
+ * Post-race screen. Its job is the next race: the player's place on a big number plate, what the
+ * race paid and what it opened, the one unlock that is closest, and a primary button that goes
+ * straight to the next circuit. The standings sit beside all that (under it on a narrow window);
+ * Race Again, Change Circuit and Lobby are the quieter buttons, records an icon.
  */
 import type { InputState, RaceStanding, RaceMode, Team } from '../core/types';
 import { SIDE_COLORS, computeTeamResult, isTeamMode, pointsFor, teamOf } from '../core/teams';
@@ -12,7 +14,7 @@ import type { CupEntry } from '../core/cups';
 import { badgeElement } from './badges';
 import { CHARACTERS } from '../kart/roster';
 import { getLookThumbnail } from './kartThumbnails';
-import { button, cssHex, el, FocusRing, setButtonContent, TextField } from './dom';
+import { button, cssHex, el, setButtonContent, TextField } from './dom';
 import { formatCoins, type LevelInfo } from '../core/economy';
 import { icon } from './icons';
 
@@ -54,6 +56,46 @@ export interface RewardView {
   canDouble?: boolean;
   /** Coins a doubling added (the offer was taken). */
   doubled?: number;
+  /** What this race opened: circuits and garage entries, each with a picture when there is one. */
+  opened?: readonly UnlockCard[];
+  /** The closest thing still to earn, with how far along it is. */
+  nextUnlock?: NextUnlock | null;
+  /** Tomorrow's check-in, shown on the day's second race. */
+  tomorrow?: TomorrowView | null;
+}
+
+/** One thing a race opened. */
+export interface UnlockCard {
+  kind: 'track' | 'item';
+  name: string;
+  /** A circuit thumbnail (canvas) or a kart wearing the entry (image URL). */
+  image?: HTMLCanvasElement | string;
+}
+
+/** "Finish 3 races 2/3 → Sparks trail". */
+export interface NextUnlock {
+  text: string;
+  value: number;
+  target: number;
+  reward: string;
+}
+
+/** Tomorrow's check-in reward. */
+export interface TomorrowView {
+  coins: number;
+  /** Name of the garage entry that comes with it, and a picture of it. */
+  gift?: string;
+  image?: string;
+}
+
+/** Which buttons the screen offers. */
+export type ResultsFlow = 'single' | 'cup' | 'online';
+
+/** Time left until the next UTC midnight, as `hh:mm:ss`: when tomorrow's check-in opens. */
+export function untilNewDay(now = Date.now()): string {
+  const left = Math.max(0, 86400000 - (now % 86400000));
+  const two = (n: number): string => String(Math.floor(n)).padStart(2, '0');
+  return `${two(left / 3600000)}:${two((left / 60000) % 60)}:${two((left / 1000) % 60)}`;
 }
 
 /** What the results screen needs to know about an in-progress cup. */
@@ -64,7 +106,18 @@ export interface CupView {
   isFinal: boolean;
 }
 
+/** Button order in the foot; `activate` and the focus ring both count in it. */
+const enum Action {
+  Next,
+  Again,
+  Change,
+  Lobby,
+  Records,
+}
+
 export class ResultsScreen {
+  /** The primary button: on to the next circuit (or the next leg of a cup). */
+  onNextRace: (() => void) | null = null;
   onRaceAgain: (() => void) | null = null;
   onChangeTrack: (() => void) | null = null;
   onMainMenu: (() => void) | null = null;
@@ -80,51 +133,74 @@ export class ResultsScreen {
   private readonly rankBanner: TextField;
   private readonly table: HTMLElement;
   private readonly confetti: HTMLElement;
-  private readonly focus: FocusRing;
+  /** Position of the keyboard cursor among the buttons this flow shows. */
+  private focusIndex = 0;
   private visible = false;
-  private recordsButton!: HTMLButtonElement;
-  private againButton!: HTMLButtonElement;
+  private readonly buttons: HTMLButtonElement[] = [];
   private readonly winnerShot: HTMLImageElement;
   private readonly cupBox: HTMLElement;
   private readonly rewards: HTMLElement;
+  private readonly opened: HTMLElement;
+  private readonly nextUnlock: HTMLElement;
+  private readonly tomorrow: HTMLElement;
   private countTimer = 0;
+  private tomorrowTimer = 0;
+  private flow: ResultsFlow = 'single';
+  private cupView: CupView | undefined;
+  private nextTrack = '';
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
     this.confetti = el('div', 'confetti', undefined, this.rootNode);
     this.panel = el('div', 'panel results-panel', undefined, this.rootNode);
     el('div', 'panel-kicker', t('results.kicker'), this.panel);
-    // Head: the one thing this screen is for — where you finished — on a number plate, with the
-    // verdict beside it and the winner's kart at the far end.
-    const head = el('div', 'results-head', undefined, this.panel);
+    // Two columns where the window is wide enough: what the race did for the player on the left,
+    // the table on the right. One column otherwise, in that order.
+    const body = el('div', 'results-body', undefined, this.panel);
+    const main = el('div', 'results-main', undefined, body);
+    const side = el('div', 'results-side', undefined, body);
+    // Head: where you finished, on a number plate, with the verdict beside it and the winner's
+    // kart at the far end.
+    const head = el('div', 'results-head', undefined, main);
     this.plate = new TextField(el('div', 'plate results-plate', '', head));
     const headText = el('div', 'results-head-text', undefined, head);
     this.heading = new TextField(el('h2', 'panel-title results-title', '', headText));
     this.subheading = new TextField(el('div', 'results-sub', '', headText));
     // The winner's actual kart, garage look and all — the reward for building one is being seen.
     this.winnerShot = el('img', 'results-winner hidden', undefined, head);
-    this.rankBanner = new TextField(el('div', 'results-rank hidden', '', this.panel));
-    this.table = el('div', 'standings', undefined, this.panel);
+    this.rankBanner = new TextField(el('div', 'results-rank hidden', '', main));
+    // What the race paid, straight under the verdict. Empty (and collapsed) for a race that pays
+    // nothing, such as a dev auto-drive.
+    this.rewards = el('div', 'results-rewards', undefined, main);
+    // What it opened, then the closest thing still to earn, then (once a day) tomorrow's check-in.
+    this.opened = el('div', 'results-opened', undefined, main);
+    this.nextUnlock = el('div', 'results-next', undefined, main);
+    this.tomorrow = el('div', 'results-tomorrow', undefined, main);
+    this.table = el('div', 'standings', undefined, side);
     // Cup table: only filled during a Grand Prix, where the race result is half the story.
-    this.cupBox = el('div', 'cup-standings hidden', undefined, this.panel);
-    // What the race paid: between the table and the buttons. Empty (and collapsed) for a race
-    // that pays nothing, such as a dev auto-drive.
-    // It shares the sticky foot with the buttons, so it stays on screen when the tables scroll.
+    this.cupBox = el('div', 'cup-standings hidden', undefined, side);
     const foot = el('div', 'results-foot', undefined, this.panel);
-    this.rewards = el('div', 'results-rewards', undefined, foot);
     const actions = el('div', 'actions', undefined, foot);
-    this.focus = new FocusRing((i) => this.activate(i));
-    const again = button(t('results.again'), 'primary', () => this.activate(0));
-    this.againButton = again;
-    const change = button(t('results.changeTrack'), '', () => this.activate(1));
-    const menu = button(t('results.mainMenu'), 'ghost', () => this.activate(2));
-    const records = button(t('lb.button'), 'ghost icon-only results-records', () => this.activate(3), 'trophy');
-    this.recordsButton = records;
-    actions.append(again, change, menu, records);
-    this.focus.add(again);
-    this.focus.add(change);
-    this.focus.add(menu);
-    this.focus.add(records);
+    this.buttons[Action.Next] = button(t('results.next'), 'primary results-next-btn', () => this.activate(Action.Next));
+    this.buttons[Action.Again] = button(t('results.again'), 'results-again', () => this.activate(Action.Again));
+    this.buttons[Action.Change] = button(t('results.changeTrack'), '', () => this.activate(Action.Change));
+    this.buttons[Action.Lobby] = button(t('results.mainMenu'), 'ghost', () => this.activate(Action.Lobby));
+    this.buttons[Action.Records] = button(t('lb.button'), 'ghost icon-only results-records', () => this.activate(Action.Records), 'trophy');
+    actions.append(...this.buttons);
+    this.buttons.forEach((b, action) => {
+      // Hover moves the cursor too, so mouse and keyboard agree on where it is.
+      b.addEventListener('pointerenter', () => {
+        const at = this.visibleActions().indexOf(action);
+        if (at >= 0) this.setFocus(at);
+      });
+    });
+    this.applyFlow();
+  }
+
+  /** Name of the circuit the primary button goes to. Game sets it again when a race opens a new one. */
+  setNextTrack(name: string): void {
+    this.nextTrack = name;
+    this.labelPrimary();
   }
 
   /**
@@ -132,7 +208,9 @@ export class ResultsScreen {
    * cup ends here. Absent for a one-off race.
    */
   show(standings: readonly RaceStanding[], mode: RaceMode = 'solo', online = false, cup?: CupView): void {
-    this.recordsButton.hidden = online;
+    this.flow = online ? 'online' : cup ? 'cup' : 'single';
+    this.cupView = cup;
+    this.applyFlow();
     this.clearRewards();
     this.table.replaceChildren();
     this.confetti.replaceChildren();
@@ -193,6 +271,8 @@ export class ResultsScreen {
       const row = el('div', 'standing-row', undefined, this.table);
       row.style.animationDelay = `${0.12 + i * 0.09}s`;
       if (s.isPlayer) row.classList.add('you');
+      // A phone shows the top three and the player; everyone else is a row it has no room for.
+      if (i >= 3 && !s.isPlayer) row.classList.add('extra');
       if (s.place <= 3) row.classList.add(`podium-${s.place}`);
       const team = s.team ?? teamOf(s.kartId);
       const ally = team === myTeam;
@@ -220,7 +300,7 @@ export class ResultsScreen {
 
     if (teamResult ? teamWon : place <= 3) this.spawnConfetti();
 
-    this.focus.set(0);
+    this.setFocus(0);
     this.rootNode.classList.remove('hidden');
     this.panel.classList.remove('panel-in');
     void this.panel.offsetWidth;
@@ -232,22 +312,24 @@ export class ResultsScreen {
     this.rootNode.classList.add('hidden');
     this.confetti.replaceChildren();
     this.stopCount();
+    this.stopTomorrow();
     this.visible = false;
   }
 
   handleInput(input: InputState): void {
     if (!this.visible) return;
     if (input.menuLeft || input.menuUp) {
-      if (this.focus.move(-1)) events.emit('ui:move', {});
+      if (this.setFocus(this.focusIndex - 1)) events.emit('ui:move', {});
     } else if (input.menuRight || input.menuDown) {
-      if (this.focus.move(1)) events.emit('ui:move', {});
+      if (this.setFocus(this.focusIndex + 1)) events.emit('ui:move', {});
     }
-    if (input.confirm) this.focus.activate();
-    else if (input.back) this.activate(2);
+    if (input.confirm) this.activate(this.visibleActions()[this.focusIndex] ?? Action.Lobby);
+    else if (input.back) this.activate(Action.Lobby);
   }
 
   dispose(): void {
     this.stopCount();
+    this.stopTomorrow();
     this.rootNode.remove();
   }
 
@@ -267,6 +349,9 @@ export class ResultsScreen {
       el('span', 'reward-note', view.state === 'pending' ? t('rewards.pending') : (view.why ?? t('rewards.failed')), row);
       return;
     }
+    this.renderOpened(view.opened ?? []);
+    this.renderNextUnlock(view.nextUnlock ?? null);
+    this.renderTomorrow(view.tomorrow ?? null);
     const doubled = Math.max(0, Math.floor(view.doubled ?? 0));
     const coins = Math.max(0, Math.floor(view.coins ?? 0)) + doubled;
     el('span', 'reward-label', t('rewards.race'), row);
@@ -296,7 +381,8 @@ export class ResultsScreen {
     }
     for (const m of view.missions ?? []) note(t('rewards.mission', { name: m.title, n: formatCoins(m.coins) }), 'good');
     if (view.bonus) note(t('rewards.bonus', { n: formatCoins(view.bonus) }), 'good');
-    for (const name of view.unlocked ?? []) note(t('rewards.unlocked', { name }), 'good');
+    // Anything opened that has no card of its own (a caller that sent names only) is still said.
+    if (!view.opened?.length) for (const name of view.unlocked ?? []) note(t('rewards.unlocked', { name }), 'good');
     if (view.missionCount) note(t('rewards.missions', { done: view.missionCount.done, n: view.missionCount.total }));
     if (view.rate !== undefined && view.rate < 100) {
       note(t(view.rate > 0 ? 'rewards.reduced' : 'rewards.capped', { n: String(view.races ?? 0), pct: String(view.rate) }));
@@ -331,22 +417,137 @@ export class ResultsScreen {
 
   private clearRewards(): void {
     this.stopCount();
+    this.stopTomorrow();
     this.rewards.replaceChildren();
+    this.opened.replaceChildren();
+    this.nextUnlock.replaceChildren();
+    this.tomorrow.replaceChildren();
   }
 
-  private activate(i: number): void {
-    events.emit(i === 2 ? 'ui:back' : 'ui:select', {});
-    if (i === 0) this.onRaceAgain?.();
-    else if (i === 1) this.onChangeTrack?.();
-    else if (i === 3) this.onRecords?.();
+  /** "NEW CIRCUIT · Dune Drift", "NEW IN THE GARAGE · Checker livery": one card each. */
+  private renderOpened(cards: readonly UnlockCard[]): void {
+    this.opened.replaceChildren();
+    cards.forEach((card, i) => {
+      const node = el('div', `unlock-card ${card.kind}`, undefined, this.opened);
+      node.style.animationDelay = `${0.5 + i * 0.18}s`;
+      const art = el('div', 'unlock-art', undefined, node);
+      if (typeof card.image === 'string') {
+        const img = el('img', '', undefined, art);
+        img.src = card.image;
+        img.alt = '';
+        img.draggable = false;
+      } else if (card.image) {
+        art.appendChild(card.image);
+      } else {
+        art.appendChild(icon(card.kind === 'track' ? 'flag' : 'star'));
+      }
+      const text = el('div', 'unlock-text', undefined, node);
+      el('span', 'unlock-label', t(card.kind === 'track' ? 'results.newTrack' : 'results.newItem'), text);
+      el('span', 'unlock-name', card.name, text);
+    });
+  }
+
+  private renderNextUnlock(next: NextUnlock | null): void {
+    this.nextUnlock.replaceChildren();
+    if (!next) return;
+    el('span', 'next-label', t('results.nextUnlock'), this.nextUnlock);
+    el('span', 'next-text', next.text, this.nextUnlock);
+    const fill = el('i', '', undefined, el('span', 'next-bar', undefined, this.nextUnlock));
+    fill.style.width = `${Math.round((Math.min(next.value, next.target) / Math.max(1, next.target)) * 100)}%`;
+    el('span', 'next-count', `${Math.min(next.value, next.target)}/${next.target}`, this.nextUnlock);
+    const reward = el('span', 'next-reward', undefined, this.nextUnlock);
+    reward.append(icon('chevron-right'), document.createTextNode(next.reward));
+  }
+
+  /** Tomorrow's check-in: what it pays, what comes with it, and how long until it opens. */
+  private renderTomorrow(view: TomorrowView | null): void {
+    this.stopTomorrow();
+    this.tomorrow.replaceChildren();
+    if (!view) return;
+    if (view.image) {
+      const img = el('img', 'tomorrow-art', undefined, this.tomorrow);
+      img.src = view.image;
+      img.alt = '';
+      img.draggable = false;
+    }
+    const text = el('div', 'tomorrow-text', undefined, this.tomorrow);
+    el('span', 'tomorrow-label', t('tomorrow.title'), text);
+    el(
+      'span',
+      'tomorrow-what',
+      view.gift ? t('tomorrow.gift', { n: formatCoins(view.coins), name: view.gift }) : t('tomorrow.coins', { n: formatCoins(view.coins) }),
+      text,
+    );
+    const clock = el('span', 'tomorrow-in', '', text);
+    const tick = (): void => {
+      clock.textContent = t('tomorrow.in', { time: untilNewDay() });
+    };
+    tick();
+    this.tomorrowTimer = window.setInterval(tick, 1000);
+  }
+
+  private stopTomorrow(): void {
+    if (this.tomorrowTimer) window.clearInterval(this.tomorrowTimer);
+    this.tomorrowTimer = 0;
+  }
+
+  /** The buttons this flow offers, in focus order. */
+  private visibleActions(): Action[] {
+    if (this.flow === 'online') return [Action.Again, Action.Change, Action.Lobby];
+    if (this.flow === 'cup') return [Action.Next, Action.Change, Action.Lobby, Action.Records];
+    return [Action.Next, Action.Again, Action.Change, Action.Lobby, Action.Records];
+  }
+
+  /**
+   * A one-off race: NEXT RACE first, RACE AGAIN beside it. A cup: the primary carries the cup
+   * through and there is nothing to race again. Online: back to the room is the one way on.
+   */
+  private applyFlow(): void {
+    const shown = this.visibleActions();
+    this.buttons.forEach((b, i) => {
+      b.hidden = !shown.includes(i);
+    });
+    this.buttons[Action.Again].classList.toggle('primary', this.flow === 'online');
+    this.setFocus(0);
+    this.labelPrimary();
+  }
+
+  /** Moves the keyboard cursor (wrapping). False when it was already there. */
+  private setFocus(i: number): boolean {
+    const shown = this.visibleActions();
+    const n = shown.length;
+    const at = ((i % n) + n) % n;
+    const target = this.buttons[shown[at]];
+    const moved = at !== this.focusIndex || !target.classList.contains('focused');
+    this.buttons.forEach((b) => b.classList.toggle('focused', b === target));
+    this.focusIndex = at;
+    return moved;
+  }
+
+  private labelPrimary(): void {
+    const cup = this.flow === 'cup' ? this.cupView : undefined;
+    const label = cup
+      ? cup.isFinal
+        ? t('cup.finish')
+        : t('cup.next')
+      : this.nextTrack
+        ? t('results.nextOn', { name: this.nextTrack.toUpperCase() })
+        : t('results.next');
+    setButtonContent(this.buttons[Action.Next], label);
+  }
+
+  private activate(action: Action): void {
+    events.emit(action === Action.Lobby ? 'ui:back' : 'ui:select', {});
+    if (action === Action.Next) this.onNextRace?.();
+    else if (action === Action.Again) this.onRaceAgain?.();
+    else if (action === Action.Change) this.onChangeTrack?.();
+    else if (action === Action.Records) this.onRecords?.();
     else this.onMainMenu?.();
   }
 
   private renderCup(cup: CupView | undefined): void {
     this.cupBox.replaceChildren();
     this.cupBox.classList.toggle('hidden', !cup);
-    // The primary action carries the cup through: another race, or the final tally.
-    setButtonContent(this.againButton, cup ? (cup.isFinal ? t('cup.finish') : t('cup.next')) : t('results.again'));
     if (!cup) return;
     const head = el('div', 'cup-standings-head', undefined, this.cupBox);
     el('span', 'cup-standings-title', t('cup.standings'), head);
