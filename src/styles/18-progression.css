@@ -1,0 +1,652 @@
+/* Progression: coins in the lobby, the garage, the results screen and the lock sheet.
+   Same poster language as everything else: flat plates, one accent, no glow. */
+
+/* A coin amount: the icon and a number, yellow on asphalt. Used wherever a balance is shown. */
+.coin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--yellow);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.coin-chip .icon {
+  width: 1.05em;
+  height: 1.05em;
+  flex: none;
+}
+
+/* Lobby profile bar: sits above the logo, in the row 04-menu reserved for it. */
+.lobby-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.profile-coins {
+  min-height: 28px;
+  padding: 0 14px 0 12px;
+  background: var(--panel);
+  font-size: 17px;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+/* Garage: the wallet in the head, prices on the locked entries. */
+.garage-head {
+  align-items: center;
+}
+.garage-state {
+  flex: 1;
+  min-width: 0;
+}
+.garage-coins {
+  flex: none;
+}
+.chip.lock.price {
+  background: var(--line);
+  color: var(--yellow);
+  letter-spacing: 0.02em;
+  gap: 3px;
+}
+
+/* Purchase sheet: a scrim over the garage, the till in the middle. */
+.buy-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: rgba(21, 22, 26, 0.82);
+}
+.buy-panel {
+  --pad-x: 20px;
+  --pad-y: 14px;
+  width: min(460px, 100%);
+  max-height: 94%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.buy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.buy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.buy-row {
+  display: grid;
+  grid-template-columns: 6.5em 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 6px 4px 10px;
+  background: var(--asphalt);
+  border-left: 4px solid var(--yellow);
+  font-size: 13px;
+}
+.buy-group {
+  font: 700 10px/1.1 var(--body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.buy-name {
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buy-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--yellow);
+  font-family: var(--display);
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+}
+.buy-price .icon {
+  width: 14px;
+  height: 14px;
+}
+.buy-condition {
+  grid-column: 3 / -1;
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+.buy-row .btn.buy-one {
+  min-height: 32px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+.buy-note {
+  min-height: 1.2em;
+  font-size: 12px;
+  color: var(--red);
+  text-align: right;
+}
+.buy-note:empty {
+  display: none;
+}
+
+/* Lock sheet: the wallet line above the buttons. */
+.lock-wallet {
+  margin: -6px 0 12px;
+  font-size: 14px;
+}
+
+/* Results: what the race paid, between the standings and the buttons. */
+.results-rewards {
+  padding: 8px 10px 0;
+  border-top: 2px solid var(--line);
+}
+.reward-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.reward-label {
+  font: 700 11px/1 var(--body);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.reward-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--yellow);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.reward-amount .icon {
+  width: 22px;
+  height: 22px;
+  align-self: center;
+}
+.reward-balance {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.reward-note {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+div.reward-note {
+  margin-top: 4px;
+}
+.reward-failed .reward-note {
+  color: var(--rival);
+}
+
+/* Landscape phone: every row of the results panel is paid for in standings rows. */
+@media (max-height: 480px) {
+  .profile-coins {
+    min-height: 22px;
+    font-size: 14px;
+  }
+  .results-rewards {
+    padding-top: 5px;
+  }
+  /* The reward line takes its height out of the scrolling list, not out of the buttons. */
+  .results-panel:has(.results-rewards:not(:empty)) .standings {
+    max-height: calc(100dvh - 226px);
+  }
+  .reward-row {
+    align-items: center;
+  }
+  .reward-amount {
+    font-size: 20px;
+  }
+  .reward-amount .icon {
+    width: 17px;
+    height: 17px;
+  }
+  .buy-panel {
+    --pad-x: 14px;
+    --pad-y: 8px;
+    gap: 5px;
+  }
+  .buy-row {
+    min-height: 34px;
+  }
+  /* Four buttons do not stack inside 375 px: two columns, the way out across the bottom. */
+  .buy-panel .actions.column,
+  .lock-panel .actions.column {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .buy-panel .actions.column .btn,
+  .lock-panel .actions.column .btn {
+    width: auto;
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  .buy-panel .buy-close,
+  .lock-panel .actions.column .btn:last-child {
+    grid-column: 1 / -1;
+    min-height: 34px;
+  }
+  .lock-panel {
+    width: min(620px, 100%);
+  }
+  .lock-panel .lock-body {
+    margin: 4px 0 8px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .lock-wallet {
+    margin: 0 0 8px;
+  }
+}
+
+/* A short and narrow phone (667 px): the four result buttons stay on one row. */
+@media (max-height: 480px) and (max-width: 760px) {
+  .results-foot > .actions {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .results-foot > .actions .btn {
+    padding: 0 14px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Phase 2: level, check-in, missions.
+   --------------------------------------------------------------------------- */
+
+/* Profile bar: level plate with its bar, then the wallet, then the check-in run. */
+.profile-level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-level-plate {
+  min-width: 0;
+  padding: 3px 9px;
+  font-size: 15px;
+  line-height: 1.1;
+}
+.profile-xp {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 92px;
+}
+.profile-xp-bar,
+.reward-xp-bar,
+.mission-bar {
+  display: block;
+  height: 6px;
+  background: var(--line);
+}
+.profile-xp-bar > i,
+.reward-xp-bar > i,
+.mission-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--yellow);
+}
+.profile-xp-n {
+  font: 700 10px/1 var(--body);
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.profile-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 12px/1 var(--body);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.profile-streak .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--yellow);
+}
+
+/* Today's check-in is waiting: a yellow corner on the lobby button. */
+.lobby-btn.attn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background: var(--yellow);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+/* The two new overlays share the scrim and stacking of the other panels. */
+.screen.missions,
+.screen.attendance {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: rgba(21, 22, 26, 0.82);
+  pointer-events: auto;
+  z-index: 50;
+}
+.missions-panel,
+.attendance-panel {
+  --pad-x: 22px;
+  --pad-y: 16px;
+  width: min(620px, 100%);
+  max-height: 96%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.missions-head,
+.attendance-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.missions-reset,
+.attendance-total {
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Missions: three cards, tier chip and wording on top, bar and reward underneath. */
+.missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.mission-card {
+  padding: 9px 12px;
+  background: var(--asphalt);
+  border-left: 4px solid var(--line);
+}
+.mission-card.done {
+  border-left-color: var(--yellow);
+}
+.mission-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mission-title {
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.mission-card.done .mission-title {
+  color: var(--ink-dim);
+}
+.mission-tier {
+  flex: none;
+}
+.mission-bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.mission-bar {
+  flex: 1;
+  min-width: 40px;
+}
+.mission-count {
+  min-width: 2.6em;
+  font: 700 12px/1 var(--body);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.mission-reward {
+  font-size: 14px;
+}
+.mission-xp {
+  font-size: 11px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.mission-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--yellow);
+  font: 700 12px/1 var(--body);
+  letter-spacing: 0.06em;
+}
+.mission-done .icon {
+  width: 14px;
+  height: 14px;
+}
+.btn.mission-swap {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.missions-bonus {
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.missions-bonus.done {
+  color: var(--yellow);
+}
+.missions-empty {
+  padding: 16px 4px;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+/* Check-in: seven cells in a row, today's lit. */
+.attendance-cells {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+.attendance-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 2px;
+  background: var(--asphalt);
+  border-top: 4px solid var(--line);
+}
+.attendance-cell.today {
+  background: var(--panel-hi);
+  border-top-color: var(--yellow);
+}
+.attendance-cell.done {
+  border-top-color: var(--ink-faint);
+}
+.attendance-cell.done .attendance-coins {
+  color: var(--ink-faint);
+}
+.attendance-day {
+  font: 700 10px/1 var(--body);
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.attendance-coins {
+  font-size: 15px;
+  gap: 3px;
+}
+.attendance-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.attendance-milestone {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.attendance-milestone:empty {
+  display: none;
+}
+
+/* Garage: an entry that is earned rather than bought says how. */
+.chip.lock.earn {
+  background: var(--line);
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
+  gap: 3px;
+}
+
+/* Results: experience beside the coins, then one short line per thing the race did. */
+.reward-xp {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.reward-level {
+  min-width: 0;
+  padding: 2px 7px;
+  font-size: 13px;
+  line-height: 1.1;
+}
+.reward-xp-bar {
+  width: 64px;
+}
+.reward-xp-n {
+  font: 700 12px/1 var(--body);
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.btn.reward-double {
+  flex: none;
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+.reward-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-top: 4px;
+}
+.reward-notes:empty {
+  display: none;
+}
+.reward-note.good {
+  color: var(--yellow);
+}
+.reward-note.level-up {
+  color: var(--on-yellow);
+  background: var(--yellow);
+  padding: 1px 8px;
+  font-weight: 700;
+}
+
+@media (max-height: 480px) {
+  .profile-xp {
+    width: 70px;
+  }
+  .profile-level-plate {
+    font-size: 13px;
+    padding: 2px 7px;
+  }
+  .lobby-profile {
+    gap: 8px;
+  }
+  .missions-panel,
+  .attendance-panel {
+    --pad-x: 14px;
+    --pad-y: 8px;
+    gap: 6px;
+  }
+  .mission-card {
+    padding: 6px 10px;
+  }
+  .mission-bottom {
+    margin-top: 5px;
+  }
+  .attendance-cell {
+    padding: 7px 2px;
+    gap: 4px;
+  }
+  .attendance-coins {
+    font-size: 13px;
+  }
+  .attendance-message {
+    font-size: 12px;
+  }
+  /* Notes take a second line from the standings, never from the buttons. */
+  .results-panel:has(.reward-notes:not(:empty)) .standings {
+    max-height: calc(100dvh - 248px);
+  }
+  .reward-notes {
+    max-height: 2.9em;
+    overflow-y: auto;
+    font-size: 11px;
+  }
+  .reward-xp-bar {
+    width: 44px;
+  }
+}
+
+/* Landscape phone: three mission cards, the bonus line and the way out have to share 340 px. */
+@media (max-height: 480px) {
+  .missions-panel {
+    gap: 4px;
+  }
+  .mission-card {
+    padding: 4px 10px;
+  }
+  .mission-title {
+    font-size: 13px;
+  }
+  .mission-bottom {
+    margin-top: 3px;
+  }
+  .btn.mission-swap {
+    min-height: 26px;
+    font-size: 11px;
+  }
+  .missions-bonus {
+    font-size: 12px;
+  }
+  .missions-panel > .actions,
+  .attendance-panel > .actions {
+    margin-top: 2px;
+  }
+  .missions-panel > .actions .btn,
+  .attendance-panel > .actions .btn {
+    min-height: 36px;
+    font-size: 14px;
+  }
+}

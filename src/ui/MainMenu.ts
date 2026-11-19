@@ -10,7 +10,21 @@ import { icon } from './icons';
 import { showToast } from './toast';
 import { getLang, setLang, t, t as tt, tOr, type Lang } from '../core/i18n';
 import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
-import { canRace, entitlementsPending, getCupProgress, getEntitlements, isPremium, onEntitlementsChange } from '../verse8/entitlements';
+import {
+  canRace,
+  entitlementsPending,
+  getCoins,
+  getCupProgress,
+  getEntitlements,
+  getMissions,
+  getStreak,
+  getXp,
+  isPremium,
+  onEntitlementsChange,
+  ownsKart,
+} from '../verse8/entitlements';
+import { formatCoins, levelInfo } from '../core/economy';
+import { setButtonContent } from './dom';
 import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
 import { buildLogo } from './logo';
@@ -66,6 +80,8 @@ export class MainMenu {
   onGarage: (() => void) | null = null;
   onDaily: (() => void) | null = null;
   onOnline: (() => void) | null = null;
+  onMissions: (() => void) | null = null;
+  onAttendance: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly panels: Record<MenuPanel, HTMLElement>;
@@ -78,6 +94,14 @@ export class MainMenu {
   private readonly charName: TextField;
   private readonly charTagline: TextField;
   private readonly lockBadges = new Map<string, { badge: HTMLElement; text: TextField }>();
+  private readonly coinText: TextField;
+  private readonly levelText: TextField;
+  private readonly xpFill: HTMLElement;
+  private readonly xpText: TextField;
+  private readonly streakChip: HTMLElement;
+  private readonly streakText: TextField;
+  private missionsButton!: HTMLButtonElement;
+  private attendanceButton!: HTMLButtonElement;
   /** Per stat, its five blocks in the detail strip under the racer grid. */
   private readonly statCells: HTMLElement[][] = [];
   private readonly unsubEntitlements: () => void;
@@ -109,9 +133,21 @@ export class MainMenu {
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
-    // Reserved for the progression update: the profile bar (level, coins, streak) goes here.
-    // Kept in the layout now so the logo does not have to move when it arrives.
-    el('div', 'lobby-profile', undefined, title);
+    // Profile bar: what the player has to show for the races so far — level on a plate with the
+    // bar to the next one, the wallet, and the check-in run.
+    const profile = el('div', 'lobby-profile', undefined, title);
+    const levelBox = el('div', 'profile-level', undefined, profile);
+    this.levelText = new TextField(el('span', 'plate profile-level-plate', '', levelBox));
+    const xpBox = el('div', 'profile-xp', undefined, levelBox);
+    this.xpFill = el('i', '', undefined, el('div', 'profile-xp-bar', undefined, xpBox));
+    this.xpText = new TextField(el('span', 'profile-xp-n', '', xpBox));
+    const coinChip = el('div', 'coin-chip profile-coins', undefined, profile);
+    coinChip.title = t('coin.label');
+    coinChip.appendChild(icon('coin'));
+    this.coinText = new TextField(el('span', 'profile-coins-n', '0', coinChip));
+    this.streakChip = el('div', 'profile-streak hidden', undefined, profile);
+    this.streakChip.appendChild(icon('flame'));
+    this.streakText = new TextField(el('span', 'profile-streak-n', '', this.streakChip));
     buildLogo(title);
     el('div', 'logo-sub', t('title.sub'), title);
     // Lobby: one big RACE plate, the rest as a grid of small icon + label plates underneath.
@@ -139,6 +175,9 @@ export class MainMenu {
     );
     lobby.appendChild(lobbyGrid);
     if (ONLINE_ENABLED) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
+    // The two reasons to come back tomorrow sit first in the grid.
+    this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
+    this.attendanceButton = lobbyEntry(t('lobby.checkin'), 'lobby-btn attendance-toggle', lobbyGrid, () => this.onAttendance?.(), 'flame');
     lobbyEntry(t('lobby.daily'), 'lobby-btn daily-toggle', lobbyGrid, () => this.onDaily?.(), 'calendar');
     lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => this.onGarage?.(), 'wrench');
     lobbyEntry(t('lb.button'), 'lobby-btn records-toggle', lobbyGrid, () => this.onRecords?.(), 'trophy');
@@ -308,8 +347,12 @@ export class MainMenu {
     trActions.appendChild(this.startButton);
 
     this.panels = { title, characterSelect: chars, trackSelect: tr };
-    this.unsubEntitlements = onEntitlementsChange(() => this.refreshLocks());
+    this.unsubEntitlements = onEntitlementsChange(() => {
+      this.refreshLocks();
+      this.refreshProfile();
+    });
     this.refreshLocks();
+    this.refreshProfile();
     this.setCharacter(0);
     this.setTrack(0);
     this.setDifficulty(1);
@@ -417,6 +460,23 @@ export class MainMenu {
     this.goTo('trackSelect', true);
   }
 
+  private refreshProfile(): void {
+    this.coinText.set(formatCoins(getCoins()));
+    const info = levelInfo(getXp());
+    this.levelText.set(t('profile.level', { n: info.level }));
+    this.xpFill.style.width = info.need > 0 ? `${Math.round((info.into / info.need) * 100)}%` : '100%';
+    this.xpText.set(info.need > 0 ? `${info.into}/${info.need}` : 'MAX');
+    const streak = getStreak();
+    const run = streak && (streak.claimed || !streak.canRecover) && streak.n > 0 && (streak.claimed || streak.next > 1) ? streak.n : 0;
+    this.streakChip.classList.toggle('hidden', run <= 0);
+    this.streakText.set(run > 0 ? t('profile.streak', { n: run }) : '');
+    // Lobby buttons: missions carry their count, check-in a mark while today is unclaimed.
+    const missions = getMissions();
+    const done = missions ? missions.list.filter((m) => m.done).length : 0;
+    setButtonContent(this.missionsButton, missions ? `${t('lobby.missions')} ${done}/${missions.list.length}` : t('lobby.missions'), 'target');
+    this.attendanceButton.classList.toggle('attn', Boolean(streak) && !streak?.claimed);
+  }
+
   private refreshLocks(): void {
     const ent = getEntitlements();
     this.charCards.forEach((card, i) => {
@@ -426,7 +486,8 @@ export class MainMenu {
       card.classList.toggle('locked', locked);
       const entry = this.lockBadges.get(def.id);
       if (!entry) return;
-      if (ent.premium) {
+      // Owned for good, by the pass or with coins: nothing left to say on the card.
+      if (ownsKart(def.id)) {
         entry.badge.classList.add('hidden');
         return;
       }

@@ -1,9 +1,25 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { _resetLocalServerForTests } from './localServer';
 import {
   _resetForTests,
   applyEntitlements,
+  beginRace,
+  buyCosmetic,
+  buyKart,
   canRace,
+  finishRace,
+  claimAttendance,
+  getCoins,
+  getCosmetics,
+  getMissions,
+  getOwned,
+  getStreak,
+  getXp,
+  ownsKart,
+  racesToday,
+  refreshEntitlements,
+  saveCosmetics,
   getEntitlements,
   isPremium,
   mockStore,
@@ -24,7 +40,10 @@ function asEmbedded(fn: () => void): void {
 }
 
 describe('entitlements (mock store rules)', () => {
-  beforeEach(() => _resetForTests());
+  beforeEach(() => {
+    _resetForTests();
+    _resetLocalServerForTests();
+  });
 
   it('a reply about one field never claims the record has loaded', () => {
     // The bug this guards: `grantPremiumRaces` learns the new ticket count from its own reply and
@@ -70,27 +89,98 @@ describe('entitlements (mock store rules)', () => {
     expect(canRace('rosa')).toBe(false);
   });
 
-  it('grant adds 3 capped at 9; consume decrements only premium', () => {
-    mockStore.grant();
-    mockStore.grant();
-    mockStore.grant();
-    mockStore.grant();
+  it('grant adds 3 capped at 9; consume decrements only premium', async () => {
+    await mockStore.grant();
+    await mockStore.grant();
+    await mockStore.grant();
+    await mockStore.grant();
     expect(getEntitlements().premiumRaces).toBe(9);
-    expect(mockStore.consume('zippy').ok).toBe(true);
+    expect((await mockStore.consume('zippy')).ok).toBe(true);
     expect(getEntitlements().premiumRaces).toBe(9);
-    expect(mockStore.consume('bram')).toEqual({ ok: true, premiumRaces: 8 });
+    expect(await mockStore.consume('bram')).toEqual({ ok: true, premiumRaces: 8 });
     expect(canRace('bram')).toBe(true);
   });
 
-  it('consume refuses at zero', () => {
-    expect(mockStore.consume('fennec')).toEqual({ ok: false, premiumRaces: 0 });
+  it('consume refuses at zero', async () => {
+    expect(await mockStore.consume('fennec')).toEqual({ ok: false, premiumRaces: 0 });
   });
 
-  it('purchase unlocks everything without consuming', () => {
-    mockStore.purchase();
+  it('purchase unlocks everything without consuming', async () => {
+    await mockStore.purchase();
     expect(canRace('fennec')).toBe(true);
-    expect(mockStore.consume('fennec').ok).toBe(true);
+    expect((await mockStore.consume('fennec')).ok).toBe(true);
     expect(getEntitlements().premiumRaces).toBe(0);
+  });
+
+  it('the local wallet is the real server: a race pays, a purchase spends, a reload keeps both', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-18T10:00:00Z'));
+      await refreshEntitlements();
+      expect(getCoins()).toBe(0);
+      // Nine wins on hard; the clock has to really pass for each. Missions and level-ups pay on
+      // top of the race, so the wallet is checked against what the server said it paid.
+      let paid = 0;
+      for (let i = 0; i < 9; i++) {
+        beginRace({ trackId: 'sunny_circuit', characterId: 'zippy', difficulty: 'hard' });
+        // The start is fire-and-forget in the game; here the stamp has to land before the clock moves.
+        await new Promise((r) => setTimeout(r, 5));
+        vi.setSystemTime(Date.now() + 120000);
+        const award = await finishRace({ place: 1, retired: false, timeMs: 90000 });
+        expect(award?.ok).toBe(true);
+        expect(award?.earned?.race).toBe(78);
+        paid += award?.earned?.total ?? 0;
+      }
+      expect(paid).toBeGreaterThanOrEqual(702);
+      expect(getCoins()).toBe(paid);
+      expect(racesToday()).toBe(9);
+      expect(getXp()).toBeGreaterThanOrEqual(540);
+      expect(getMissions()?.list).toHaveLength(3);
+
+      expect((await buyCosmetic('p:zz'))?.reason).toBe('unknown');
+      const flame = await buyCosmetic('f:1'); // a flame is 700
+      expect(flame?.ok).toBe(true);
+      expect(getCoins()).toBe(paid - 700);
+      expect(getOwned().has('f:1')).toBe(true);
+
+      // The look can now keep the flame it bought, and nothing it did not.
+      await saveCosmetics({ flame: 'jet', trail: 'ribbon', body: 0x112233 });
+      expect(getCosmetics()).toEqual({ flame: 'jet', body: 0x112233 });
+
+      // A fresh page: nothing in memory, everything still in storage.
+      _resetForTests();
+      expect(getCoins()).toBe(0);
+      await refreshEntitlements();
+      expect(getCoins()).toBe(paid - 700);
+      expect(getOwned().has('f:1')).toBe(true);
+      expect(getCosmetics()).toEqual({ flame: 'jet', body: 0x112233 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('check-in pays through the local server and the record follows', async () => {
+    await refreshEntitlements();
+    expect(getStreak()).toMatchObject({ claimed: false, n: 0, total: 0, next: 1 });
+    const first = await claimAttendance();
+    expect(first).toMatchObject({ ok: true, reward: 50 });
+    expect(getCoins()).toBe(50);
+    expect(getStreak()).toMatchObject({ claimed: true, n: 1, total: 1 });
+    expect((await claimAttendance())?.reason).toBe('claimed');
+    expect(getCoins()).toBe(50);
+  });
+
+  it('a kart bought with coins races without a ticket', async () => {
+    localStorage.setItem('tkr.local.user', JSON.stringify({ coins: 2600 }));
+    await refreshEntitlements();
+    expect(canRace('rosa')).toBe(false);
+    expect((await buyKart('zippy'))?.reason).toBe('unknown');
+    expect((await buyKart('rosa'))?.ok).toBe(true);
+    expect(getCoins()).toBe(100);
+    expect(ownsKart('rosa')).toBe(true);
+    expect(canRace('rosa')).toBe(true);
+    expect(canRace('bram')).toBe(false);
+    expect(await mockStore.consume('rosa')).toEqual({ ok: true, premiumRaces: 0 });
   });
 
   it('applyEntitlements notifies subscribers and marks loaded', () => {

@@ -58,6 +58,9 @@ DOM from physics; nothing writes physics from UI except through `Kart.setInput`.
 | Mobile / landscape gate / touch layout | `game/OrientationGate.ts`, `ui/TouchControls.ts`, `styles/09-touch-lang.css`, `11-phone.css` |
 | Korean/English strings | `core/locales/en.ts` (keys are the source of truth) + `ko.ts` |
 | Verse8: ads, shop, records, nickname | `src/verse8/*`, `server.js`, `docs/VERSE8-CONTEXT.md` |
+| Coins: what a race pays, what a garage item costs | root `server.js` (the rule) **and** `core/economy.ts` (what the UI prints); `serverEconomy.test.ts` fails until they match. Ownership gate: `server.js _owns` + `core/cosmetics.ts sanitize(…, owned)` |
+| Missions, check-in, levels | root `server.js` (`MISSIONS`, `missionsFor`, `_missionGain`, `claimAttendance`, `levelOf`) **and** the copies in `core/economy.ts`; wording in `ui/progression/text.ts` + `core/locales/*` (`mis.<id>`); counters in `game/RaceStatsTracker.ts`. A new mission = a row in both `MISSIONS` tables, a case in `_missionGain`, a string in both languages |
+| Add an earn-only garage item | append to the catalogue in `core/cosmetics.ts` with `earned(...)`, its look in the renderer table (`kart/KartModel.ts`, `fx/ParticleSystem.ts`, `ui/badges.ts`), its price or -1 in **both** `COS_PRICES`, its rule in **both** `LEVEL_REWARDS` / `STREAK_REWARDS` / `SHOWCASE`, a name in both languages |
 | Online protocol | `net/protocol.ts` (bump carefully — host and clients must match) |
 
 ## 3. Per-frame rules (memory)

@@ -11,6 +11,7 @@
 //   * Epoch-guarded writes: a stale attempt cannot clobber a fresh success.
 
 import { GameServer } from '@agent8/gameserver';
+import { inVerse8Host } from './embed';
 import { resolveIdentity } from './identity';
 
 let instance: any = null;
@@ -106,6 +107,23 @@ export async function callServer<T>(fn: string, args: unknown[] = [], fallback: 
   }
 }
 
+/**
+ * Calls a function on whichever server holds this player's account: the gameserver inside a
+ * Verse8 host, the in-page copy of server.js outside one (`localServer.ts`). The account record —
+ * what is owned, what is in the wallet — goes through here, so local play runs on the real rules.
+ * Records and rooms stay on `callServer`: there is no leaderboard to share with nobody.
+ */
+export async function callBackend<T>(fn: string, args: unknown[] = [], fallback: T, budgetMs = CONNECT_BUDGET_MS): Promise<T> {
+  if (inVerse8Host()) return callServer(fn, args, fallback, budgetMs);
+  try {
+    const { callLocal } = await import('./localServer');
+    return await callLocal<T>(fn, args);
+  } catch (err) {
+    console.warn(`[local] ${fn} failed:`, err);
+    return fallback;
+  }
+}
+
 // ── Game-specific calls (see root server.js) ────────────────────────────────
 
 export interface TimeRow {
@@ -136,6 +154,139 @@ export interface Entitlements {
   cos: string;
   /** Best Grand Prix placing per cup id. */
   cups: Record<string, number>;
+  /** Coin balance. Absent on a reply from a server older than the economy. */
+  coins?: number;
+  /** Ownership tokens, comma-joined: garage entries (`p:f`) and karts (`k:rosa`). */
+  own?: string;
+  /** Today's ledger (UTC day). */
+  eco?: EcoDay;
+  /** Lifetime experience; the level follows from it (core/economy `levelInfo`). */
+  xp?: number;
+  streak?: StreakView;
+  missions?: MissionsView;
+}
+
+export interface EcoDay {
+  day: string;
+  /** Races already paid for today; decides the rate of the next one. */
+  races: number;
+  /** Rewarded-ad doublings and mission swaps used today. */
+  doubles?: number;
+  swaps?: number;
+}
+
+/** The check-in record, as the server sees it today. */
+export interface StreakView {
+  /** Last day claimed (`YYYY-MM-DD`, UTC); '' before the first check-in. */
+  last: string;
+  /** Length of the current run. */
+  n: number;
+  /** Days checked in, ever. */
+  total: number;
+  /** Today is already claimed. */
+  claimed: boolean;
+  /** The run is broken by exactly one missed day: an ad can carry it on. */
+  canRecover: boolean;
+  /** Which day of the run today's claim would be (or is, once claimed). */
+  next: number;
+}
+
+export interface MissionView {
+  /** `drift`, `track:coral_coast`, `class:heavy` — see core/economy `parseMissionKey`. */
+  key: string;
+  tier: 0 | 1 | 2;
+  target: number;
+  progress: number;
+  done: boolean;
+  coins: number;
+  xp: number;
+}
+
+export interface MissionsView {
+  day: string;
+  list: MissionView[];
+  /** The all-three bonus has been paid. */
+  bonus: boolean;
+  bonusCoins: number;
+  swapsLeft: number;
+}
+
+export interface AttendanceReply {
+  ok: boolean;
+  /** `claimed`: already done today. `choose`: a broken run, recover or restart. */
+  reason?: 'claimed' | 'choose';
+  coins: number;
+  reward: number;
+  streak: StreakView;
+  unlocked: string[];
+  own?: string;
+}
+
+export interface SwapReply {
+  ok: boolean;
+  reason?: 'unknown' | 'done' | 'limit';
+  missions: MissionsView;
+}
+
+export interface DoubleReply {
+  ok: boolean;
+  reason?: 'no-race' | 'done' | 'limit' | 'nothing';
+  coins: number;
+  added: number;
+  doublesLeft: number;
+}
+
+/** What `finishRace` answers. A refusal carries a reason instead of throwing. */
+export interface RaceAward {
+  ok: boolean;
+  reason?: 'no-race' | 'bad-time' | 'too-fast' | 'bad-place';
+  raceId?: string;
+  /** Balance after this race. */
+  coins: number;
+  /** Coins by source: the race itself, missions it completed, levels it gained. */
+  earned?: { race: number; missions?: number; levels?: number; total: number };
+  /** Races paid for today, this one included. */
+  races: number;
+  /** Percent of the table this race was paid at: 100, 30 or 0. */
+  rate?: number;
+  /** Lifetime experience after this race, and how much of it this race added. */
+  xp?: number;
+  xpEarned?: number;
+  level?: number;
+  levelUps?: number;
+  missions?: MissionsView;
+  /** Mission keys this race completed. */
+  completed?: string[];
+  /** This race completed the third mission: the bonus was paid. */
+  bonus?: boolean;
+  /** Garage tokens this race's level-ups awarded. */
+  unlocked?: string[];
+  own?: string;
+  /** Rewarded-ad doublings still available today (0 when the race paid nothing). */
+  doublesLeft?: number;
+}
+
+/** What the race looked like from the driver's seat. Amounts are never part of it. */
+export interface RaceReport {
+  place: number;
+  retired: boolean;
+  /** Race clock at the player's finish (or retirement), ms. */
+  timeMs: number;
+  /** Mission counters (core/economy `RaceStats`); the server clamps each. */
+  stats?: Record<string, number>;
+  /** This was today's seeded challenge. */
+  daily?: boolean;
+  /** A team race, and the player's side won it. */
+  teamWon?: boolean;
+  /** This race was the last leg of a Grand Prix cup. */
+  cupDone?: boolean;
+}
+
+export interface BuyReply {
+  ok: boolean;
+  reason?: 'unknown' | 'owned' | 'short' | 'earn';
+  coins: number;
+  own: string;
 }
 
 export function submitTime(
@@ -174,20 +325,42 @@ export function submitDailyTime(timeMs: number, characterId: string): Promise<Da
 }
 
 export function fetchEntitlements(): Promise<Entitlements | null> {
-  return callServer<Entitlements | null>('getMyEntitlements', [], null, 12000);
+  return callBackend<Entitlements | null>('getMyEntitlements', [], null, 12000);
 }
 export function serverGrantPremiumRaces(): Promise<{ granted: boolean; premiumRaces: number } | null> {
-  return callServer<{ granted: boolean; premiumRaces: number } | null>('grantPremiumRaces', [], null);
+  return callBackend<{ granted: boolean; premiumRaces: number } | null>('grantPremiumRaces', [], null);
 }
 export function serverConsumePremiumRace(characterId: string): Promise<{ ok: boolean; premiumRaces: number } | null> {
-  return callServer<{ ok: boolean; premiumRaces: number } | null>('consumePremiumRace', [characterId], null);
+  return callBackend<{ ok: boolean; premiumRaces: number } | null>('consumePremiumRace', [characterId], null);
 }
 export function serverSetNickname(name: string): Promise<{ nickname: string } | null> {
-  return callServer<{ nickname: string } | null>('setNickname', [name], null);
+  return callBackend<{ nickname: string } | null>('setNickname', [name], null);
 }
 export function serverSetCosmetics(packed: string): Promise<{ cos: string } | null> {
-  return callServer<{ cos: string } | null>('setCosmetics', [packed], null);
+  return callBackend<{ cos: string } | null>('setCosmetics', [packed], null);
 }
 export function serverSetCupProgress(progress: Record<string, number>): Promise<{ cups: Record<string, number> } | null> {
-  return callServer<{ cups: Record<string, number> } | null>('setCupProgress', [progress], null);
+  return callBackend<{ cups: Record<string, number> } | null>('setCupProgress', [progress], null);
+}
+
+export function serverBeginRace(trackId: string, characterId: string, difficulty: string, mode: string): Promise<{ raceId: string } | null> {
+  return callBackend<{ raceId: string } | null>('beginRace', [trackId, characterId, difficulty, mode], null);
+}
+export function serverFinishRace(raceId: string, report: RaceReport): Promise<RaceAward | null> {
+  return callBackend<RaceAward | null>('finishRace', [raceId, report], null);
+}
+export function serverBuyCosmetic(token: string): Promise<BuyReply | null> {
+  return callBackend<BuyReply | null>('buyCosmetic', [token], null);
+}
+export function serverBuyKart(characterId: string): Promise<BuyReply | null> {
+  return callBackend<BuyReply | null>('buyKart', [characterId], null);
+}
+export function serverDoubleRaceCoins(raceId: string): Promise<DoubleReply | null> {
+  return callBackend<DoubleReply | null>('doubleRaceCoins', [raceId], null);
+}
+export function serverClaimAttendance(recover?: boolean): Promise<AttendanceReply | null> {
+  return callBackend<AttendanceReply | null>('claimAttendance', recover === undefined ? [] : [recover], null);
+}
+export function serverSwapMission(index: number): Promise<SwapReply | null> {
+  return callBackend<SwapReply | null>('swapMission', [index], null);
 }

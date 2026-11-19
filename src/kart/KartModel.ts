@@ -45,6 +45,11 @@ const FLAME_STYLE: Readonly<Record<Exclude<FlameId, 'none'>, { color: number; le
   void: { color: 0x6b3aa0, length: 0.8, halo: 1.6 },
   prism: { color: 0xffffff, length: 1.1, halo: 1.3, cycle: true },
   pulseJet: { color: 0xff9a2e, length: 1.35, halo: 0.9 },
+  // earn-only: longer and brighter than anything on the paid shelf, so they read as earned
+  aurora: { color: 0x5dffa8, length: 1.4, halo: 1.5 },
+  dawn: { color: 0xff8fb0, length: 1.15, halo: 1.3 },
+  inferno: { color: 0xff2a1a, length: 1.6, halo: 1.7 },
+  supernova: { color: 0xffffff, length: 1.7, halo: 2, cycle: true },
 };
 
 /** Wheel looks that only need material changes; particle-based ones live in the FX layer. */
@@ -53,6 +58,8 @@ const WHEEL_STYLE: Readonly<Record<Exclude<WheelFxId, 'none'>, { emissive: numbe
   rimLight: { emissive: 0x9fd8ff, intensity: 1.4 },
   tyreTrail: { emissive: 0x2a2e34, intensity: 1 },
   spinBlur: { emissive: 0x2a2e34, intensity: 1 },
+  goldRim: { emissive: 0xffc93a, intensity: 2.2 },
+  neonRim: { emissive: 0xff3df0, intensity: 2 },
 };
 
 /** Extra handles the Kart uses for animation; a structural subtype of KartModelParts. */
