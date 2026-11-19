@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import serverSource from '../../server.js?raw';
-import { paidCosmetics } from '../core/cosmetics';
+import { cosmeticOf, paidCosmetics } from '../core/cosmetics';
 import * as economy from '../core/economy';
 import { seedOf } from '../core/daily';
 import { en } from '../core/locales/en';
 import { ko } from '../core/locales/ko';
 import { CHARACTERS } from '../kart/roster';
+import { TRACKS_BY_DIFFICULTY } from '../track/tracks';
 
 /**
  * server.js computes every coin; src/core/economy.ts only prints what it expects the server to
@@ -23,8 +24,9 @@ describe('server.js economy tables match the client', () => {
     'DOUBLES_PER_DAY', 'SWAPS_PER_DAY', 'RACE_XP', 'RETIRE_XP', 'LEVEL_BASE', 'LEVEL_STEP', 'MAX_LEVEL', 'LEVEL_COINS',
     'STREAK_COINS', 'LEVEL_REWARDS', 'STREAK_REWARDS', 'SHOWCASE',
     'MISSIONS', 'MISSION_COINS', 'MISSION_XP', 'MISSION_BONUS', 'STAT_CAP', 'CLEAN_WALLS',
+    'START_TRACKS', 'INTRO_RACES', 'LADDER', 'FIRST_DAY_MISSIONS',
   ] as const;
-  const server = serverTables([...NAMES, 'EARN_ONLY', 'CLASS_OF', 'levelOf', 'seedOf', 'missionsFor']);
+  const server = serverTables([...NAMES, 'EARN_ONLY', 'CLASS_OF', 'levelOf', 'seedOf', 'missionsFor', 'TRACK_ORDER', 'COS_PRICES']);
 
   for (const name of NAMES) {
     it(name, () => {
@@ -59,6 +61,24 @@ describe('server.js economy tables match the client', () => {
       const keys: string[] = server.missionsFor(day);
       expect(keys.map((k) => economy.parseMissionKey(k)?.def.tier), day).toEqual([0, 1, 2]);
     }
+  });
+
+  it('TRACK_ORDER is the picker order, so circuits open easiest first', () => {
+    expect(server.TRACK_ORDER).toEqual(TRACKS_BY_DIFFICULTY.map((t) => t.id));
+  });
+
+  it('every rung awards a paid garage entry the pass covers, and each entry sits on one rung', () => {
+    const tokens = economy.LADDER.map((s) => s.token);
+    expect(new Set(tokens).size).toBe(tokens.length);
+    for (const step of economy.LADDER) {
+      expect(economy.priceOf(step.token), step.id).toBeGreaterThan(0);
+      expect(server.EARN_ONLY.has(step.token), step.id).toBe(false);
+      expect(cosmeticOf(step.token), step.id).not.toBeNull();
+    }
+  });
+
+  it('the first-day missions are known missions with wording', () => {
+    for (const key of economy.FIRST_DAY_MISSIONS) expect(economy.parseMissionKey(key), key).not.toBeNull();
   });
 
   it('every mission has wording in both languages', () => {

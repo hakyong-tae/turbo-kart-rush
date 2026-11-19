@@ -223,11 +223,28 @@ describe('server.js', () => {
     expect((await me.consumePremiumRace('bram')).ok).toBe(false);
   });
 
+  /**
+   * An account that climbed the first-session ladder long ago: no intro races, no first-day
+   * missions, every rung reached. The economy and progression tests below describe that account;
+   * a brand-new one has its own block ('first-session ladder').
+   */
+  const VETERAN = { lad: { all: true, day: '', r: 50, f: 50, p: 50, w: 50, d: 50 } };
+  /** Garage entries the ladder hands out, which a veteran owns on top of whatever a test buys. */
+  const RUNGS = new Set(['p:b', 'w:1', 't:2', 'u:1', 'f:1', 'g:1', 'p:u', 'u:5']);
+  const bought = (own: string): string =>
+    own
+      .split(',')
+      .filter((t) => t && !RUNGS.has(t))
+      .join(',');
+  /** A reply with the rungs taken out of its `own`, so a test can name exactly what it bought. */
+  const plain = <T extends { own: string }>(r: T): T => ({ ...r, own: bought(r.own) });
+
   describe('economy', () => {
     const T0 = Date.parse('2026-11-18T10:00:00Z');
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(T0);
+      await g.updateUserState('0xAAAA1111', VETERAN);
     });
     afterEach(() => vi.useRealTimers());
 
@@ -297,16 +314,16 @@ describe('server.js', () => {
 
     it('buyCosmetic charges the table price once and reports why it would not', async () => {
       await g.updateUserState('0xAAAA1111', { coins: 1000 });
-      expect(await me.buyCosmetic('p:1')).toEqual({ ok: true, reason: undefined, coins: 600, own: 'p:1' });
+      expect(plain(await me.buyCosmetic('p:1'))).toEqual({ ok: true, reason: undefined, coins: 600, own: 'p:1' });
       // Already owned: answered as a success that costs nothing.
       expect(await me.buyCosmetic('p:1')).toMatchObject({ ok: true, reason: 'owned', coins: 600 });
       expect(await me.buyCosmetic('p:0')).toMatchObject({ ok: true, reason: 'owned', coins: 600 }); // free entry
-      expect(await me.buyCosmetic('f:1')).toMatchObject({ ok: false, reason: 'short', coins: 600 });
+      expect(await me.buyCosmetic('f:2')).toMatchObject({ ok: false, reason: 'short', coins: 600 });
       for (const junk of ['p:zz', 'q:1', 'k:rosa', '', null, 'p:1,p:2']) {
         expect((await me.buyCosmetic(junk)).reason).toBe('unknown');
       }
-      expect(await me.buyCosmetic('g:8')).toMatchObject({ ok: true, coins: 300, own: 'p:1,g:8' });
-      expect((await me.getMyEntitlements()).own).toBe('p:1,g:8');
+      expect(plain(await me.buyCosmetic('g:8'))).toMatchObject({ ok: true, coins: 300, own: 'p:1,g:8' });
+      expect(bought((await me.getMyEntitlements()).own)).toBe('p:1,g:8');
     });
 
     it('the pass covers the paid tier: buying under it costs nothing', async () => {
@@ -319,7 +336,7 @@ describe('server.js', () => {
       await g.updateUserState('0xAAAA1111', { coins: 2600 });
       expect((await me.buyKart('zippy')).reason).toBe('unknown');
       expect((await me.consumePremiumRace('rosa')).ok).toBe(false);
-      expect(await me.buyKart('rosa')).toMatchObject({ ok: true, coins: 100, own: 'k:rosa' });
+      expect(plain(await me.buyKart('rosa'))).toMatchObject({ ok: true, coins: 100, own: 'k:rosa' });
       expect(await me.consumePremiumRace('rosa')).toEqual({ ok: true, premiumRaces: 0 });
       expect((await me.consumePremiumRace('bram')).ok).toBe(false);
       expect((await me.buyKart('bram')).reason).toBe('short');
@@ -333,9 +350,9 @@ describe('server.js', () => {
       expect((await me.setCosmetics('t:03,f:8')).cos).toBe('t:3');
       // Junk in the stored ownership string is not ownership.
       await g.updateUserState('0xAAAA1111', { own: 'p:f,<x>,k:zippy' });
-      expect((await me.getMyEntitlements()).own).toBe('');
+      expect(bought((await me.getMyEntitlements()).own)).toBe('');
       await g.updateUserState('0xAAAA1111', { own: 'p:f,k:zippy,k:rosa,zz' });
-      expect((await me.getMyEntitlements()).own).toBe('p:f,k:rosa');
+      expect(bought((await me.getMyEntitlements()).own)).toBe('p:f,k:rosa');
       expect((await me.setCosmetics('p:f,f:8')).cos).toBe('p:f');
     });
   });
@@ -344,9 +361,10 @@ describe('server.js', () => {
     // 2026-11-18: the date seed picks `start`, `drift` and `hardPodium`.
     const T0 = Date.parse('2026-11-18T10:00:00Z');
     const DAY = 86400000;
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(T0);
+      await g.updateUserState('0xAAAA1111', VETERAN);
     });
     afterEach(() => vi.useRealTimers());
 
@@ -362,12 +380,12 @@ describe('server.js', () => {
       expect(first.earned).toMatchObject({ race: 28, levels: 0 });
       // 700 experience is level 5. Start just short of it.
       await g.updateUserState('0xAAAA1111', { xp: 690, coins: 0 });
-      expect((await me.getMyEntitlements()).own).toBe('');
+      expect(bought((await me.getMyEntitlements()).own)).toBe('');
       const up = await race(me, 1);
       expect(up).toMatchObject({ xp: 750, level: 5, levelUps: 1, unlocked: ['g:9'] });
       expect(up.earned).toEqual({ race: 60, missions: 0, levels: 100, total: 160 });
       expect(up.coins).toBe(160);
-      expect(up.own).toBe('g:9');
+      expect(bought(up.own)).toBe('g:9');
       // The badge is owned by level, not stored: it stays even though nothing was written to `own`.
       expect(g.users['0xAAAA1111'].own).toBeUndefined();
       expect((await me.setCosmetics('g:9,g:a')).cos).toBe('g:9');
@@ -385,7 +403,7 @@ describe('server.js', () => {
       await g.updateUserState('0xAAAA1111', { premium: true, coins: 3000 });
       expect((await me.setCosmetics('p:w,g:9,f:c')).cos).toBe('p:w');
       expect(await me.buyCosmetic('g:9')).toMatchObject({ ok: false, reason: 'earn', coins: 3000 });
-      expect(await me.buyCosmetic('f:c')).toMatchObject({ ok: true, coins: 500, own: 'f:c' });
+      expect(plain(await me.buyCosmetic('f:c'))).toMatchObject({ ok: true, coins: 500, own: 'f:c' });
       expect((await me.setCosmetics('p:w,g:9,f:c')).cos).toBe('p:w,f:c');
     });
 
@@ -520,7 +538,8 @@ describe('server.js', () => {
         const r = await me.claimAttendance();
         expect(r.ok, `day ${d + 1}`).toBe(true);
         expect(r.streak).toMatchObject({ n: d + 1, total: d + 1, claimed: true, next: d + 1 });
-        expect(r.unlocked).toEqual(d === 6 ? ['g:b'] : []);
+        // The second day in total hands over the day-two gift (a ladder rung), the seventh its badge.
+        expect(r.unlocked).toEqual(d === 6 ? ['g:b'] : d === 1 ? ['u:5'] : []);
         rewards.push(r.reward);
         // A second claim the same day changes nothing.
         expect(await me.claimAttendance()).toMatchObject({ ok: false, reason: 'claimed', reward: 0 });
@@ -528,7 +547,7 @@ describe('server.js', () => {
       expect(rewards).toEqual([50, 60, 80, 100, 120, 150, 300, 50]);
       const state = await me.getMyEntitlements();
       expect(state.coins).toBe(910);
-      expect(state.own).toBe('g:b');
+      expect(bought(state.own)).toBe('g:b');
       // The next morning the run is alive and waiting for day nine.
       vi.setSystemTime(T0 + 8 * DAY);
       expect((await me.getMyEntitlements()).streak).toMatchObject({ n: 8, claimed: false, canRecover: false, next: 9 });
@@ -570,7 +589,7 @@ describe('server.js', () => {
       const r = await me.claimAttendance();
       expect(r.streak).toMatchObject({ n: 1, total: 14 });
       expect(r.unlocked).toEqual(['f:a']);
-      expect(r.own.split(',').sort()).toEqual(['f:a', 'g:b']);
+      expect(bought(r.own).split(',').sort()).toEqual(['f:a', 'g:b']);
       await g.updateUserState('0xAAAA1111', { streak: { last: '2026-11-17', n: 9, total: 29 } });
       vi.setSystemTime(T0);
       // `last` is yesterday, so the run continues: day ten of the run, thirty in total.
@@ -578,6 +597,134 @@ describe('server.js', () => {
       expect(thirty.streak).toMatchObject({ n: 10, total: 30 });
       expect(thirty.reward).toBe(80);
       expect(thirty.unlocked).toEqual(['t:d']);
+    });
+  });
+
+  describe('first-session ladder', () => {
+    const T0 = Date.parse('2026-11-20T10:00:00Z');
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T0);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    async function race(srv: any, place: number, opts: { difficulty?: string; retired?: boolean; report?: Row; kind?: string } = {}) {
+      const begun = await srv.beginRace('sunny_circuit', 'zippy', opts.difficulty ?? 'normal', 'solo', opts.kind);
+      vi.setSystemTime(Date.now() + 98000);
+      const award = await srv.finishRace(begun.raceId, { place, retired: !!opts.retired, timeMs: 90000, ...(opts.report ?? {}) });
+      return { ...award, begun };
+    }
+
+    it('a new account starts with four circuits, an intro race ahead and the starter missions', async () => {
+      const ent = await me.getMyEntitlements();
+      expect(ent.ladder).toEqual({ all: false, races: 0, finishes: 0, podiums: 0, wins: 0, drifts: 0, tracks: 4, intro: true, firstDay: true });
+      expect(ent.missions.list.map((m: Row) => m.key)).toEqual(['finish', 'items', 'drift']);
+      expect(ent.own).toBe('');
+      // The decision is written down the first time the account is read.
+      expect(g.users['0xAAAA1111'].lad).toMatchObject({ all: false, day: '2026-11-20', r: 0 });
+    });
+
+    it('an account that played before the ladder keeps all sixteen circuits and its own missions', async () => {
+      for (const seed of [{ coins: 120 }, { nickname: 'Old Hand' }, { cups: { rookie: 2 } }, { xp: 30 }]) {
+        const old = fakeGlobal();
+        await old.updateUserState('0xAAAA1111', seed);
+        const srv = loadServer(old, { account: '0xAAAA1111' });
+        const ent = await srv.getMyEntitlements();
+        expect(ent.ladder, JSON.stringify(seed)).toMatchObject({ all: true, tracks: 16, intro: false, firstDay: false });
+        expect(ent.missions.list.map((m: Row) => m.key)).not.toEqual(['finish', 'items', 'drift']);
+        expect((await srv.beginRace('sunny_circuit', 'zippy', 'hard', 'solo')).intro).toBe(false);
+      }
+      // A time on the records board is the only trace some old accounts left.
+      const board = fakeGlobal();
+      await board.addCollectionItem('tkr_times', { account: '0xAAAA1111', trackId: 'sunny_circuit', timeMs: 90000 });
+      const srv = loadServer(board, { account: '0xAAAA1111' });
+      expect((await srv.getMyEntitlements()).ladder).toMatchObject({ all: true, tracks: 16 });
+      // Someone else's time says nothing about this account.
+      const other = loadServer(board, { account: '0xBBBB2222' });
+      expect((await other.getMyEntitlements()).ladder).toMatchObject({ all: false, tracks: 4 });
+    });
+
+    it('a brand-new account whose first call is a race start is still new', async () => {
+      expect((await me.beginRace('sunny_circuit', 'zippy', 'normal', 'solo')).intro).toBe(true);
+      expect((await me.getMyEntitlements()).ladder).toMatchObject({ all: false, tracks: 4 });
+    });
+
+    it('each of the first three finishes opens a circuit and a garage entry', async () => {
+      const first = await race(me, 5);
+      expect(first.begun.intro).toBe(true);
+      expect(first.unlocked).toEqual(['p:b']);
+      expect(first.newTracks).toEqual(['dune_drift']);
+      expect(first.ladder).toMatchObject({ races: 1, finishes: 1, tracks: 5, intro: true });
+      const second = await race(me, 4);
+      expect(second.unlocked).toEqual(['w:1']);
+      expect(second.newTracks).toEqual(['frostbite_falls']);
+      // Third: the trail for three finishes, and the underglow for the first podium.
+      const third = await race(me, 3);
+      expect(third.unlocked.sort()).toEqual(['t:2', 'u:1']);
+      expect(third.newTracks).toEqual(['stunt_park']);
+      expect(third.ladder).toMatchObject({ races: 3, finishes: 3, podiums: 1, tracks: 7, intro: false });
+      expect(third.own.split(',').sort()).toEqual(['p:b', 't:2', 'u:1', 'w:1']);
+      // What the ladder gave can be worn: the server keeps it in a saved look.
+      expect((await me.setCosmetics('p:b,w:1,t:2,u:1,f:1')).cos).toBe('p:b,w:1,t:2,u:1');
+      expect((await race(me, 6)).begun.intro).toBe(false);
+    });
+
+    it('an intro race is paid as normal whatever was picked; a cup or daily race is never an intro', async () => {
+      expect((await race(me, 2, { difficulty: 'hard' })).earned.race).toBe(45);
+      const cup = await race(me, 2, { difficulty: 'hard', kind: 'cup' });
+      expect(cup.begun.intro).toBe(false);
+      expect(cup.earned.race).toBe(59);
+      // It still counts as one of the three.
+      expect(cup.ladder).toMatchObject({ races: 2, intro: true });
+    });
+
+    it('a retirement counts as a race but opens nothing; a win and ten drift boosts each have their rung', async () => {
+      const out = await race(me, 8, { retired: true });
+      expect(out.unlocked).toEqual([]);
+      expect(out.newTracks).toEqual([]);
+      expect(out.ladder).toMatchObject({ races: 1, finishes: 0, tracks: 4 });
+      const win = await race(me, 1, { report: { stats: { drift: 6 } } });
+      expect(win.unlocked.sort()).toEqual(['p:b', 'p:u', 'u:1']);
+      expect(win.ladder.drifts).toBe(6);
+      const more = await race(me, 7, { report: { stats: { drift: 900 } } });
+      // One race reports at most the cap, which is more than the rung needs.
+      expect(more.ladder.drifts).toBe(66);
+      expect(more.unlocked.sort()).toEqual(['f:1', 'w:1']);
+    });
+
+    it('the starter missions finish inside three races and pay like any others', async () => {
+      const stats = { items: 3, drift: 4 };
+      await race(me, 4, { report: { stats } });
+      await race(me, 4, { report: { stats } });
+      const third = await race(me, 4, { report: { stats } });
+      expect(third.completed.sort()).toEqual(['drift', 'finish', 'items']);
+      expect(third.bonus).toBe(true);
+      expect(third.earned.missions).toBe(40 + 40 + 70 + 100);
+      // The next day is an ordinary one: the date picks.
+      vi.setSystemTime(T0 + 86400000);
+      const next = (await me.getMyEntitlements()).missions.list.map((m: Row) => m.key);
+      expect(next).not.toEqual(['finish', 'items', 'drift']);
+      expect((await me.getMyEntitlements()).ladder.firstDay).toBe(false);
+    });
+
+    it('circuits stop opening at sixteen', async () => {
+      let last: Row = {};
+      for (let i = 0; i < 14; i++) last = await race(me, 6);
+      expect(last.ladder.tracks).toBe(16);
+      expect(last.newTracks).toEqual([]);
+    });
+
+    it('the second day checked in hands over the day-two gift; a pass holder is not told about what they have', async () => {
+      await me.claimAttendance();
+      vi.setSystemTime(T0 + 86400000);
+      const two = await me.claimAttendance();
+      expect(two).toMatchObject({ ok: true, reward: 60, unlocked: ['u:5'] });
+      expect(two.own.split(',')).toContain('u:5');
+      // The pass already covers every rung's entry.
+      const passG = fakeGlobal();
+      await passG.updateUserState('0xAAAA1111', { premium: true, lad: { all: false, day: '2026-11-21', r: 0, f: 0, p: 0, w: 0, d: 0 } });
+      const pass = loadServer(passG, { account: '0xAAAA1111' });
+      expect((await race(pass, 1)).unlocked).toEqual([]);
     });
   });
 

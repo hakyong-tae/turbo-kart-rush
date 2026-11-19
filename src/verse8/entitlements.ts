@@ -7,6 +7,7 @@
  */
 import { kartToken, packCosmetics, parseOwned, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { CUPS, recordCupResult, type CupId, type CupProgress } from '../core/cups';
+import type { LadderView } from '../core/economy';
 import { CHARACTERS } from '../kart/roster';
 import { inVerse8Host } from './embed';
 import {
@@ -30,6 +31,7 @@ import {
   type Entitlements,
   type MissionsView,
   type RaceAward,
+  type RaceKind,
   type RaceReport,
   type StreakView,
   type SwapReply,
@@ -137,6 +139,25 @@ export function getStreak(): StreakView | null {
 export function getMissions(): MissionsView | null {
   const m = state.missions;
   return m && m.day === new Date().toISOString().slice(0, 10) ? m : null;
+}
+
+/** First-session ladder counters, or null while unknown (or the server predates the ladder). */
+export function getLadder(): LadderView | null {
+  return state.ladder ?? null;
+}
+
+/**
+ * How many circuits of the picker order are open. Unknown reads as all of them: a circuit locked
+ * by mistake is worse than one open a moment early, and the pickers refresh when the record lands.
+ */
+export function openTrackCount(total: number): number {
+  const ladder = state.ladder;
+  return ladder ? Math.min(total, Math.max(1, ladder.tracks)) : total;
+}
+
+/** Whether the next plain race of this account is an intro race. */
+export function nextRaceIsIntro(): boolean {
+  return Boolean(state.ladder?.intro);
 }
 
 /**
@@ -276,7 +297,7 @@ function queued<T>(job: () => Promise<T>): Promise<T> {
   return next;
 }
 
-type RaceStart = { trackId: string; characterId: string; difficulty: string; mode?: string };
+type RaceStart = { trackId: string; characterId: string; difficulty: string; mode?: string; kind?: RaceKind };
 
 /** The race this client has open on the server, or is still trying to open. */
 interface Ticket {
@@ -296,7 +317,9 @@ const TICKET_RETRY_MS = [3000, 6000, 12000, 24000];
 let ticket: Ticket | null = null;
 
 function requestTicket(t: Ticket, settings: RaceStart, attempt: number): void {
-  t.inflight = queued(() => serverBeginRace(settings.trackId, settings.characterId, settings.difficulty, settings.mode ?? 'solo')).then((r) => {
+  t.inflight = queued(() =>
+    serverBeginRace(settings.trackId, settings.characterId, settings.difficulty, settings.mode ?? 'solo', settings.kind ?? 'race'),
+  ).then((r) => {
     t.inflight = null;
     if (r?.raceId) {
       t.id = r.raceId;
@@ -360,6 +383,7 @@ export async function finishRace(report: RaceReport): Promise<RaceAward | null> 
     if (award.xp !== undefined) patch.xp = award.xp;
     if (award.own !== undefined) patch.own = award.own;
     if (award.missions) patch.missions = award.missions;
+    if (award.ladder) patch.ladder = award.ladder;
     mergeEntitlements(patch);
   }
   return award;

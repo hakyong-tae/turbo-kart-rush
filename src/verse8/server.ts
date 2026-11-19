@@ -11,6 +11,7 @@
 //   * Epoch-guarded writes: a stale attempt cannot clobber a fresh success.
 
 import { GameServer } from '@agent8/gameserver';
+import type { LadderView } from '../core/economy';
 import { inVerse8Host } from './embed';
 import { resolveIdentity } from './identity';
 
@@ -164,6 +165,8 @@ export interface Entitlements {
   xp?: number;
   streak?: StreakView;
   missions?: MissionsView;
+  /** First-session ladder counters. Absent on a reply from a server older than the ladder. */
+  ladder?: LadderView;
 }
 
 export interface EcoDay {
@@ -259,8 +262,13 @@ export interface RaceAward {
   completed?: string[];
   /** This race completed the third mission: the bonus was paid. */
   bonus?: boolean;
-  /** Garage tokens this race's level-ups awarded. */
+  /** Garage tokens this race awarded: level rewards and ladder rungs. */
   unlocked?: string[];
+  /** The ladder after this race, and the circuits this finish opened (easiest first). */
+  ladder?: LadderView;
+  newTracks?: string[];
+  /** This was an intro race (decided by the server when it began). */
+  intro?: boolean;
   own?: string;
   /** Rewarded-ad doublings still available today (0 when the race paid nothing). */
   doublesLeft?: number;
@@ -343,8 +351,17 @@ export function serverSetCupProgress(progress: Record<string, number>): Promise<
   return callBackend<{ cups: Record<string, number> } | null>('setCupProgress', [progress], null);
 }
 
-export function serverBeginRace(trackId: string, characterId: string, difficulty: string, mode: string): Promise<{ raceId: string } | null> {
-  return callBackend<{ raceId: string } | null>('beginRace', [trackId, characterId, difficulty, mode], null);
+/** What a race is. Only a plain `race` can be one of a new account's intro races. */
+export type RaceKind = 'race' | 'cup' | 'daily' | 'online';
+
+export function serverBeginRace(
+  trackId: string,
+  characterId: string,
+  difficulty: string,
+  mode: string,
+  kind: RaceKind = 'race',
+): Promise<{ raceId: string; intro?: boolean } | null> {
+  return callBackend<{ raceId: string; intro?: boolean } | null>('beginRace', [trackId, characterId, difficulty, mode, kind], null);
 }
 export function serverFinishRace(raceId: string, report: RaceReport): Promise<RaceAward | null> {
   return callBackend<RaceAward | null>('finishRace', [raceId, report], null);

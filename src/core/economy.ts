@@ -128,6 +128,106 @@ export function earnRule(token: string): EarnRule | null {
   return null;
 }
 
+// --- first-session ladder ----------------------------------------------------------
+//
+// Free unlocks that arrive by doing things, next to the coin shop rather than through it: a circuit
+// for every race finished, a garage entry for every rung. The server keeps the counters and decides
+// what they have earned; this copy is what the results screen, the garage and the circuit picker
+// print. Design: docs/superpowers/specs/2026-11-20-drift-kart-crazygames-relaunch.md, section 4.3.
+
+/** A new account starts with this many circuits; every race it finishes opens the next one. */
+export const START_TRACKS = 4;
+/** A new account's first plain races run against the intro field. */
+export const INTRO_RACES = 3;
+
+/** f races finished, p podium finishes, w wins, d drift boosts, days = days checked in. */
+export type LadderStat = 'f' | 'p' | 'w' | 'd' | 'days';
+
+export interface LadderStep {
+  id: string;
+  stat: LadderStat;
+  at: number;
+  /** The garage entry the rung awards. An ordinary paid one: the pass covers it, coins can buy it early. */
+  token: string;
+}
+
+export const LADDER: readonly LadderStep[] = [
+  { id: 'fin1', stat: 'f', at: 1, token: 'p:b' },
+  { id: 'fin2', stat: 'f', at: 2, token: 'w:1' },
+  { id: 'fin3', stat: 'f', at: 3, token: 't:2' },
+  { id: 'podium', stat: 'p', at: 1, token: 'u:1' },
+  { id: 'drift', stat: 'd', at: 10, token: 'f:1' },
+  { id: 'fin5', stat: 'f', at: 5, token: 'g:1' },
+  { id: 'win', stat: 'w', at: 1, token: 'p:u' },
+  { id: 'day2', stat: 'days', at: 2, token: 'u:5' },
+];
+
+/** A new account's first day: three missions a first session can finish in three races. */
+export const FIRST_DAY_MISSIONS: readonly string[] = ['finish', 'items', 'drift'];
+
+/** The ladder record as the server reports it. */
+export interface LadderView {
+  /** Older than the ladder: every circuit is open and stays open. */
+  all: boolean;
+  races: number;
+  finishes: number;
+  podiums: number;
+  wins: number;
+  drifts: number;
+  /** How many circuits are open, counted along the picker order. */
+  tracks: number;
+  /** The next plain race is an intro race. */
+  intro: boolean;
+  /** Today is the account's first day. */
+  firstDay: boolean;
+}
+
+/** Where a rung's counter stands. `days` is the check-in total, which lives on the streak record. */
+export function ladderValue(step: LadderStep, view: LadderView, days: number): number {
+  switch (step.stat) {
+    case 'f':
+      return view.finishes;
+    case 'p':
+      return view.podiums;
+    case 'w':
+      return view.wins;
+    case 'd':
+      return view.drifts;
+    default:
+      return days;
+  }
+}
+
+/** The rung that awards `token`, or null: most of the garage is not on the ladder. */
+export function ladderStepOf(token: string): LadderStep | null {
+  return LADDER.find((s) => s.token === token) ?? null;
+}
+
+/**
+ * The rung to point at next: of those not reached, the one furthest along, table order breaking
+ * ties. Check-in rungs are left out — they are tomorrow's business, and have their own card.
+ */
+export function nextLadderStep(view: LadderView, days: number): { step: LadderStep; value: number } | null {
+  let best: { step: LadderStep; value: number } | null = null;
+  for (const step of LADDER) {
+    if (step.stat === 'days') continue;
+    const value = ladderValue(step, view, days);
+    if (value >= step.at) continue;
+    if (!best || value / step.at > best.value / best.step.at) best = { step, value };
+  }
+  return best;
+}
+
+/** Finished races the circuit at `index` of the picker order takes to open (0: open from the start). */
+export function finishesToOpen(index: number): number {
+  return Math.max(0, index - START_TRACKS + 1);
+}
+
+/** The check-in total at which a garage entry is handed out, for `total`; null on an ordinary day. */
+export function streakGift(total: number): string | null {
+  return STREAK_REWARDS[total] ?? LADDER.find((s) => s.stat === 'days' && s.at === total)?.token ?? null;
+}
+
 // --- daily missions ----------------------------------------------------------------
 
 export type MissionId =

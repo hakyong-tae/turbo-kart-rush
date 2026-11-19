@@ -116,6 +116,8 @@ describe('entitlements (mock store rules)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
       vi.setSystemTime(new Date('2026-11-18T10:00:00Z'));
+      // An account that has been around: no intro races, every rung of the first-session ladder behind it.
+      localStorage.setItem('tkr.local.user', JSON.stringify({ lad: { all: true, day: '', r: 50, f: 50, p: 50, w: 50, d: 0 } }));
       await refreshEntitlements();
       expect(getCoins()).toBe(0);
       // Nine wins on hard; the clock has to really pass for each. Missions and level-ups pay on

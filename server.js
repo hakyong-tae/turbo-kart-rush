@@ -16,12 +16,16 @@
 //   submitDaily(timeMs, characterId)                     — one attempt per UTC day, own board
 //   getDailyTop(limit)                                   — today's board + my attempt state
 //   $onItemPurchased({productId})                        — VXShop "premium-garage" → premium
-//   beginRace(trackId, characterId, difficulty, mode)    — stamps the start of a race, returns { raceId }
+//   beginRace(trackId, characterId, difficulty, mode, kind) — stamps the start of a race, returns { raceId, intro }
 //   finishRace(raceId, report)                           — pays coins for it, from the server's own tables
 //   buyCosmetic(token) / buyKart(characterId)            — spends coins on one garage item / one premium kart
 //   doubleRaceCoins(raceId)                              — pays the last race's coins again (5/day, after an ad)
 //   claimAttendance(recover)                             — daily check-in, seven-day coin cycle
 //   swapMission(index)                                   — trades one unfinished mission (1/day, after an ad)
+//
+// First-session ladder (docs/superpowers/specs/2026-11-20-drift-kart-crazygames-relaunch.md): free
+// unlocks by doing things — a circuit per finished race, a garage entry per rung. The record is
+// `lad` on user state; what it has earned is worked out from it, like the level rewards.
 //
 // Economy: docs/superpowers/specs/2026-11-18-progression-server-design.md. Coins are computed here and
 // only here; the client reports what happened in a race and never an amount.
@@ -149,6 +153,50 @@ const STREAK_REWARDS = { 7: 'g:b', 14: 'f:a', 30: 't:d' };
 const SHOWCASE = ['w:6', 'g:c', 'f:b', 't:e', 'f:c'];
 /** Everything the pass does not open. */
 const EARN_ONLY = new Set([...Object.values(LEVEL_REWARDS), ...Object.values(STREAK_REWARDS), ...SHOWCASE]);
+
+// ── First-session ladder ──────────────────────────────────────────────────────
+// Mirror of src/core/economy.ts (serverEconomy.test.ts holds the two equal).
+
+/**
+ * Circuits in the order every picker shows them (src/track/tracks `TRACKS_BY_DIFFICULTY`), which is
+ * the order they open in for a new account.
+ */
+const TRACK_ORDER = [
+  'sunny_circuit', 'windmill_way', 'tidal_run',
+  'coral_coast', 'dune_drift', 'frostbite_falls', 'stunt_park', 'tram_town', 'canyon_rally',
+  'neon_nexus', 'magma_ridge', 'switchback_pass', 'prism_skyway', 'glacier_gap', 'ashfall_run', 'skyline_loop',
+];
+/** A new account starts with this many circuits; every race it finishes opens the next one. */
+const START_TRACKS = 4;
+/** A new account's first plain races run against the intro field, and are paid as `normal`. */
+const INTRO_RACES = 3;
+/**
+ * The rungs: reach `at` on a counter and the garage entry is the account's, free. Counters: f races
+ * finished, p podium finishes, w wins, d drift boosts, days = days checked in. The entries are
+ * ordinary paid ones, so the 100 VX pass already covers them and coins can still buy them early.
+ */
+const LADDER = [
+  { id: 'fin1', stat: 'f', at: 1, token: 'p:b' },
+  { id: 'fin2', stat: 'f', at: 2, token: 'w:1' },
+  { id: 'fin3', stat: 'f', at: 3, token: 't:2' },
+  { id: 'podium', stat: 'p', at: 1, token: 'u:1' },
+  { id: 'drift', stat: 'd', at: 10, token: 'f:1' },
+  { id: 'fin5', stat: 'f', at: 5, token: 'g:1' },
+  { id: 'win', stat: 'w', at: 1, token: 'p:u' },
+  { id: 'day2', stat: 'days', at: 2, token: 'u:5' },
+];
+/** A new account's first day: three missions a first session can finish in three races. */
+const FIRST_DAY_MISSIONS = ['finish', 'items', 'drift'];
+/** What a race is, as the client declares it at the start. Only a plain race can be an intro race. */
+const RACE_KINDS = new Set(['race', 'cup', 'daily', 'online']);
+/**
+ * Anything on a user state that says the account played before the ladder existed. Such an
+ * account keeps every circuit open; only a state with none of these starts with START_TRACKS.
+ */
+const LEGACY_KEYS = [
+  'coins', 'xp', 'eco', 'streak', 'mis', 'own', 'cups', 'cos', 'nickname',
+  'premium', 'adsRemoved', 'premiumRaces', 'grants', 'daily', 'race', 'award',
+];
 
 // ── Daily missions ────────────────────────────────────────────────────────────
 // Three a day, one per tier, picked from the date so every player gets the same set. A mission
@@ -322,7 +370,61 @@ class Server {
     for (const at of Object.keys(LEVEL_REWARDS)) if (level >= Number(at)) out.add(LEVEL_REWARDS[at]);
     const total = this._streak(state).total;
     for (const at of Object.keys(STREAK_REWARDS)) if (total >= Number(at)) out.add(STREAK_REWARDS[at]);
+    const lad = this._lad(state);
+    for (const step of LADDER) if (this._ladValue(step, lad, total) >= step.at) out.add(step.token);
     return out;
+  }
+
+  // ── First-session ladder ─────────────────────────────────────────────────
+
+  /**
+   * The ladder record. An account without one is either brand new (nothing on its state: it starts
+   * at the bottom, today) or older than the ladder (`all`: every circuit stays open, as it was).
+   */
+  _lad(state) {
+    const raw = state && state.lad && typeof state.lad === 'object' ? state.lad : null;
+    const n = (v) => (Number.isFinite(v) && v > 0 ? Math.min(999999, Math.floor(v)) : 0);
+    if (raw) {
+      const day = typeof raw.day === 'string' && /^\d{4}-\d\d-\d\d$/.test(raw.day) ? raw.day : '';
+      return { all: !!raw.all, day, r: n(raw.r), f: n(raw.f), p: n(raw.p), w: n(raw.w), d: n(raw.d) };
+    }
+    const legacy = !!state && LEGACY_KEYS.some((k) => state[k] !== undefined && state[k] !== null);
+    return { all: legacy, day: legacy ? '' : todayKey(), r: 0, f: 0, p: 0, w: 0, d: 0 };
+  }
+
+  /**
+   * `{ lad }` when the account has no stored record yet, to be merged into the next write. This is
+   * the one moment "new or older than the ladder" is decided for good, so it also looks where the
+   * state cannot: an account whose only trace is a time on the records board is not new.
+   */
+  async _ladInit(state) {
+    if (state && state.lad) return {};
+    const lad = this._lad(state);
+    if (!lad.all && (await this._allTimes()).some((r) => r.account === $sender.account)) {
+      lad.all = true;
+      lad.day = '';
+    }
+    return { lad };
+  }
+
+  _ladValue(step, lad, days) {
+    return step.stat === 'days' ? days : lad[step.stat] || 0;
+  }
+
+  /** The ladder as the client needs it: the counters, how many circuits are open, what kind of day it is. */
+  _ladView(state) {
+    const lad = this._lad(state);
+    return {
+      all: lad.all,
+      races: lad.r,
+      finishes: lad.f,
+      podiums: lad.p,
+      wins: lad.w,
+      drifts: lad.d,
+      tracks: lad.all ? TRACK_ORDER.length : Math.min(TRACK_ORDER.length, START_TRACKS + lad.f),
+      intro: !lad.all && lad.r < INTRO_RACES,
+      firstDay: !lad.all && lad.day === todayKey(),
+    };
   }
 
   /** The stored half of `_ownSet`: only what was paid for. This is what gets written back. */
@@ -406,7 +508,10 @@ class Server {
       const done = [0, 1, 2].map((i) => !!(Array.isArray(m.done) && m.done[i]));
       return { day, ids: m.ids.slice(), p, done, bonus: !!m.bonus };
     }
-    return { day, ids: missionsFor(day), p: [0, 0, 0], done: [false, false, false], bonus: false };
+    // A new account's first day is the fixed starter set; from the second day on, the date decides.
+    const lad = this._lad(state);
+    const ids = !lad.all && lad.day === day ? FIRST_DAY_MISSIONS.slice() : missionsFor(day);
+    return { day, ids, p: [0, 0, 0], done: [false, false, false], bonus: false };
   }
 
   _misView(mis, eco) {
@@ -474,14 +579,29 @@ class Server {
    * Stamps the start of a race with this server's clock. `finishRace` pays against the stamp, so a
    * reward costs at least as much real time as the race it claims to be for.
    */
-  async beginRace(trackId, characterId, difficulty, mode) {
+  async beginRace(trackId, characterId, difficulty, mode, kind) {
     if (!TRACKS.has(trackId)) throw new Error('Unknown track.');
     if (!CHARACTERS.has(characterId)) throw new Error('Unknown character.');
     if (!DIFFICULTIES.has(difficulty)) throw new Error('Unknown difficulty.');
+    const s = await this._state();
+    // An intro race is decided here, from the account's own count: a new account's first plain
+    // races. It is paid as `normal` whatever was picked, since the field it runs against is not
+    // the picked one.
+    const stamp = await this._ladInit(s);
+    const plain = !RACE_KINDS.has(kind) || kind === 'race';
+    const intro = plain && this._ladView({ ...s, ...stamp }).intro;
     const id = Date.now().toString(36) + Math.floor(Math.random() * 0xffffffff).toString(36);
-    const race = { id, at: Date.now(), trackId, characterId, difficulty, mode: MODES.has(mode) ? mode : 'solo' };
-    await $global.updateUserState($sender.account, { race });
-    return { raceId: id };
+    const race = {
+      id,
+      at: Date.now(),
+      trackId,
+      characterId,
+      difficulty: intro ? 'normal' : difficulty,
+      mode: MODES.has(mode) ? mode : 'solo',
+      intro,
+    };
+    await $global.updateUserState($sender.account, { race, ...stamp });
+    return { raceId: id, intro };
   }
 
   /**
@@ -539,6 +659,26 @@ class Server {
     const unlocked = [];
     for (let l = levelBefore + 1; l <= level; l++) if (LEVEL_REWARDS[l]) unlocked.push(LEVEL_REWARDS[l]);
 
+    // Ladder: this race moves the counters; a rung reached for the first time is announced unless
+    // the account already had the entry (bought it, or holds the pass).
+    const ladBefore = this._lad(s);
+    const tracksBefore = this._ladView(s).tracks;
+    const drifts = Math.floor(Number(rep.stats && typeof rep.stats === 'object' ? rep.stats.drift : 0));
+    const lad = {
+      ...ladBefore,
+      r: ladBefore.r + 1,
+      f: ladBefore.f + (retired ? 0 : 1),
+      p: ladBefore.p + (!retired && place <= 3 ? 1 : 0),
+      w: ladBefore.w + (!retired && place === 1 ? 1 : 0),
+      d: ladBefore.d + (Number.isFinite(drifts) && drifts > 0 ? Math.min(STAT_CAP.drift, drifts) : 0),
+    };
+    const days = this._streak(s).total;
+    const ownBefore = this._ownSet(s);
+    for (const step of LADDER) {
+      if (this._ladValue(step, ladBefore, days) >= step.at || this._ladValue(step, lad, days) < step.at) continue;
+      if (!this._owns(s, step.token, ownBefore)) unlocked.push(step.token);
+    }
+
     const next = coins + raceCoins + missionCoins + levelCoins;
     const day = { ...eco, races: eco.races + 1 };
     const patch = {
@@ -547,9 +687,11 @@ class Server {
       race: null,
       eco: day,
       mis,
+      lad,
       award: { id: race.id, coins: raceCoins, doubled: false },
     };
     await $global.updateUserState($sender.account, patch);
+    const ladder = this._ladView({ ...s, ...patch });
     return {
       ok: true,
       raceId: race.id,
@@ -565,6 +707,10 @@ class Server {
       completed,
       bonus,
       unlocked,
+      ladder,
+      // Circuits this finish opened, easiest first.
+      newTracks: TRACK_ORDER.slice(tracksBefore, ladder.tracks),
+      intro: !!race.intro,
       own: [...this._ownSet({ ...s, ...patch })].join(','),
       doublesLeft: raceCoins > 0 ? Math.max(0, DOUBLES_PER_DAY - day.doubles) : 0,
     };
@@ -617,14 +763,21 @@ class Server {
     const reward = STREAK_COINS[(n - 1) % STREAK_COINS.length];
     const total = st.total + 1;
     const streak = { last: todayKey(), n, total };
-    await $global.updateUserState($sender.account, { coins: coins + reward, streak });
-    const next = { ...s, coins: coins + reward, streak };
+    const stamp = await this._ladInit(s);
+    await $global.updateUserState($sender.account, { coins: coins + reward, streak, ...stamp });
+    const next = { ...s, ...stamp, coins: coins + reward, streak };
+    const unlocked = STREAK_REWARDS[total] ? [STREAK_REWARDS[total]] : [];
+    // Rungs counted in days checked in (day two's gift) arrive with the claim that reaches them.
+    const ownBefore = this._ownSet(s);
+    for (const step of LADDER) {
+      if (step.stat === 'days' && step.at === total && !this._owns(s, step.token, ownBefore)) unlocked.push(step.token);
+    }
     return {
       ok: true,
       coins: coins + reward,
       reward,
       streak: this._streakView(next),
-      unlocked: STREAK_REWARDS[total] ? [STREAK_REWARDS[total]] : [],
+      unlocked,
       own: [...this._ownSet(next)].join(','),
     };
   }
@@ -832,7 +985,13 @@ class Server {
   }
 
   async getMyEntitlements() {
-    const s = await this._state();
+    let s = await this._state();
+    // The first read of an account decides, once, whether it is new or older than the ladder.
+    const stamp = await this._ladInit(s);
+    if (stamp.lad) {
+      await $global.updateUserState($sender.account, stamp);
+      s = { ...s, ...stamp };
+    }
     return {
       premium: this._premium(s),
       premiumRaces: Number.isFinite(s.premiumRaces) ? Math.max(0, Math.floor(s.premiumRaces)) : 0,
@@ -845,6 +1004,7 @@ class Server {
       xp: this._xp(s),
       streak: this._streakView(s),
       missions: this._misView(this._mis(s), this._eco(s)),
+      ladder: this._ladView(s),
     };
   }
 
