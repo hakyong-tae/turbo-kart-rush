@@ -7,6 +7,7 @@ import { BALANCE as B } from '../core/balance';
 import { baseItemType } from '../items/itemVisuals';
 import { ChargeGauge } from './hud/ChargeGauge';
 import { DraftMeter } from './hud/DraftMeter';
+import { EventFeed } from './hud/EventFeed';
 import { MirrorPanel } from './hud/MirrorPanel';
 import { StandingsBoard } from './hud/StandingsBoard';
 import { TeamTally } from './hud/TeamTally';
@@ -16,7 +17,7 @@ import { BASE_TOP_SPEED } from '../core/constants';
 import { clamp01, damp, formatRaceTime } from '../core/math';
 import { localOrdinal, localOrdinalSuffix, t } from '../core/i18n';
 import type { StringKey } from '../core/i18n';
-import { el, restartAnimation, TextField } from './dom';
+import { el, kbd, restartAnimation, TextField } from './dom';
 import { icon } from './icons';
 import { Minimap } from './Minimap';
 
@@ -100,6 +101,15 @@ export class HUD {
   private readonly charge: ChargeGauge;
   private readonly standings: StandingsBoard;
   private boostGlowApplied = -1;
+  private readonly feed: EventFeed;
+  // Control hints for a new player's first races (setHints): what the item slot is for, which
+  // key uses it, and when to reach for the drift.
+  private readonly itemHint: HTMLElement;
+  private readonly driftHint: HTMLElement;
+  private hints: 'off' | 'keys' | 'touch' = 'off';
+  private itemHintState = '';
+  private driftHintOn = false;
+  private cornering = 0;
 
   constructor(
     root: HTMLElement,
@@ -119,6 +129,7 @@ export class HUD {
     this.itemFrame = el('div', 'item-frame', undefined, itemWrap);
     this.itemIconHost = el('div', 'item-icon', undefined, this.itemFrame);
     this.itemCount = new TextField(el('div', 'item-count', '', this.itemFrame));
+    this.itemHint = el('div', 'hud-hint item-hint hidden', undefined, right);
     const topRight = el('div', 'hud-topright', undefined, right);
     const lapBox = el('div', 'hud-lap', undefined, topRight);
     el('span', 'hud-lap-label', t('hud.lap'), lapBox);
@@ -160,6 +171,8 @@ export class HUD {
     // Slipstream meter (wordless bar) under the speedometer; rocket-start charge gauge (grid only).
     this.draft = new DraftMeter(speedWrap);
     this.charge = new ChargeGauge(this.rootNode);
+    this.driftHint = el('div', 'hud-hint drift-hint hidden', undefined, this.rootNode);
+    this.feed = new EventFeed(this.rootNode);
 
     // Centre overlays
     this.center = el('div', 'hud-center', undefined, this.rootNode);
@@ -174,9 +187,31 @@ export class HUD {
 
   // ------------------------------------------------------------------ public
 
+  /**
+   * Control hints, for a new player's first races: 'keys' or 'touch' says which controls to name,
+   * 'off' (the default) shows none.
+   */
+  setHints(mode: 'off' | 'keys' | 'touch'): void {
+    this.hints = mode;
+    this.itemHintState = '';
+    this.driftHint.replaceChildren();
+    if (mode === 'keys') kbd(this.driftHint, 'SPACE');
+    if (mode !== 'off') el('span', 'hud-hint-text', t('hint.drift'), this.driftHint);
+    if (mode === 'off') {
+      this.itemHint.classList.add('hidden');
+      this.driftHint.classList.add('hidden');
+    }
+  }
+
+  /** A mission counter moved: shown in the event feed as "Items 5/8". */
+  feedMission(name: string, value: number, target: number): void {
+    this.feed.mission(name, value, target);
+  }
+
   setMode(mode: RaceMode, localKartId = 0): void {
     this.mode = mode;
     this.localKartId = localKartId;
+    this.feed.setPlayer(localKartId);
     this.teamTally.setMode(mode, localKartId);
     this.standings.setMode(mode);
     this.minimap.setMode(mode);
@@ -209,6 +244,8 @@ export class HUD {
 
     this.charge.update(s);
     this.draft.update(s);
+    this.feed.update(dt);
+    if (this.hints !== 'off') this.updateHints(dt, player);
     this.mirror.update(player, karts, hazards);
     this.teamTally.update(karts);
 
@@ -283,6 +320,7 @@ export class HUD {
     this.unsubs.length = 0;
     this.minimap.dispose();
     this.mirror.dispose();
+    this.feed.dispose();
     this.rootNode.remove();
   }
 
@@ -355,6 +393,36 @@ export class HUD {
         this.vignetteAlpha = Math.max(this.vignetteAlpha, 0.6);
       }),
     );
+  }
+
+  /**
+   * The item slot says what it wants (a ? box) or which control uses what it holds; the drift
+   * hint comes up while the kart is being turned hard at speed without drifting.
+   */
+  private updateHints(dt: number, player: IKart): void {
+    const s = player.state;
+    const racing = !s.isFrozen && !s.finished;
+    const state = !racing || s.itemRouletteActive ? '' : s.item === 'none' ? 'box' : 'use';
+    if (state !== this.itemHintState) {
+      this.itemHintState = state;
+      this.itemHint.replaceChildren();
+      this.itemHint.classList.toggle('hidden', state === '');
+      this.itemHint.classList.toggle('use', state === 'use');
+      if (state === 'box') el('span', 'hud-hint-text', t('hint.box'), this.itemHint);
+      else if (state === 'use') {
+        if (this.hints === 'keys') kbd(this.itemHint, 'E');
+        el('span', 'hud-hint-text', this.hints === 'keys' ? t('hint.use') : `${t('touch.item')} · ${t('hint.use')}`, this.itemHint);
+      }
+    }
+    const top = Math.max(1, player.topSpeed());
+    const turning = racing && !s.isDrifting && !s.isAirborne && Math.abs(player.input.steer) > 0.6 && Math.abs(s.speed) > top * 0.55;
+    // A beat of hard steering before it shows, and it lingers a moment so it can be read.
+    this.cornering = turning ? Math.min(1.2, this.cornering + dt) : Math.max(0, this.cornering - dt * 1.5);
+    const on = turning ? this.cornering > 0.3 : this.cornering > 0.05 && this.driftHintOn;
+    if (on !== this.driftHintOn) {
+      this.driftHintOn = on;
+      this.driftHint.classList.toggle('hidden', !on);
+    }
   }
 
   private randomItem(): ItemType {

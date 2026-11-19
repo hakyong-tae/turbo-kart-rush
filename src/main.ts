@@ -3,6 +3,7 @@ import './buildTag';
  * Bootstrap: WebGL2 detection, global error handling, then hand over to Game.
  */
 import { GAME_TITLE } from './core/constants';
+import { PLATFORM } from './core/platform';
 import { Game } from './game/Game';
 import { BALANCE, applyBalanceOverrides } from './core/balance';
 import { el } from './ui/dom';
@@ -57,7 +58,7 @@ function boot(): void {
   app.id = 'app';
 
   if (!hasWebGL2()) {
-    showFatal(app, t('err.webgl.title'), t('err.webgl.body'));
+    showFatal(app, t('err.webgl.title'), t('err.webgl.body', { game: PLATFORM.name }));
     return;
   }
 

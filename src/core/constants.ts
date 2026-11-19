@@ -4,7 +4,10 @@
  * private constants in their own folders.
  */
 
-export const GAME_TITLE = 'DRIFT DASH GP';
+import { PLATFORM } from './platform';
+
+/** The wordmark. It differs by build target (core/platform.ts); read it, never spell it out. */
+export const GAME_TITLE = PLATFORM.title;
 
 /** Total karts on the grid (player + AI). */
 export const KART_COUNT = 8;
@@ -20,7 +23,7 @@ export const KART_COUNT = 8;
  * Nothing else was removed: `src/net/` and the lobby all still build and are covered by tests, so
  * turning this back on is a one-line change.
  */
-export const ONLINE_ENABLED = false;
+export const ONLINE_ENABLED = false && PLATFORM.online;
 
 /** Default number of laps per race (tracks may override via TrackDefinition.laps). */
 export const DEFAULT_LAPS = 3;

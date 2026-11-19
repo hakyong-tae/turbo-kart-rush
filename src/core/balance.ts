@@ -139,6 +139,11 @@ export interface Balance {
   itemTable: ItemWeightRow[];
   ai: {
     profiles: Record<Difficulty, DifficultyProfile>;
+    /**
+     * The field a new account meets in its first races (`RaceSettings.intro`): slower than `easy`
+     * and banded hard around the player, so finishing the race is usually worth a podium.
+     */
+    intro: DifficultyProfile;
     /** PD steering gains. */
     kP: number;
     kD: number;
@@ -188,6 +193,15 @@ export interface Balance {
     stuckSeconds: number;
     /** Once the winner crosses the line, everyone else has this long to finish or is retired (DNF). */
     retireSeconds: number;
+    /**
+     * Offline, the local player gets longer than the field: this long after the winner, and past
+     * it for as long as they are still making ground, up to `playerRetireCap`. A new player who is
+     * a lap down but driving should see the flag, not a DNF.
+     */
+    playerRetireSeconds: number;
+    playerRetireCap: number;
+    /** Seconds without making ground that count as having stopped, once past `playerRetireSeconds`. */
+    playerStallSeconds: number;
   };
 }
 
@@ -320,6 +334,18 @@ export function createDefaultBalance(): Balance {
           rubber: { base: 0.985, amp: 0.02, scale: 150, min: 0.97, max: 1.0 },
         },
       },
+      intro: {
+        noise: 0.1,
+        reactionMin: 1.2,
+        reactionMax: 1.8,
+        driftThreshold: 0.5,
+        releaseStage: 1,
+        brakeLatAccel: 30,
+        easeThrottle: 0.55,
+        usesMushrooms: false,
+        startThrottleBeforeGo: 0.4,
+        rubber: { base: 0.74, amp: 0.1, scale: 60, min: 0.64, max: 0.84 },
+      },
       kP: 2.2,
       kD: 0.15,
       lookaheadMin: 8,
@@ -346,6 +372,9 @@ export function createDefaultBalance(): Balance {
       wrongWaySeconds: 1.2,
       stuckSeconds: 6,
       retireSeconds: 10,
+      playerRetireSeconds: 30,
+      playerRetireCap: 75,
+      playerStallSeconds: 5,
     },
   };
 }

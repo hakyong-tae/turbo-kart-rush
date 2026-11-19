@@ -200,6 +200,13 @@ void main() {
 
 let nextHazardId = 1;
 
+/**
+ * What an AI kart may roll in an intro race: a boost for itself, or a banana left on the road.
+ * Nothing that seeks, flies at or strikes another kart — a new player's first three races should
+ * not be decided by a shell they never saw. Weighted by repetition.
+ */
+const GENTLE_AI_ITEMS: readonly ItemType[] = ['nitro', 'nitro', 'nitro', 'triple_nitro', 'banana'];
+
 export class ItemManager implements IItemManager {
   readonly object = new THREE.Group();
 
@@ -219,6 +226,8 @@ export class ItemManager implements IItemManager {
   private time = 0;
   private lastLightningTime = -1000;
   private raceMode: RaceMode = 'solo';
+  /** Intro races: AI karts roll from `GENTLE_AI_ITEMS` instead of the place table. */
+  private gentleAi = false;
 
   private readonly hazards: Hazard[] = [];
   private readonly hazardOut: HazardInfo[] = [];
@@ -294,6 +303,10 @@ export class ItemManager implements IItemManager {
     this.lastLightningTime = -1000;
     this.time = 0;
     this.resetDebugCounts();
+  }
+
+  setGentleAi(on: boolean): void {
+    this.gentleAi = on;
   }
 
   setRaceMode(mode: RaceMode): void {
@@ -562,7 +575,7 @@ export class ItemManager implements IItemManager {
     }
     if (rec.rouletteTimer <= 0) {
       rec.rouletteActive = false;
-      const item = this.rollItem(s.place);
+      const item = this.gentleAi && !s.isPlayer ? GENTLE_AI_ITEMS[Math.floor(Math.random() * GENTLE_AI_ITEMS.length)] : this.rollItem(s.place);
       s.item = item;
       s.itemCount = item.startsWith('triple_') ? 3 : 1;
       s.itemRouletteActive = false;

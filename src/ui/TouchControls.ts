@@ -1,6 +1,8 @@
 /**
- * Virtual touch controller: floating stick on the left half (12 o'clock = throttle,
- * 6 o'clock = brake, x = steer), DRIFT / ITEM buttons on the right, pause top-left.
+ * Virtual touch controller: a stick on the left half (12 o'clock = throttle, 6 o'clock = brake,
+ * x = steer), DRIFT / ITEM buttons on the right, pause top-left. The stick rests, translucent, at
+ * a fixed spot so a new player can see there is one; it jumps under the thumb wherever the left
+ * half is touched and goes back on release.
  * Pure DOM; exposes held state via TouchInputSource for InputManager to merge.
  */
 import type { TouchInputSource } from '../core/types';
@@ -31,6 +33,8 @@ export class TouchControls implements TouchInputSource {
   drift = false;
   item = false;
   pause = false;
+  /** `performance.now()` of the last touch on the stick or a button; 0 before the first. */
+  lastTouchAt = 0;
 
   private readonly rootNode: HTMLElement;
   private readonly stick: HTMLElement;
@@ -49,7 +53,7 @@ export class TouchControls implements TouchInputSource {
     this.rootNode = el('div', 'touch-controls', undefined, root);
 
     const zone = el('div', 'touch-stick-zone', undefined, this.rootNode);
-    this.stick = el('div', 'touch-stick hidden', undefined, zone);
+    this.stick = el('div', 'touch-stick idle', undefined, zone);
     el('div', 'touch-stick-ring', undefined, this.stick);
     this.knob = el('div', 'touch-knob', undefined, this.stick);
 
@@ -90,6 +94,16 @@ export class TouchControls implements TouchInputSource {
     return this.enabled;
   }
 
+  /** TouchInputSource: the on-screen controls are in use on this device. */
+  get active(): boolean {
+    return this.enabled;
+  }
+
+  /** True while a finger is on the stick or on a button. */
+  get touching(): boolean {
+    return this.stickPointer !== null || this.buttonPointers.size > 0;
+  }
+
   setEnabled(on: boolean): void {
     this.enabled = on;
     this.rootNode.classList.toggle('enabled', on);
@@ -117,12 +131,16 @@ export class TouchControls implements TouchInputSource {
     if (this.stickPointer !== null) return;
     e.preventDefault();
     this.stickPointer = e.pointerId;
-    capture(e.currentTarget as HTMLElement, e.pointerId);
+    this.lastTouchAt = performance.now();
+    const zone = e.currentTarget as HTMLElement;
+    capture(zone, e.pointerId);
     this.baseX = e.clientX;
     this.baseY = e.clientY;
-    this.stick.style.left = `${this.baseX}px`;
-    this.stick.style.top = `${this.baseY}px`;
-    this.stick.classList.remove('hidden');
+    // The stick is positioned inside the zone, which does not start at the top of the screen.
+    const box = zone.getBoundingClientRect();
+    this.stick.style.left = `${this.baseX - box.left}px`;
+    this.stick.style.top = `${this.baseY - box.top}px`;
+    this.stick.classList.remove('idle');
     this.applyStick(0, 0);
   };
 
@@ -152,7 +170,10 @@ export class TouchControls implements TouchInputSource {
     this.steer = 0;
     this.throttle = 0;
     this.brake = 0;
-    this.stick.classList.add('hidden');
+    // Back to its resting spot (the stylesheet's), where it stays visible.
+    this.stick.style.left = '';
+    this.stick.style.top = '';
+    this.stick.classList.add('idle');
     this.knob.style.transform = '';
   }
 
@@ -163,6 +184,7 @@ export class TouchControls implements TouchInputSource {
       e.preventDefault();
       e.stopPropagation();
       this.buttonPointers.set(e.pointerId, key);
+      this.lastTouchAt = performance.now();
       this.setButton(key, true);
       capture(node, e.pointerId);
     };

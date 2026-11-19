@@ -41,7 +41,9 @@ import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
 import { tickPatternTime } from '../kart/patternShader';
 import { OrientationGate } from './OrientationGate';
-import { VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, readVolume, writeVolume } from './settingsStore';
+import { COACH_KEY, FIRST_RACE_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume } from './settingsStore';
+import { PLATFORM } from '../core/platform';
+import { RaceCoach } from '../ui/RaceCoach';
 
 import { RaceManager } from './RaceManager';
 import { FollowCamera } from './FollowCamera';
@@ -79,7 +81,7 @@ import { AttendancePanel } from '../ui/AttendancePanel';
 import { MissionPanel } from '../ui/MissionPanel';
 import { missionTitle, tokenName } from '../ui/progression/text';
 import { RaceStatsTracker } from './RaceStatsTracker';
-import { LEVEL_COINS, formatCoins, levelInfo, parseMissionKey } from '../core/economy';
+import { LEVEL_COINS, formatCoins, levelInfo, parseMissionKey, type MissionStat } from '../core/economy';
 import { computeTeamResult, teamOf } from '../core/teams';
 import { submitDailyTime } from '../verse8/server';
 import { buyPremium, initShop } from '../verse8/shop';
@@ -108,8 +110,10 @@ import {
   finishRace,
   getMissions,
   getStreak,
+  nextRaceIsIntro,
   swapMission,
 } from '../verse8/entitlements';
+import type { RaceKind } from '../verse8/server';
 
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
@@ -141,7 +145,8 @@ function rewardViewOf(award: RaceAward | null): RewardView {
     balance: award.coins,
     rate: award.rate,
     races: award.races,
-    canDouble: (award.doublesLeft ?? 0) > 0 && (award.earned?.race ?? 0) > 0,
+    // No rewarded ads on this build target: the offer is not made at all.
+    canDouble: PLATFORM.rewardedAds && (award.doublesLeft ?? 0) > 0 && (award.earned?.race ?? 0) > 0,
   };
   if (award.xp !== undefined) {
     const levelUps = award.levelUps ?? 0;
@@ -250,6 +255,13 @@ export class Game {
   private attendanceOffered = false;
   private online: OnlineController | null = null;
   private onlinePanel: OnlinePanel;
+  /** The first-race coach, while it is on screen. */
+  private coach: RaceCoach | null = null;
+  /**
+   * Set while a device that has never been here waits to learn whether its account is new. Until
+   * that is known the lobby stays hidden and nothing opens by itself.
+   */
+  private firstBoot: { timer: number; off: () => void } | null = null;
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
@@ -407,6 +419,7 @@ export class Game {
     if (this.state !== 'boot') return;
     this.showMenu('title');
     this.maybeNudgeNickname();
+    this.armFirstRace();
     this.lastTime = -1;
     this.rafId = requestAnimationFrame(this.loop);
   }
@@ -759,7 +772,8 @@ export class Game {
     const panel = new AttendancePanel(this.uiRoot);
     panel.onClaim = async (recover) => {
       // Carrying a broken run on is what the ad pays for; restarting or an unbroken run is free.
-      if (recover === true && !(await requestRewardedAd(PLACEMENT_REWARDED_STREAK))) {
+      // Where there are no rewarded ads, carrying the run on is simply offered.
+      if (recover === true && PLATFORM.rewardedAds && !(await requestRewardedAd(PLACEMENT_REWARDED_STREAK))) {
         showToast(t('v8.lock.adFailed'), 'error');
         return;
       }
@@ -781,21 +795,83 @@ export class Game {
    * lobby to be the lobby.
    */
   private maybeOfferAttendance(): void {
-    if (this.attendanceOffered || this.state !== 'title') return;
+    if (this.attendanceOffered || this.firstBoot || this.state !== 'title') return;
     const streak = getStreak();
     if (!streak || streak.claimed) return;
     if (new URLSearchParams(location.search).has('auto')) return;
-    const busy =
+    if (this.overlayOpen()) return;
+    this.attendanceOffered = true;
+    this.attendance.show();
+  }
+
+  /** A panel is open over the lobby (the check-in window itself not counted). */
+  private overlayOpen(): boolean {
+    return (
       this.settings.isVisible ||
       this.garage.isVisible ||
       this.daily.isVisible ||
       this.missions.isVisible ||
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
-      this.onlinePanel.isVisible;
-    if (busy) return;
-    this.attendanceOffered = true;
-    this.attendance.show();
+      this.onlinePanel.isVisible
+    );
+  }
+
+  /**
+   * First visit: a brand-new account skips the lobby and is put straight into a race on the
+   * easiest circuit with the default kart. Whether the account is new is the server's to say, so
+   * the lobby is held back (hidden, nothing opening by itself) until the record arrives. Once per
+   * device: after this decision, or for anyone the server already knows, the game opens on the
+   * lobby as it always did.
+   *
+   * Not under `?auto` or `?lobby`: scripts and tools that drive the menus expect to find them.
+   */
+  private armFirstRace(): void {
+    const params = new URLSearchParams(location.search);
+    if (hasFlag(FIRST_RACE_KEY) || params.has('lobby') || this.isUnrankedRun(null)) return;
+    this.uiRoot.classList.add('first-boot');
+    const release = (): void => {
+      const boot = this.firstBoot;
+      if (!boot) return;
+      this.firstBoot = null;
+      window.clearTimeout(boot.timer);
+      boot.off();
+      this.uiRoot.classList.remove('first-boot');
+    };
+    const decide = (): void => {
+      const ent = getEntitlements();
+      if (!this.firstBoot || !ent.loaded) return;
+      release();
+      setFlag(FIRST_RACE_KEY);
+      const ladder = ent.ladder;
+      const fresh = Boolean(ladder && !ladder.all && ladder.races === 0);
+      if (fresh && this.state === 'title' && !this.overlayOpen() && !this.attendance.isVisible) this.startFirstRace();
+      else this.maybeOfferAttendance();
+    };
+    this.firstBoot = {
+      off: onEntitlementsChange(decide),
+      // The record did not come: show the lobby, and ask again on the next visit.
+      timer: window.setTimeout(() => {
+        release();
+        this.maybeOfferAttendance();
+      }, 3000),
+    };
+    decide();
+  }
+
+  private startFirstRace(): void {
+    const track = TRACKS_BY_DIFFICULTY[0] ?? TRACKS[0];
+    const character = (CHARACTERS as readonly CharacterDef[])[0];
+    if (!track || !character) return;
+    this.cup = null;
+    this.dailyRun = null;
+    void this.startRaceGated({
+      characterId: character.id,
+      trackId: track.id,
+      difficulty: 'normal',
+      laps: track.laps > 0 ? track.laps : DEFAULT_LAPS,
+      mode: 'solo',
+    });
   }
 
   /** The results screen's "watch an ad, double the coins". */
@@ -973,6 +1049,17 @@ export class Game {
     }
   }
 
+  /** A mission counter moved mid-race: say how far along it is, in the HUD's event feed. */
+  private feedMission(r: RaceContext, stat: MissionStat): void {
+    const missions = getMissions();
+    const stats = r.stats?.stats;
+    if (!missions || !stats || stat === 'walls' || this.isUnrankedRun(r)) return;
+    for (const m of missions.list) {
+      if (m.done || parseMissionKey(m.key)?.def.stat !== stat) continue;
+      r.hud.feedMission(t(`feed.stat.${stat}`), Math.min(m.target, m.progress + stats[stat]), m.target);
+    }
+  }
+
   private showReward(view: RewardView): void {
     this.reward = view;
     if (this.state === 'results') this.results.showRewards(view);
@@ -980,6 +1067,8 @@ export class Game {
 
   private maybeSubmitTime(r: RaceContext, seconds: number): void {
     if (r.online) return; // multiplayer times are not ranked (spec B MVP)
+    // An intro race is run against a field that lets the player through: not a time to rank.
+    if (r.settings.intro) return;
     const params = new URLSearchParams(location.search);
     if (params.has('auto') || r.playerAutoDriverBeforeFinish) return;
     if (Array.from(params.keys()).some((k) => k.startsWith('b.'))) return;
@@ -1082,6 +1171,9 @@ export class Game {
     if (dt < 0) dt = 0;
     this.elapsed += dt;
 
+    // Auto-accelerate is for the race itself. The countdown is left alone, so the start boost is
+    // still the player's to time and a held throttle cannot stall the engine for them.
+    this.input.setAutoThrottle(this.state === 'racing' && readAutoAccel());
     const input = this.input.update();
     try {
       this.frame(dt, input);
@@ -1137,6 +1229,7 @@ export class Game {
           this.render(dt);
           return;
         }
+        this.coach?.update(dt, input, this.state === 'racing');
         this.simulate(dt, input);
         this.renderRace(dt, this.state === 'racing' && input.lookBack);
         return;
@@ -1498,14 +1591,19 @@ export class Game {
       this.showMenu('title');
       return;
     }
-    this.pendingSettings = { ...settings, trackId: trackDef.id };
+    // One of a new account's first plain races runs against the intro field. The server makes
+    // the same call from the same count when the race is opened below.
+    const kind: RaceKind = settings.online ? 'online' : this.cup ? 'cup' : this.dailyRun ? 'daily' : 'race';
+    const unranked = this.isUnrankedRun(null);
+    const intro = kind === 'race' && !unranked && nextRaceIsIntro();
+    this.pendingSettings = { ...settings, trackId: trackDef.id, intro };
     this.lastSubmit = null;
     this.reward = null;
     this.rewardRaceId = null;
     // Open the race on the server now, so its clock covers the whole race by the time the
     // finish is reported. Fire-and-forget: a slow server must not hold up the start lights.
-    if (this.isUnrankedRun(null)) abandonRace();
-    else beginRace({ ...settings, trackId: trackDef.id });
+    if (unranked) abandonRace();
+    else beginRace({ ...settings, trackId: trackDef.id, kind });
     this.loadingElapsed = 0;
     this.loadingFrames = 0;
     this.loadingProgress = 0;
@@ -1599,7 +1697,7 @@ export class Game {
         karts.push(bot);
       }
       for (let id = 1; id < karts.length; id++) {
-        aiDrivers.push(new AIDriver(karts[id], difficulty, id));
+        aiDrivers.push(new AIDriver(karts[id], difficulty, id, Boolean(settings.intro)));
       }
     }
 
@@ -1607,6 +1705,7 @@ export class Game {
     partial.items = items;
     items.init(track, karts);
     items.setRaceMode?.(settings.mode ?? 'solo');
+    items.setGentleAi?.(Boolean(settings.intro));
 
     const raceManager = new RaceManager(track, karts, settings);
     const followCamera = new FollowCamera(this.camera);
@@ -1617,6 +1716,8 @@ export class Game {
     partial.hud = hud;
     hud.setTrack(track);
     hud.setMode(settings.mode ?? 'solo', localKartId);
+    // A new player's first races carry the control hints; after those the HUD is left clean.
+    if (settings.intro) hud.setHints(this.touch.isEnabled ? 'touch' : 'keys');
 
     // Lights from the track environment.
     const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity);
@@ -1729,7 +1830,10 @@ export class Game {
 
     const stats = new RaceStatsTracker(localKartId);
     const announced = new Set<string>();
-    stats.onChange = () => this.announceMissions(r, announced);
+    stats.onChange = (stat) => {
+      this.announceMissions(r, announced);
+      this.feedMission(r, stat);
+    };
     r.stats = stats;
     r.unsubs.push(
       () => stats.dispose(),
@@ -1769,6 +1873,26 @@ export class Game {
     this.loading.hide();
     r.hud.show();
 
+    // The very first race: the coach's first card holds the lights until the player has pressed
+    // go. The grid waits, karts frozen, with the chase camera already in place.
+    if (r.settings.intro && !r.online && !hasFlag(COACH_KEY)) {
+      const coach = new RaceCoach(this.uiRoot, this.touch.isEnabled, r.localKartId);
+      coach.onStart = () => {
+        if (this.race === r) this.beginCountdown(r);
+      };
+      coach.onDone = () => setFlag(COACH_KEY);
+      this.coach = coach;
+      this.setState('countdown');
+      this.playMusic('race');
+      return;
+    }
+    this.beginCountdown(r);
+    this.setState('countdown');
+    this.playMusic('race');
+  }
+
+  /** The grid cinematic and the 3-2-1. */
+  private beginCountdown(r: RaceContext): void {
     // Cinematic: wide shot of the grid swooping into the chase position.
     const grid = r.track.startGrid;
     const center = this.tmpA.set(0, 0, 0);
@@ -1792,8 +1916,6 @@ export class Game {
     r.followCamera.setCinematic(from, look, 3 * COUNTDOWN_STEP_SECONDS, 46);
 
     if (r.online?.role !== 'client') r.raceManager.startCountdown();
-    this.setState('countdown');
-    this.playMusic('race');
   }
 
   private onPlayerFinished(r: RaceContext): void {
@@ -1805,6 +1927,7 @@ export class Game {
       r.playerAutoDriver = null;
     }
     if (this.postfxOk) this.safe(() => this.postfx.flash(0xffffff, 0.35));
+    this.endCoach();
     this.setState('finished');
     if (r.raceManager.allFinished) r.resultsTimer = RESULTS_DELAY_SECONDS;
   }
@@ -1834,6 +1957,15 @@ export class Game {
     }
     this.setState('results');
     this.playMusic('results');
+  }
+
+  /** Takes the coach off the screen. It has had its race, finished or not: it is not shown again. */
+  private endCoach(): void {
+    const coach = this.coach;
+    if (!coach) return;
+    this.coach = null;
+    setFlag(COACH_KEY);
+    coach.dispose();
   }
 
   private pause(): void {
@@ -1875,6 +2007,7 @@ export class Game {
     }
     // Before anything is freed: nothing may go on waiting for this race's shaders.
     this.endWarm();
+    this.endCoach();
     const r = this.race;
     if (!r) return;
     this.race = null;

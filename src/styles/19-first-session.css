@@ -1,0 +1,239 @@
+/* First session (CrazyGames relaunch): the first-race coach, HUD control hints, the event feed,
+   and the held-back lobby of a first visit.
+   Design: docs/superpowers/specs/2026-11-20-drift-kart-crazygames-relaunch.md. */
+
+/* ----------------------------------------------------------------------------
+   First visit: until the server has said whether the account is new, the lobby's
+   controls stay out of sight (the wordmark and the kart behind it are the splash).
+   --------------------------------------------------------------------------- */
+#ui.first-boot .lobby,
+#ui.first-boot .lobby-profile,
+#ui.first-boot .lobby-icons {
+  visibility: hidden;
+}
+
+/* ----------------------------------------------------------------------------
+   Coach card: top centre, above the HUD and the touch layer.
+   --------------------------------------------------------------------------- */
+.coach {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(clamp(10px, 2.2vh, 26px) + env(safe-area-inset-top, 0px));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 25;
+}
+.coach.hidden {
+  display: none;
+}
+#ui:not([data-state='countdown']):not([data-state='racing']) .coach {
+  display: none;
+}
+.coach-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'steps steps' 'body skip';
+  align-items: center;
+  gap: 8px 14px;
+  max-width: min(560px, 62vw);
+  padding: 10px 12px 12px 16px;
+  background: var(--panel);
+  border: 2px solid var(--yellow);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+.coach.coach-in .coach-card {
+  animation: coach-in 0.28s var(--ease-pop) both;
+}
+@keyframes coach-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.coach-steps {
+  grid-area: steps;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+}
+.coach-steps i {
+  height: 4px;
+  background: var(--line);
+}
+.coach-steps i.on {
+  background: var(--ink);
+}
+.coach-steps i.done {
+  background: var(--yellow);
+}
+.coach-body {
+  grid-area: body;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.coach-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.coach-keys > .icon {
+  width: 26px;
+  height: 26px;
+  color: var(--yellow);
+  stroke-width: 3;
+}
+.coach-chip {
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font-size: 14px;
+  padding: 5px 10px;
+}
+.coach-text {
+  font-family: var(--display);
+  font-style: italic;
+  font-size: clamp(15px, 1.7vw, 21px);
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+.coach.ticked .coach-card {
+  border-color: var(--ink);
+}
+.coach.ticked .coach-text {
+  color: var(--yellow);
+}
+.coach-skip {
+  grid-area: skip;
+  pointer-events: auto;
+  touch-action: manipulation;
+  padding: 7px 12px;
+  background: transparent;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-dim, var(--ink));
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.coach-skip:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.coach.all-done .coach-skip {
+  visibility: hidden;
+}
+
+/* ----------------------------------------------------------------------------
+   Control hints (a new player's first races).
+   --------------------------------------------------------------------------- */
+.hud-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 4px;
+  background: var(--hud-bg);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.hud-hint.hidden {
+  display: none;
+}
+.item-hint.use {
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+.drift-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--hud-pad) * 0.6 + clamp(104px, 12vw, 164px) + 10px);
+  transform: translateX(-50%);
+  border: 2px solid var(--yellow);
+  animation: hint-pulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes hint-pulse {
+  from { opacity: 0.75; }
+  to { opacity: 1; }
+}
+
+/* ----------------------------------------------------------------------------
+   Event feed: short lines under the top edge, centre. Newest on top.
+   --------------------------------------------------------------------------- */
+.hud-feed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 24%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+.feed-line {
+  padding: 2px 14px 3px;
+  background: var(--hud-bg);
+  color: var(--yellow);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: clamp(15px, 1.8vw, 22px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: feed-out 0.35s ease-in 1.35s both;
+}
+.feed-line.feed-in {
+  animation: feed-in 0.22s var(--ease-pop) both, feed-out 0.35s ease-in 1.35s both;
+}
+.feed-line.mission {
+  color: var(--ink);
+  font-size: clamp(13px, 1.4vw, 17px);
+  text-transform: none;
+}
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes feed-out {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+
+/* Phones in landscape: everything a size down, and the feed clear of the countdown numerals. */
+@media (max-height: 480px) {
+  .coach-card {
+    max-width: min(460px, 56vw);
+    padding: 7px 8px 8px 12px;
+    gap: 6px 10px;
+  }
+  .coach-text {
+    font-size: 14px;
+  }
+  .coach-skip {
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+  .hud-feed {
+    top: 27%;
+  }
+  .feed-line {
+    font-size: 14px;
+  }
+  .feed-line.mission {
+    font-size: 12px;
+  }
+  .hud-hint {
+    font-size: 11px;
+    padding: 2px 7px 3px;
+  }
+}

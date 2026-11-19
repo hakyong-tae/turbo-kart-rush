@@ -17,6 +17,11 @@ const KEY_PAUSE = ['Escape', 'KeyP'];
 const KEY_BACK = ['Escape', 'KeyP', 'Backspace'];
 const KEY_CONFIRM = ['Enter', 'NumpadEnter', 'Space'];
 
+/** Keys that drive the kart. Pressing one says "the keyboard is driving", which stops auto-accelerate. */
+const DRIVE_KEYS = new Set<string>([...KEY_THROTTLE, ...KEY_BRAKE, ...KEY_LEFT, ...KEY_RIGHT, ...KEY_DRIFT]);
+/** Stick pulled back this far is a brake: auto-accelerate lets go. */
+const AUTO_THROTTLE_BRAKE = 0.15;
+
 /** Keys whose browser default (scrolling, etc.) we suppress. */
 const GAME_KEYS = new Set<string>([
   ...KEY_THROTTLE,
@@ -69,6 +74,9 @@ export class InputManager {
   private touch: TouchInputSource | null = null;
   private prevTouchItem = false;
   private prevTouchPause = false;
+  private autoThrottle = false;
+  /** `performance.now()` of the last driving key, 0 before the first. */
+  private lastDriveKeyAt = 0;
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown, { passive: false });
@@ -88,6 +96,15 @@ export class InputManager {
     this.touch = source;
     this.prevTouchItem = false;
     this.prevTouchPause = false;
+  }
+
+  /**
+   * Auto-accelerate (touch): while on, a touch player's throttle is held for them and the stick
+   * only steers and brakes. Game switches it on for the race itself, never the countdown — the
+   * start boost is still theirs to time — and only when the player has not turned it off.
+   */
+  setAutoThrottle(on: boolean): void {
+    this.autoThrottle = on;
   }
 
   update(): InputState {
@@ -150,8 +167,11 @@ export class InputManager {
     this.prevTouchPause = tcPause;
 
     // --- compose -----------------------------------------------------------------
-    s.throttle = Math.max(kbThrottle, padThrottle, tcThrottle);
     s.brake = Math.max(kbBrake, padBrake, tcBrake);
+    // Only for whoever is actually driving by touch: the last thing used was the screen, not a key.
+    const auto =
+      this.autoThrottle && tc !== null && tc.active === true && (tc.lastTouchAt ?? 0) >= this.lastDriveKeyAt && s.brake < AUTO_THROTTLE_BRAKE;
+    s.throttle = auto ? 1 : Math.max(kbThrottle, padThrottle, tcThrottle);
     const digitalSteer = clamp(this.keyboardSteer + padSteer, -1, 1);
     s.steer = Math.abs(tcSteer) > Math.abs(digitalSteer) ? tcSteer : digitalSteer;
     s.drift = this.anyHeld(KEY_DRIFT) || buttons[PAD_A] || buttons[PAD_RB] || tcDrift;
@@ -241,6 +261,7 @@ export class InputManager {
     if (e.repeat) return;
     if (!this.held.has(code)) this.pressed.add(code);
     this.held.add(code);
+    if (DRIVE_KEYS.has(code)) this.lastDriveKeyAt = performance.now();
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {

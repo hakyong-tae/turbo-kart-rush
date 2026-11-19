@@ -4,6 +4,7 @@
  * `screen.orientation.lock('landscape')` once we are back in landscape.
  */
 import { t } from '../core/i18n';
+import { PLATFORM } from '../core/platform';
 import { el } from '../ui/dom';
 import { icon } from '../ui/icons';
 
@@ -19,7 +20,7 @@ export class OrientationGate {
     this.node = el('div', 'rotate-gate hidden', undefined, uiRoot);
     el('div', 'rotate-gate-icon', undefined, this.node).appendChild(icon('rotate-phone'));
     el('div', 'rotate-gate-title', t('rotate.title'), this.node);
-    el('div', 'rotate-gate-body', t('rotate.body'), this.node);
+    el('div', 'rotate-gate-body', t('rotate.body', { game: PLATFORM.name }), this.node);
     window.addEventListener('resize', this.check);
     window.addEventListener('orientationchange', this.check);
     this.check();

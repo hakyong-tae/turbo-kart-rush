@@ -52,6 +52,14 @@ export interface TouchInputSource {
   readonly drift: boolean; // held
   readonly item: boolean; // held (InputManager turns this into the useItem edge)
   readonly pause: boolean; // held (InputManager turns this into the pause edge)
+  /**
+   * Contract addition (auto-accelerate): `performance.now()` of the last touch on the stick or a
+   * button, 0 before the first. InputManager compares it with the last driving key, so a keyboard
+   * player on a touch-capable laptop is not driven for them.
+   */
+  readonly lastTouchAt?: number;
+  /** Contract addition (auto-accelerate): the on-screen controls are in use on this device. */
+  readonly active?: boolean;
 }
 
 export function createEmptyInput(): InputState {
@@ -593,6 +601,11 @@ export interface IItemManager {
   setNetMode?(mode: 'authority' | 'mirror'): void;
   /** Contract addition (team-items): the race mode, so team races can spare the user's own side. */
   setRaceMode?(mode: RaceMode): void;
+  /**
+   * Contract addition (intro races): AI karts roll only items that do not go after another kart.
+   * The player's own roulette is untouched.
+   */
+  setGentleAi?(on: boolean): void;
   getNetItems?(): NetItems;
   applyNetItems?(items: NetItems): void;
 }
@@ -714,6 +727,12 @@ export interface RaceSettings {
   laps: number;
   /** Contract addition (gameplay-4). Absent = 'solo'. */
   mode?: RaceMode;
+  /**
+   * Contract addition (intro races): one of a new account's first races. The field drives the
+   * intro profile whatever `difficulty` says, AI karts get no attacking items, a throttle held
+   * through the whole countdown is forgiven, and the time is kept off the records board.
+   */
+  intro?: boolean;
   /** Contract addition (online multiplayer). Absent = offline race against AI. */
   online?: OnlineRaceConfig;
 }

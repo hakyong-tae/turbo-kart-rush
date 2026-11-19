@@ -127,11 +127,15 @@ export class AIDriver implements IAIDriver {
   private frozenTime = 0;
   private sinceCountOne = -1;
 
-  constructor(kart: IKart, difficulty: Difficulty, personalitySeed: number) {
+  /**
+   * `intro`: drive the intro profile (a new account's first races). The driver then behaves as
+   * `easy` wherever behaviour branches on the difficulty, with the slower, tightly banded profile.
+   */
+  constructor(kart: IKart, difficulty: Difficulty, personalitySeed: number, intro = false) {
     installListeners();
     this.kart = kart;
-    this.difficulty = difficulty;
-    this.profile = B.ai.profiles[difficulty];
+    this.difficulty = intro ? 'easy' : difficulty;
+    this.profile = intro ? B.ai.intro : B.ai.profiles[difficulty];
     this.rng = seededRandom(personalitySeed);
     const r = this.rng;
     this.baseOffset = (r() * 2 - 1) * 0.45;

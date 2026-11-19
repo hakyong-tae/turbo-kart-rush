@@ -49,3 +49,47 @@ export function markControlsSeen(): void {
     /* private mode */
   }
 }
+
+/** Touch auto-accelerate. On unless the player turned it off in Settings. */
+export const AUTO_ACCEL_KEY = 'tkr.autoAccel';
+
+export function readAutoAccel(): boolean {
+  try {
+    return localStorage.getItem(AUTO_ACCEL_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function writeAutoAccel(on: boolean): void {
+  try {
+    localStorage.setItem(AUTO_ACCEL_KEY, on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
+
+/**
+ * Set once this device has been through the first-visit decision: a brand-new account goes
+ * straight into a race, and nobody is sent into one twice.
+ */
+export const FIRST_RACE_KEY = 'tkr.firstRace';
+/** Set once the first-race coach has been shown (finished, skipped or driven past). */
+export const COACH_KEY = 'tkr.coach';
+
+/** A one-time device flag. Unreadable storage counts as set, for the same reason as the legend. */
+export function hasFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) !== null;
+  } catch {
+    return true;
+  }
+}
+
+export function setFlag(key: string): void {
+  try {
+    localStorage.setItem(key, '1');
+  } catch {
+    /* private mode */
+  }
+}

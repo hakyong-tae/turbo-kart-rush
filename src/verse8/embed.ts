@@ -3,7 +3,12 @@
  * viewport on some hosts. Two message shapes have been seen in the wild (GAME_SIZE from
  * block-blaster, GAME_SIZE_RESPONSE + REQUEST_GAME_SIZE from server-survival) — send both.
  */
+import { PLATFORM } from '../core/platform';
+
 export function inVerse8Host(): boolean {
+  // Editions that never run on Verse8 are embedded too (CrazyGames serves games in an iframe), so
+  // the iframe test below would send them looking for a gameserver that is not there.
+  if (!PLATFORM.hosted) return false;
   if (typeof window === 'undefined') return false;
   try {
     if (window.parent !== window) return true;

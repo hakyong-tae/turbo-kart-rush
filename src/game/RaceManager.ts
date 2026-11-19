@@ -95,11 +95,25 @@ export class RaceManager {
   private time = 0;
   private countdownTimer = 0;
   private countdownEmitted = 0;
+  /** Karts classified so far, timed or retired. */
   private finishedCount = 0;
+  /** Karts that crossed the line: a finisher's place. */
+  private timedCount = 0;
+  /** Karts retired: they are classified from the back of the field forward. */
+  private retiredCount = 0;
   private playerFinishedAt = -1;
   /** Race time when the winner crossed the line (-1 until then). */
   private firstFinishedAt = -1;
   private allFinishedEmitted = false;
+  /** Offline race against AI: the local player gets the longer retirement limit. */
+  private readonly playerGrace: boolean;
+  /** Intro race: a throttle held through the whole countdown is forgiven. */
+  private readonly forgiving: boolean;
+  /** The field behind the player has been retired; the player is still driving. */
+  private fieldRetired = false;
+  /** The player's progress the last time they made ground, and when that was. */
+  private progressMark = -Infinity;
+  private progressMarkAt = 0;
 
   private readonly trackers: Tracker[] = [];
   private readonly order: Tracker[] = [];
@@ -117,6 +131,8 @@ export class RaceManager {
   ) {
     this.totalLaps = Math.max(1, Math.floor(settings.laps));
     this.difficulty = settings.difficulty;
+    this.playerGrace = !settings.online;
+    this.forgiving = Boolean(settings.intro);
 
     const cps = track.checkpoints;
     if (cps.length >= 2) {
@@ -195,6 +211,8 @@ export class RaceManager {
   adoptFromKarts(raceTime: number, phase: 'countdown' | 'racing' | 'complete'): void {
     this.time = Math.max(0, raceTime);
     this.finishedCount = 0;
+    this.timedCount = 0;
+    this.retiredCount = 0;
     this.playerFinishedAt = -1;
     this.firstFinishedAt = -1;
     this.allFinishedEmitted = false;
@@ -209,7 +227,11 @@ export class RaceManager {
       tr.started = true;
       tr.lapsCompleted = Math.max(0, s.lap - 1);
       tr.nextCheckpoint = ((s.checkpointIndex % n) + n) % n;
-      if (s.finished) this.finishedCount++;
+      if (s.finished) {
+        this.finishedCount++;
+        if (s.finishTime > 0) this.timedCount++;
+        else this.retiredCount++;
+      }
       if (s.finished && s.isPlayer && this.playerFinishedAt < 0) this.playerFinishedAt = Math.min(this.time, s.finishTime);
       tr.emittedPlace = s.place;
       tr.candidatePlace = s.place;
@@ -338,8 +360,12 @@ export class RaceManager {
       // worth more than a nitro and almost nobody missed it, which decided too many races before
       // the first corner; it is now a useful start rather than a free lap.
       const held = p.throttleStreak;
-      if (held >= B.race.startSpinoutHold) {
+      if (held >= B.race.startSpinoutHold && !this.forgiving) {
         p.kart.applyHit('collision', -1);
+      } else if (held >= B.race.startSpinoutHold) {
+        // Intro race: someone told to hold the throttle will hold it. Give them a modest launch
+        // rather than a spin on the first thing they were asked to do.
+        p.kart.applyBoost(0.23, 0.67, 'start');
       } else if (held >= B.race.startChargePerfect) {
         p.kart.applyBoost(0.33, 0.87, 'start');
       } else if (held >= B.race.startChargeGood) {
@@ -365,14 +391,42 @@ export class RaceManager {
 
     if (this.phase === 'racing' && this.firstFinishedAt >= 0 && !this.allFinishedEmitted) {
       const allDone = this.finishedCount >= this.trackers.length;
-      // Whoever has not crossed the line retireSeconds after the winner is retired (DNF).
-      if (allDone || this.time - this.firstFinishedAt >= B.race.retireSeconds) {
+      const since = this.time - this.firstFinishedAt;
+      const player = this.playerTracker;
+      let over = allDone;
+      if (!over && this.playerGrace && player && !player.kart.state.finished) {
+        // The player is still out there. The field keeps its limit: whoever is behind the player
+        // when it runs out is retired, and the player drives on to the longer one.
+        if (since >= B.race.retireSeconds && !this.fieldRetired) {
+          this.fieldRetired = true;
+          this.retireBehind(player);
+        }
+        over = since >= B.race.playerRetireCap || (since >= B.race.playerRetireSeconds && this.playerStalled(player));
+      } else if (!over) {
+        // Whoever has not crossed the line retireSeconds after the winner is retired (DNF).
+        over = since >= B.race.retireSeconds;
+      }
+      if (over) {
         this.retireRemaining();
         this.phase = 'complete';
         this.allFinishedEmitted = true;
         events.emit('race:allFinished', {});
       }
     }
+  }
+
+  /**
+   * Has the player stopped making ground? Read once the longer limit has passed: a player a lap
+   * down but still driving is left to finish, one parked against a wall is not waited for.
+   */
+  private playerStalled(player: Tracker): boolean {
+    const progress = player.kart.state.raceProgress;
+    // ~0.4% of a lap: a few metres. Less than that in the window is not driving.
+    if (progress > this.progressMark + 0.004) {
+      this.progressMark = progress;
+      this.progressMarkAt = this.time;
+    }
+    return this.time - this.progressMarkAt >= B.race.playerStallSeconds;
   }
 
   private updateTracker(tr: Tracker, dt: number): void {
@@ -497,7 +551,10 @@ export class RaceManager {
     s.finishTime = this.time;
     s.lap = this.totalLaps + 1;
     this.finishedCount++;
-    s.place = this.finishedCount;
+    // Places come from the front for finishers and from the back for retirements, so a kart
+    // retired early never sits ahead of one that went on to finish.
+    this.timedCount++;
+    s.place = this.timedCount;
     tr.emittedPlace = s.place;
     tr.candidatePlace = s.place;
     s.wrongWay = false;
@@ -508,18 +565,37 @@ export class RaceManager {
 
   /** Marks every kart still on track as retired (DNF): placed after the finishers by progress. */
   private retireRemaining(): void {
-    // Current order is already sorted: finished first, then by progress.
-    for (const tr of this.order) {
+    this.retire(this.order.filter((tr) => !tr.kart.state.finished));
+  }
+
+  /** Retires the karts running behind `ahead`; those in front of it are still racing it to the line. */
+  private retireBehind(ahead: Tracker): void {
+    const at = this.order.indexOf(ahead);
+    this.retire(this.order.filter((tr, i) => i > at && !tr.kart.state.finished));
+  }
+
+  /**
+   * Retires `list` (in running order). The last of them takes the last free place and so on
+   * forward, which leaves the places ahead of them open for whoever is still driving.
+   */
+  private retire(list: readonly Tracker[]): void {
+    const total = this.trackers.length;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const tr = list[i];
       const s = tr.kart.state;
-      if (s.finished) continue;
       s.finished = true;
       s.finishTime = -1;
       this.finishedCount++;
-      s.place = this.finishedCount;
+      s.place = total - this.retiredCount;
+      this.retiredCount++;
       tr.emittedPlace = s.place;
       tr.candidatePlace = s.place;
       s.wrongWay = false;
       if (s.isPlayer && this.playerFinishedAt < 0) this.playerFinishedAt = this.time;
+    }
+    // Announced front to back, the order the results table reads in.
+    for (const tr of list) {
+      const s = tr.kart.state;
       events.emit('race:finish', { kartId: s.id, place: s.place, time: -1, isPlayer: s.isPlayer, retired: true });
     }
   }
@@ -553,9 +629,12 @@ export class RaceManager {
   private compare(a: Tracker, b: Tracker): number {
     const sa = a.kart.state;
     const sb = b.kart.state;
-    if (sa.finished && sb.finished) return sa.place - sb.place;
-    if (sa.finished) return -1;
-    if (sb.finished) return 1;
+    // Finishers, then whoever is still driving, then retirements: a kart retired while the player
+    // drives on is already classified behind them.
+    const ga = sa.finished ? (sa.finishTime > 0 ? 0 : 2) : 1;
+    const gb = sb.finished ? (sb.finishTime > 0 ? 0 : 2) : 1;
+    if (ga !== gb) return ga - gb;
+    if (ga !== 1) return sa.place - sb.place;
     if (sb.raceProgress !== sa.raceProgress) return sb.raceProgress - sa.raceProgress;
     return sa.id - sb.id;
   }

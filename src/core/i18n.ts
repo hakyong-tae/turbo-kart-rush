@@ -6,6 +6,7 @@ import { events } from './events';
 import { ordinal } from './math';
 import { en, type StringKey } from './locales/en';
 import { ko } from './locales/ko';
+import { PLATFORM } from './platform';
 
 export type Lang = 'ko' | 'en';
 export type { StringKey };
@@ -50,9 +51,19 @@ export function toggleLang(): Lang {
   return current;
 }
 
+/**
+ * Wording that differs by build target is a second entry, `<key>@<target>` (core/platform.ts):
+ * the CrazyGames edition has no garage pass and no ads, so the sentences that mention them have a
+ * variant that does not. Asked for by the plain key; the variant wins when the build has one.
+ */
+const VARIANT = PLATFORM.target === 'verse8' ? '' : `@${PLATFORM.target}`;
+
 export function t(key: StringKey, params?: Record<string, string | number>): string {
-  const table = TABLES[current];
-  let s: string = (table as Record<string, string>)[key] ?? (en as Record<string, string>)[key] ?? key;
+  const table = TABLES[current] as Record<string, string>;
+  const fallback = en as Record<string, string>;
+  let s: string = (VARIANT ? (table[key + VARIANT] ?? fallback[key + VARIANT]) : undefined) ?? table[key] ?? fallback[key] ?? key;
+  // The game's own name is never spelled out in a string: it depends on the build.
+  if (s.includes('{game}')) s = s.split('{game}').join(PLATFORM.name);
   if (params) {
     for (const k of Object.keys(params)) s = s.split(`{${k}}`).join(String(params[k]));
   }

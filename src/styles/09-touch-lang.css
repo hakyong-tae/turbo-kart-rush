@@ -36,6 +36,14 @@
   height: 0;
   pointer-events: none;
 }
+/* At rest: a fixed spot above the bottom-left corner, see-through, so it reads as "there is a
+   stick here" without covering the road. */
+.touch-stick.idle {
+  left: calc(104px + env(safe-area-inset-left, 0px));
+  top: auto;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  opacity: 0.38;
+}
 .touch-stick-ring {
   position: absolute;
   left: -60px;
