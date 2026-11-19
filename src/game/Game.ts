@@ -904,6 +904,16 @@ export class Game {
   }
 
   /**
+   * The race clock as this machine knows it. A mirrored client never runs its own race manager
+   * past the countdown, so its clock is the host's, read from the newest snapshot. Reading the
+   * local manager there gives 0, which is how a retired client once reported a 0-second race and
+   * was refused its coins.
+   */
+  private raceClock(r: RaceContext): number {
+    return r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime;
+  }
+
+  /**
    * Sends the player's finish to the server, which decides what it was worth. Only the facts go:
    * place, whether they retired, and the race clock. See the progression server design, section 5.
    */
@@ -924,7 +934,7 @@ export class Game {
       return;
     }
     // A retired kart has no finish time; the race clock at that moment is how long it ran.
-    const clock = retired || !(seconds > 0) ? r.raceManager.raceTime : seconds;
+    const clock = retired || !(seconds > 0) ? this.raceClock(r) : seconds;
     // "First place wins" is settled the moment anyone has won, so the live standings will do.
     const table = standings ?? (isTeamMode(mode) && !r.online ? r.raceManager.getStandings() : null);
     const me = table?.find((s) => s.isPlayer);
@@ -1285,7 +1295,7 @@ export class Game {
 
     // Moving obstacles sit where the race clock says: the host's clock on a client, so every
     // machine sees the same boulder in the same place without it being sent.
-    track.setRaceTime?.(r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime);
+    track.setRaceTime?.(this.raceClock(r));
 
     // Player input (or auto-drive after finishing).
     if (r.playerAutoDriver) {
@@ -1359,7 +1369,7 @@ export class Game {
     this.particles.update(dt, r.karts, this.camera);
     this.rescueDrones.update(dt, r.karts);
     this.audio.update(dt, r.karts, player.state.id, this.camera);
-    const raceTime = r.online?.role === 'client' ? (this.online?.clientSession?.raceTime ?? 0) : r.raceManager.raceTime;
+    const raceTime = this.raceClock(r);
     r.hud.update(dt, player, r.karts, raceTime, r.raceManager.totalLaps, r.items.getHazards());
     this.updatePostFxFeel(dt, player);
 
