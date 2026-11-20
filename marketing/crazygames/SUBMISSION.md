@@ -90,22 +90,25 @@ Alternates if a tag is not offered: Arcade, Cartoon, Action.
 - No account: progress is kept in the browser's local storage.
 - The CrazyGames SDK is not integrated yet. See "Before a Full Launch" below.
 
-## Thumbnails and preview video (to be made)
+## Covers and preview videos
 
-Not part of this change. From 2026-11-23 the thumbnail click-through rate is a fourth scored
-metric, so these deserve the same care as the build.
+From 2026-11-23 the thumbnail click-through rate is a fourth scored metric, so these deserve the
+same care as the build.
 
-Check the exact sizes and limits in the developer portal before producing anything; the figures
-below are the ones the portal asked for when Drift Dash GP was submitted and may have changed.
+Made on 2026-11-20 from the `crazygames` edition and kept in this folder. Sizes, how they were
+checked against the portal's cover requirements, and the commands that remake them are in
+[ASSETS.md](ASSETS.md); the scripts are `tools/marketing/crazygames-*`.
 
-- Cover images: 16:9 (1920x1080), 2:3 (800x1200) and 1:1 (800x800). No borders, no store badges,
-  the title readable at small sizes.
-- Preview video: landscape, 15 to 20 seconds, gameplay only (no logos, no menus), under 50 MB.
-- What to show: the kart mid-drift with sparks, an item hit, a jump with a trick. The first frame
-  matters most: it is what autoplays in the grid.
-- The wordmark is "DRIFT" in white italic with "KART" on a yellow number plate. `tools/marketing/`
-  has the capture scripts used for the previous store kits; run them against the `crazygames`
-  build so the name on screen is the new one.
+- `cover_landscape_1920x1080.png` (16:9), `cover_portrait_800x1200.png` (2:3) and
+  `cover_square_800x800.png` (1:1): one piece of key art, a race moment re-shot from a low camera
+  beside the kart, with the game's own DRIFT KART wordmark as the only text. Committed.
+- `preview_landscape_1920x1080.mp4` and `preview_portrait_1080x1620.mp4`: 17.8 seconds, 30 fps,
+  no audio, 36 MB each (the limit is 50 MB). Each opens on its cover for 0.4 seconds, then six
+  circuits of real gameplay with the HUD hidden. Not committed (`.gitignore`, as with the other
+  large master video): they are files in this folder only.
+
+Nothing has been uploaded. Check the sizes and limits in the developer portal once more at upload
+time; ASSETS.md records what the requirements page said on 2026-11-20.
 
 ## Checks made on the build
 
