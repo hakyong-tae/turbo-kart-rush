@@ -1,0 +1,33 @@
+/* The three web fonts, served from the build itself.
+ *
+ * NOT part of index.css. The default edition takes these faces from Google Fonts (index.html); an
+ * edition that may not ask another host for anything (CrazyGames) has its build swap that link for
+ * this file — see `target-brand` in vite.config.ts. The files are cut by tools/subset-fonts.py:
+ * Anton whole, the two Korean faces down to the characters the game prints. A Hangul syllable
+ * outside that set (a typed nickname) is drawn by the system face, one glyph at a time.
+ * Same family names, weights and `swap` as the Google sheet, so nothing else changes. */
+@font-face {
+  font-family: 'Anton';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/anton.woff2') format('woff2');
+}
+/* Hangul only: Anton is ahead of it in the stack and draws everything else, so a page with no
+   Korean on it never fetches this. */
+@font-face {
+  font-family: 'Black Han Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/black-han-sans.woff2') format('woff2');
+  unicode-range: U+3131-318E, U+AC00-D7A3;
+}
+/* One variable file for every weight the Korean body copy uses. */
+@font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('../assets/fonts/noto-sans-kr.woff2') format('woff2');
+}

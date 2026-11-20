@@ -157,11 +157,30 @@ export default defineConfig(({ mode }) => {
           serverWithoutComments(),
           {
             name: 'target-brand',
-            // index.html is written for the default edition; an edition with its own name gets it here.
-            transformIndexHtml: (html: string) =>
-              html
-                .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
-                .replace(/(fill='%23ffd400'%3E)D(%3C\/text%3E)/, `$1${target.initial}$2`),
+            // index.html is written for the default edition; an edition with its own name gets it
+            // here. So do its fonts: this edition asks no other host for anything, so the Google
+            // Fonts tags go and the copies in src/assets/fonts take their place. `pre`, so that
+            // Vite still bundles the stylesheet this adds.
+            transformIndexHtml: {
+              order: 'pre',
+              handler: (html: string) => {
+                const out = html
+                  .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
+                  .replace(/(fill='%23ffd400'%3E)D(%3C\/text%3E)/, `$1${target.initial}$2`)
+                  .replace(/\s*<link rel="preconnect"[^>]*>/g, '')
+                  .replace(/<link\s+rel="stylesheet"\s+href="https:\/\/fonts\.googleapis\.com[^>]*>/, '<link rel="stylesheet" href="/src/styles/fonts-local.css" />');
+                if (/fonts\.g(oogleapis|static)\.com/.test(out)) throw new Error('target-brand: index.html still points at Google Fonts');
+                return out;
+              },
+            },
+            // The fonts are under the SIL Open Font License, which asks that its text travel with
+            // every copy: the three licence files go out next to the build.
+            generateBundle() {
+              const dir = 'src/assets/fonts';
+              for (const name of readdirSync(dir).filter((f) => f.endsWith('-OFL.txt'))) {
+                this.emitFile({ type: 'asset', fileName: `licenses/${name}`, source: readFileSync(join(dir, name)) });
+              }
+            },
           },
         ]
       : [],

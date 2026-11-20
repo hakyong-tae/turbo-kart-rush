@@ -168,15 +168,18 @@
 }
 
 /* ----------------------------------------------------------------------------
-   Event feed: short lines under the top edge, centre. Newest on top.
+   Event feed: short lines above the centre. The newest is at the bottom and older ones rise.
+   Pinned by its bottom edge, just above where the place flash (07-hud, top 38%) rises to as it
+   fades: an overtake fires both at once, and a feed that grew downward put its second and third
+   lines on top of the flash.
    --------------------------------------------------------------------------- */
 .hud-feed {
   position: absolute;
   left: 0;
   right: 0;
-  top: 24%;
+  bottom: calc(62% + 28px);
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   align-items: center;
   gap: 3px;
   pointer-events: none;
@@ -209,7 +212,7 @@
   to { opacity: 0; transform: translateY(-6px); }
 }
 
-/* Phones in landscape: everything a size down, and the feed clear of the countdown numerals. */
+/* Phones in landscape: everything a size down. */
 @media (max-height: 480px) {
   .coach-card {
     max-width: min(460px, 56vw);
@@ -223,8 +226,9 @@
     padding: 6px 9px;
     font-size: 12px;
   }
-  .hud-feed {
-    top: 27%;
+  /* Two lines at most: a third would reach the lap banner. */
+  .feed-line:nth-child(n + 3) {
+    display: none;
   }
   .feed-line {
     font-size: 14px;

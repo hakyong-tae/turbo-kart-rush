@@ -12,6 +12,8 @@
 //     settings, records, every garage tab, the locked-kart sheet, the circuit picker and — unless
 //     --no-race — a results screen (reached by sitting through one race untouched, about 3 minutes)
 //   * a bare translation key never reaches the screen (a removed line that was reachable after all)
+//   * every request of the whole walk goes to the build's own host — no font, script or beacon
+//     from anywhere else — and the three fonts load from the build
 //
 // Exit code 1 when a check fails.
 import { createRequire } from 'node:module';
@@ -202,13 +204,34 @@ await click('.panel-chars .next-btn');
 await sleep(800);
 await read('circuits');
 
-const external = [...new Set(requests.map((u) => new URL(u).host))].filter((h) => !/^localhost|^127\./.test(h));
-console.log('external hosts requested:', external.join(', ') || 'none');
+// The fonts come with the build (src/assets/fonts): each of the three has to load from here.
+const fonts = await page.evaluate(async () => {
+  const out = {};
+  for (const family of ['Anton', 'Black Han Sans', 'Noto Sans KR']) {
+    const sample = family === 'Anton' ? 'DRIFT' : '\uB808\uC774\uC2A4';
+    const faces = await document.fonts.load(`20px "${family}"`, sample).catch(() => []);
+    out[family] = faces.length > 0 && faces.every((f) => f.status === 'loaded');
+  }
+  return out;
+});
+for (const [family, loaded] of Object.entries(fonts)) check(`${family} loads from the build`, loaded);
+await sleep(500);
+
+// Every request the walk made, by host. `data:` and `blob:` URLs never leave the page.
+const hosts = {};
+for (const u of requests) {
+  if (/^(data|blob):/.test(u)) continue;
+  const host = new URL(u).host;
+  hosts[host] = (hosts[host] ?? 0) + 1;
+}
+const own = new URL(BASE).host;
+const external = Object.keys(hosts).filter((h) => h !== own);
+console.log('requests by host:', JSON.stringify(hosts));
 check('no page error', errors.length === 0, errors.join(' | '));
-check('no request to Verse8', !external.some((h) => /verse8|agent8/.test(h)), external.join(', '));
+check('every request goes to the build itself', external.length === 0, external.join(', ') || `${hosts[own]} requests, all to ${own}`);
 
 const failed = checks.filter((c) => !c.pass);
 console.log(`\n${checks.length - failed.length}/${checks.length} checks passed${failed.length ? ` — failed: ${failed.map((c) => c.name).join('; ')}` : ''}`);
-writeFileSync(`${OUT}/${LANG}-log.json`, JSON.stringify({ checks, firstScreen, external, seenText }, null, 1));
+writeFileSync(`${OUT}/${LANG}-log.json`, JSON.stringify({ checks, firstScreen, hosts, external, seenText }, null, 1));
 await browser.close();
 process.exit(failed.length ? 1 : 0);

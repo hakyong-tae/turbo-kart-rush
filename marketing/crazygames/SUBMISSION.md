@@ -114,6 +114,9 @@ See the "verification" section at the end of the relaunch spec for what was run 
 - Size: reported by `npm run build:crazygames` (limit 20 MB for the initial download).
 - First screen: under 10 seconds on the test machine.
 - The strings "VX", "WATCH AD" and "Drift Dash" do not appear in the built files or on screen.
+- No request leaves the build's own host, from the first screen to the results screen and through
+  every menu (`tools/crazygames-check.mjs` counts requests by host). The three fonts are in the
+  build (`src/assets/fonts/`, SIL Open Font License; the licence texts are next to them).
 
 ## Before a Full Launch
 
@@ -122,5 +125,3 @@ These were out of scope for the Basic Launch build and are listed so they are no
 - CrazyGames SDK: loading and gameplay events (`gameplayStart` / `gameplayStop`), the happy-time
   call on a win, and data saving through the SDK's data module so progress follows the account.
 - Rewarded and midgame ads through the SDK, which is when the three hidden buttons come back.
-- The Google Fonts stylesheet in `index.html` is loaded from the network. If the portal's
-  external-request rules require it, bundle the two fonts locally.
