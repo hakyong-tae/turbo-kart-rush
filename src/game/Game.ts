@@ -41,6 +41,7 @@ import { lookFor } from '../gfx/looks';
 import { initQuality, quality, setTier, stepDownForNextRace, type GfxTier } from '../gfx/quality';
 import { ensureKartThumbnails, setKartThumbnailsAllowed } from '../ui/kartThumbnails';
 import { dismissBootSplash } from '../ui/bootSplash';
+import { prefetchEngineSample } from '../audio/engineSample';
 import { ResolutionGovernor } from '../gfx/ResolutionGovernor';
 import { findSky } from '../track/builders/sky';
 import { isTeamMode } from '../core/teams';
@@ -1405,6 +1406,8 @@ export class Game {
     if (this.splashUp && !this.firstBoot) {
       this.splashUp = false;
       dismissBootSplash();
+      // Something is on screen: now is the time to start fetching what nothing waits for.
+      prefetchEngineSample();
     }
   };
 

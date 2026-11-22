@@ -2,11 +2,16 @@
  * Per-kart engine voices. Sawtooth + detuned square + sub sine → lowpass whose
  * cutoff tracks rpm → tanh soft-clip → gain, with optional turbo whistle and a
  * filtered-noise skid loop. Non-player voices are positioned with a PannerNode.
+ *
+ * The stock voice (a kart with no engine pack) is different: its body is a recorded exhaust
+ * loop played at a rate tied to the revs (engineSample.ts), with the synth kept low underneath
+ * for weight. The engine packs are still pure synthesis.
  */
 import type { EnginePackId } from '../core/cosmetics';
 import type { KartState, WeightClass } from '../core/types';
 import { clamp, clamp01, damp } from '../core/math';
 import { glide, noiseBuffer, softClipCurve } from './synth';
+import { ENGINE_LOOP_END, ENGINE_LOOP_START, engineSample } from './engineSample';
 
 /**
  * F1-style voice: a high-revving firing fundamental (idle ≈ 130 Hz → ~900 Hz at the limiter)
@@ -59,10 +64,34 @@ interface VoicePack {
    * turbulence a stack of oscillators reads as an electric motor no matter how it is tuned.
    */
   roar: number;
+  /** A recorded loop as the body of the voice (the stock voice only). */
+  sample?: SampleLayer;
+}
+
+interface SampleLayer {
+  /** Playback rate at zero revs and at the limiter (times the weight class's own scale). */
+  rate0: number;
+  rate1: number;
+  /** Lowpass over the loop, idle and limiter: sped up, its metallic tick climbs with it. */
+  cutoff0: number;
+  cutoff1: number;
+  gain: number;
+  /**
+   * A broad lift in the middle of the loop, idle and limiter centre frequency and its size in dB.
+   * The recording keeps four fifths of its energy under 250 Hz, which a phone's speaker does not
+   * play at all: this is what is left of the engine there. It sits well under the 2 kHz where
+   * "shrill" starts.
+   */
+  presence0: number;
+  presence1: number;
+  presenceDb: number;
+  /** What is left of the oscillator layers while the loop is playing (1 = all of it). */
+  synth: number;
 }
 
 /**
- * What a kart sounds like before anyone buys an engine pack. The classes are different machines,
+ * What a kart sounded like before anyone bought an engine pack, until the stock voice became the
+ * recorded kart (`KART_VOICE`); still reachable with `?engine=old`. The classes are different machines,
  * not the same machine at different pitches: the heavies are big rough combustion units, the
  * middleweights are the high-revving race engine, and the lightweights are hybrids — near-silent
  * of combustion, all inverter whine and instant torque, which is also how they drive (the light
@@ -74,18 +103,56 @@ const CLASS_PACK: Readonly<Record<WeightClass, EnginePackId>> = {
   heavy: 'rumble',
 };
 
+/**
+ * The stock voice: what every kart sounds like until its owner buys an engine pack.
+ *
+ * Players called the old stock voices shrill, and they were: the middleweight "scream" swept its
+ * fundamental from 150 Hz to 750 Hz with an octave layer and a formant up to 3.4 kHz on top, and
+ * the lightweights' hybrid whine — the first kart anyone drives — reached 2 kHz at the limiter.
+ * This one stays low. The loop carries the character; under it the synth is a fundamental that
+ * runs 53 → 178 Hz (medium), closed down to a couple of kilohertz, lightly clipped. Without the
+ * loop (not yet loaded, or never) the same synth plays at full level, which is still a low voice.
+ * Weight classes differ by the pitch of the whole thing: light 15% up, heavy 14% down.
+ */
+const KART_VOICE: VoicePack = {
+  pitch: 0.5, span: 0.42, oscA: 'sawtooth', oscB: 'sawtooth', oscBRatio: 2, oscBGain: 0.4,
+  cutoff0: 380, cutoff1: 2400, q: 1.3, formant0: 500, formant1: 1300, formantGain: 0.4,
+  clip: 2.2, turbo: 0.6, sub: 1.3, roar: 1.1,
+  sample: { rate0: 0.8, rate1: 2.0, cutoff0: 2000, cutoff1: 4600, gain: 2.3, presence0: 600, presence1: 1150, presenceDb: 11, synth: 0.3 },
+};
+
+/**
+ * `?engine=old` puts the stock voices back as they were before 2026-11-22 (per weight class:
+ * electric, scream, rumble), so the two can be compared by ear in the same build.
+ */
+const OLD_STOCK = (() => {
+  try {
+    return new URLSearchParams(location.search).get('engine') === 'old';
+  } catch {
+    return false;
+  }
+})();
+
+function stockVoice(weightClass: WeightClass): VoicePack {
+  return OLD_STOCK ? VOICE_PACKS[CLASS_PACK[weightClass]] : KART_VOICE;
+}
+
 const VOICE_PACKS: Readonly<Record<EnginePackId, VoicePack>> = {
   // Stock: high-revving F1 scream. Deliberately light on pure tones — the octave saw and the sine
   // sub are what made players hear an electric motor — and heavy on turbulence instead.
   scream: { pitch: 1, span: 1, oscA: 'sawtooth', oscB: 'sawtooth', oscBRatio: 2, oscBGain: 0.72, cutoff0: 700, cutoff1: 7700, q: 1.7, formant0: 1400, formant1: 3400, formantGain: 0.72, clip: 3.2, turbo: 1, sub: 0.7, roar: 1.15 },
   // American V8: an octave down, fat and lazy, resonance low in the chest.
   rumble: { pitch: 0.6, span: 0.72, oscA: 'sawtooth', oscB: 'square', oscBRatio: 1.5, oscBGain: 0.8, cutoff0: 300, cutoff1: 3200, q: 3.0, formant0: 620, formant1: 1500, formantGain: 1.5, clip: 5.0, turbo: 0.5, sub: 1.9, roar: 0.9 },
-  // EV: no combustion, just inverter whine climbing with speed.
-  electric: { pitch: 1.75, span: 1.4, oscA: 'triangle', oscB: 'sine', oscBRatio: 3, oscBGain: 0.9, cutoff0: 1800, cutoff1: 12000, q: 1.0, formant0: 2600, formant1: 6200, formantGain: 0.9, clip: 1.3, turbo: 1.5, sub: 0.3, roar: 0.05 },
+  // EV: no combustion, just inverter whine climbing with speed. Brought down on 2026-11-22: it
+  // topped out at 1.8 kHz (2.1 kHz on a light kart) with a third harmonic and a formant above
+  // that, and at the limiter nearly all of its energy sat over 2 kHz. Still the highest voice
+  // there is, now peaking at 1.1 kHz with the formant kept under 4 kHz.
+  electric: { pitch: 1.5, span: 1.0, oscA: 'triangle', oscB: 'sine', oscBRatio: 3, oscBGain: 0.6, cutoff0: 1800, cutoff1: 7000, q: 1.0, formant0: 1800, formant1: 3800, formantGain: 0.6, clip: 1.3, turbo: 1.5, sub: 0.45, roar: 0.05 },
   // Diesel: slow, clattery, almost no top end.
   diesel: { pitch: 0.48, span: 0.55, oscA: 'square', oscB: 'sawtooth', oscBRatio: 1.01, oscBGain: 0.7, cutoff0: 240, cutoff1: 1700, q: 4.0, formant0: 480, formant1: 1100, formantGain: 1.7, clip: 6.0, turbo: 0.8, sub: 2.1, roar: 1.05 },
-  // Turbine: gas turbine, wide sweep, whistle-forward.
-  turbine: { pitch: 1.3, span: 1.55, oscA: 'sawtooth', oscB: 'triangle', oscBRatio: 2.5, oscBGain: 1.15, cutoff0: 1200, cutoff1: 14000, q: 0.8, formant0: 3000, formant1: 7000, formantGain: 1.4, clip: 2.0, turbo: 2.3, sub: 0.6, roar: 0.95 },
+  // Turbine: gas turbine, wide sweep, whistle-forward. The same day and for the same reason: the
+  // sweep is narrower (1.1 kHz at the top, not 1.5), the lowpass and the whistle's band lower.
+  turbine: { pitch: 1.3, span: 1.15, oscA: 'sawtooth', oscB: 'triangle', oscBRatio: 2.5, oscBGain: 0.9, cutoff0: 1200, cutoff1: 8000, q: 0.8, formant0: 2200, formant1: 4600, formantGain: 1.0, clip: 2.0, turbo: 2.3, sub: 0.7, roar: 0.95 },
   // Chiptune: two square waves and no shame.
   chiptune: { pitch: 1.2, span: 1.05, oscA: 'square', oscB: 'square', oscBRatio: 2, oscBGain: 1, cutoff0: 2600, cutoff1: 9000, q: 0.7, formant0: 1800, formant1: 3000, formantGain: 0.4, clip: 1.0, turbo: 1, sub: 0.5, roar: 0 },
 };
@@ -141,6 +208,13 @@ export class EngineVoice {
 
   private readonly weightClass: WeightClass;
   private pack: VoicePack = VOICE_PACKS.scream;
+  /** The recorded loop, started the first time it is wanted and available; kept running after. */
+  private sampleSrc: AudioBufferSourceNode | null = null;
+  private sampleFilter: BiquadFilterNode | null = null;
+  private samplePresence: BiquadFilterNode | null = null;
+  private sampleGain: GainNode | null = null;
+  /** How much of the oscillator layers is sounding (below 1 while the loop carries the voice). */
+  private synthLevel = 1;
   private rpm = IDLE_RPM;
   private gear = 0;
   private shiftTimer = 0;
@@ -157,7 +231,7 @@ export class EngineVoice {
     this.isPlayer = isPlayer;
     this.weightClass = BASE_FREQ[weightClass] ? weightClass : 'medium';
     this.baseFreq = BASE_FREQ[this.weightClass];
-    this.pack = VOICE_PACKS[CLASS_PACK[this.weightClass]];
+    this.pack = stockVoice(this.weightClass);
 
     this.out = ctx.createGain();
     this.out.gain.value = isPlayer ? 1 : 0.85;
@@ -313,7 +387,7 @@ export class EngineVoice {
     if (this.disposed) return;
     // No pack bought (or an id this build does not know) falls back to the class voice, not to a
     // single global default — a heavy kart should never come up sounding like the light one.
-    const pack = (id && VOICE_PACKS[id]) || VOICE_PACKS[CLASS_PACK[this.weightClass]];
+    const pack = (id && VOICE_PACKS[id]) || stockVoice(this.weightClass);
     if (pack === this.pack) return;
     this.applyPack(pack);
   }
@@ -327,11 +401,61 @@ export class EngineVoice {
     this.pack = pack;
     this.saw.type = pack.oscA;
     this.saw2.type = pack.oscB;
-    this.saw2Gain.gain.value = (this.isPlayer ? 0.2 : 0.12) * pack.oscBGain;
     this.filter.Q.value = pack.q;
     this.shaper.curve = clipCurve(pack.clip);
     if (this.subGain) this.subGain.gain.value = 0.16 * pack.sub;
     if (this.square) this.square.type = pack.oscA === 'square' ? 'sawtooth' : 'square';
+    this.applyLevels();
+  }
+
+  /**
+   * Levels of the oscillator layers and of the recorded loop. The loop takes over the moment it
+   * is both wanted (the pack has one) and playing; the oscillators then drop to a supporting
+   * level. Called when the pack changes and when the loop starts, not every frame.
+   */
+  private applyLevels(): void {
+    const layer = this.pack.sample;
+    const live = Boolean(layer && this.sampleSrc);
+    const synth = live && layer ? layer.synth : 1;
+    this.synthLevel = synth;
+    const now = this.ctx.currentTime;
+    glide(this.sawGain.gain, 0.42 * synth, now, 0.08);
+    glide(this.saw2Gain.gain, (this.isPlayer ? 0.2 : 0.12) * this.pack.oscBGain * synth, now, 0.08);
+    if (this.squareGain) glide(this.squareGain.gain, 0.18 * synth, now, 0.08);
+    if (this.sampleGain) glide(this.sampleGain.gain, live && layer ? layer.gain : 0, now, 0.08);
+  }
+
+  /** Builds the loop's three nodes and starts it. Once per voice: a pack without a loop only mutes it. */
+  private startSample(buffer: AudioBuffer): void {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    src.loopStart = ENGINE_LOOP_START;
+    src.loopEnd = ENGINE_LOOP_END;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 0.7;
+    filter.frequency.value = 1800;
+    const presence = ctx.createBiquadFilter();
+    presence.type = 'peaking';
+    presence.Q.value = 0.7;
+    presence.frequency.value = this.pack.sample?.presence0 ?? 700;
+    presence.gain.value = this.pack.sample?.presenceDb ?? 0;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    src.connect(presence);
+    presence.connect(filter);
+    filter.connect(gain);
+    // After the clip, like the roar: the loop is the sound as recorded, not a signal to distort.
+    gain.connect(this.engineGain);
+    // Each kart starts somewhere else in the loop, or a grid of eight would pulse as one.
+    src.start(0, ENGINE_LOOP_START + Math.random() * (ENGINE_LOOP_END - ENGINE_LOOP_START));
+    this.sampleSrc = src;
+    this.sampleFilter = filter;
+    this.samplePresence = presence;
+    this.sampleGain = gain;
+    this.applyLevels();
   }
 
   /** Full (saw + square + sub) vs cheap (saw only) voice. */
@@ -347,7 +471,7 @@ export class EngineVoice {
       this.square.frequency.value = this.saw.frequency.value;
       this.squareGain = ctx.createGain();
       this.squareGain.gain.setValueAtTime(0, now);
-      this.squareGain.gain.linearRampToValueAtTime(0.18, now + 0.2);
+      this.squareGain.gain.linearRampToValueAtTime(0.18 * this.synthLevel, now + 0.2);
       this.square.connect(this.squareGain);
       this.squareGain.connect(this.filter);
       this.square.start();
@@ -437,10 +561,29 @@ export class EngineVoice {
 
     const lambda = this.shiftTimer > 0 ? 20 : target > this.rpm ? 7 : 9;
     this.rpm = damp(this.rpm, target, lambda, dt);
-    const rpm = this.rpm;
+    this.voiceAt(now, this.rpm, throttle, state, speed, ratio);
+  }
 
+  /**
+   * For tools that measure a voice: holds the revs at `rpm` (0..1) under `throttle`, with no
+   * gearbox and no kart behind it. Not used by the game.
+   */
+  hold(rpm: number, throttle: number): void {
+    if (this.disposed) return;
+    this.rpm = rpm;
+    this.voiceAt(this.ctx.currentTime, rpm, throttle, null, 0, 0);
+  }
+
+  /** Writes every parameter of the voice for these revs and this load. */
+  private voiceAt(now: number, rpm: number, throttle: number, state: KartState | null, speed: number, ratio: number): void {
     const pack = this.pack;
-    const pitchMul = state.isShrunk ? 1.5 : 1;
+    // The loop joins as soon as it has arrived and this pack wants it.
+    const layer = pack.sample;
+    if (layer && !this.sampleSrc) {
+      const buffer = engineSample();
+      if (buffer) this.startSample(buffer);
+    }
+    const pitchMul = state?.isShrunk ? 1.5 : 1;
     const freq = this.baseFreq * pack.pitch * (PITCH_LO + PITCH_SPAN * pack.span * rpm) * pitchMul;
     glide(this.saw.frequency, freq, now, 0.025);
     glide(this.saw2.frequency, freq * pack.oscBRatio, now, 0.025);
@@ -448,7 +591,15 @@ export class EngineVoice {
     if (this.sub) glide(this.sub.frequency, freq * 0.5, now, 0.025);
     glide(this.filter.frequency, pack.cutoff0 + rpm * (pack.cutoff1 - pack.cutoff0), now, 0.05);
     glide(this.formant.frequency, pack.formant0 + rpm * (pack.formant1 - pack.formant0), now, 0.05);
-    glide(this.formantGain.gain, (0.2 + 0.3 * rpm) * pack.formantGain, now, 0.08);
+    glide(this.formantGain.gain, (0.2 + 0.3 * rpm) * pack.formantGain * this.synthLevel, now, 0.08);
+    if (layer && this.sampleSrc && this.sampleFilter) {
+      const revs = clamp(rpm, 0, 1.35);
+      // Heavier karts turn the same engine slower: the class's base pitch scales the loop too.
+      const rate = (layer.rate0 + (layer.rate1 - layer.rate0) * revs) * (this.baseFreq / BASE_FREQ.medium) * pitchMul;
+      glide(this.sampleSrc.playbackRate, rate, now, 0.03);
+      glide(this.sampleFilter.frequency, layer.cutoff0 + revs * (layer.cutoff1 - layer.cutoff0), now, 0.05);
+      if (this.samplePresence) glide(this.samplePresence.frequency, layer.presence0 + revs * (layer.presence1 - layer.presence0), now, 0.05);
+    }
 
     // Roar tracks the firing frequency and opens up with load: off-throttle it drops back to a
     // murmur, which is what makes lifting for a corner audible.
@@ -465,23 +616,24 @@ export class EngineVoice {
     glide(this.engineGain.gain, vol, now, 0.06);
 
     // Turbo whistle while boosting.
-    const turbo = state.isBoosting ? 0.11 * pack.turbo : 0;
+    const boosting = Boolean(state?.isBoosting);
+    const turbo = boosting ? 0.11 * pack.turbo : 0;
     glide(this.turboGain.gain, turbo, now, 0.08);
-    if (state.isBoosting) {
+    if (state && boosting) {
       const tf = 900 + rpm * 700 + clamp01(state.boostTimer) * 400;
       glide(this.turboOsc.frequency, tf, now, 0.06);
       glide(this.turboFilter.frequency, tf * 1.1, now, 0.06);
     }
 
     // Skid loop while drifting on the ground.
-    const skid = state.isDrifting && !state.isAirborne ? 0.14 * clamp01(speed / 14) * (0.6 + 0.4 * Math.abs(state.steerVisual)) : 0;
+    const skid = state && state.isDrifting && !state.isAirborne ? 0.14 * clamp01(speed / 14) * (0.6 + 0.4 * Math.abs(state.steerVisual)) : 0;
     glide(this.skidGain.gain, skid, now, 0.06);
     if (skid > 0) {
       glide(this.skidSrc.playbackRate, 0.75 + 0.5 * clamp01(ratio), now, 0.08);
       glide(this.skidFilter.frequency, 1500 + ratio * 900, now, 0.08);
     }
 
-    if (this.panner) {
+    if (this.panner && state) {
       const p = state.position;
       setPannerPosition(this.panner, p.x, p.y, p.z);
     }
@@ -502,6 +654,7 @@ export class EngineVoice {
       this.roarSrc.stop(stopAt);
       this.firingOsc.stop(stopAt);
       this.skidSrc.stop(stopAt);
+      this.sampleSrc?.stop(stopAt);
     } catch {
       // already stopped
     }

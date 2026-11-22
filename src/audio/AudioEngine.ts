@@ -12,6 +12,7 @@ import { KART_COUNT } from '../core/constants';
 import { dbToGain, softClipCurve } from './synth';
 import type { EnginePackId } from '../core/cosmetics';
 import { EngineVoice, setListenerPose } from './engine';
+import { loadEngineSample } from './engineSample';
 import { Crowd, SfxBank } from './sfx';
 import { MusicPlayer, Sequencer, buildStarJingle, warmMusic } from './music';
 
@@ -131,6 +132,9 @@ export class AudioEngine implements IAudioEngine {
         const ctx = new Ctor({ latencyHint: 'interactive' });
         this.ctx = ctx;
         this.buildGraph(ctx);
+        // The recorded exhaust loop of the stock engine voice: decoded in the background, and
+        // voices pick it up when it lands. Until then they run on the synth.
+        loadEngineSample(ctx);
       } catch (err) {
         console.warn('[AudioEngine] failed to create AudioContext', err);
         this.ctx = null;

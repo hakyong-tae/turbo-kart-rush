@@ -440,7 +440,7 @@ export const en = {
   'cos.wheelFx.rimLight': 'Rim Light',
   'cos.wheelFx.tyreTrail': 'Tyre Marks',
   'cos.wheelFx.spinBlur': 'Spin Blur',
-  'cos.enginePack.scream': 'Scream V10',
+  'cos.enginePack.scream': 'Stock',
   'cos.enginePack.rumble': 'Rumble V8',
   'cos.enginePack.electric': 'Electric',
   'cos.enginePack.diesel': 'Diesel',

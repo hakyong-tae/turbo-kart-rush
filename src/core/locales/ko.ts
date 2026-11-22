@@ -428,7 +428,7 @@ export const ko: Record<StringKey, string> = {
   'cos.wheelFx.rimLight': '림 라이트',
   'cos.wheelFx.tyreTrail': '타이어 자국',
   'cos.wheelFx.spinBlur': '스핀 블러',
-  'cos.enginePack.scream': '스크림 V10',
+  'cos.enginePack.scream': '기본 엔진',
   'cos.enginePack.rumble': '럼블 V8',
   'cos.enginePack.electric': '일렉트릭',
   'cos.enginePack.diesel': '디젤',
