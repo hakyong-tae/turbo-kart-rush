@@ -46,6 +46,26 @@ export function setLang(lang: Lang): void {
   if (changed) events.emit('ui:langChange', {});
 }
 
+/** True when the player has picked a language themselves (it is stored). */
+export function hasChosenLang(): boolean {
+  const stored = readStored();
+  return stored === 'ko' || stored === 'en';
+}
+
+/**
+ * Switches to the language of `locale` ("ko-KR", "en-US") without recording it as the player's
+ * choice. For a platform that knows the player's locale better than the browser does; a language
+ * the player picked always wins.
+ */
+export function adoptLocale(locale: string | null | undefined): void {
+  if (!locale || hasChosenLang()) return;
+  const lang: Lang = locale.toLowerCase().startsWith('ko') ? 'ko' : 'en';
+  if (lang === current) return;
+  current = lang;
+  if (typeof document !== 'undefined') document.documentElement.lang = lang;
+  events.emit('ui:langChange', {});
+}
+
 export function toggleLang(): Lang {
   setLang(current === 'ko' ? 'en' : 'ko');
   return current;

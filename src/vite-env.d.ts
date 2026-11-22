@@ -8,3 +8,6 @@ declare const __BUILD_ID__: string;
  * bare, so the minifier drops the purchase code and its wording from such a build.
  */
 declare const __VX__: boolean;
+
+/** Whether this build loads the CrazyGames SDK (vite.config.ts): a CrazyGames build not made with CG_SDK=0. */
+declare const __CG_SDK__: boolean;

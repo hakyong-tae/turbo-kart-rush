@@ -11,7 +11,12 @@
  * `inVerse8Host()` is false.
  */
 
+import { saveRecord, whenRecordSettled } from '../platform/crazygames';
+
 type Row = Record<string, unknown>;
+
+/** Announced on `window` when the account's copy of the record replaced the local one after the game had read it. */
+export const RECORD_REPLACED_EVENT = 'tkr:record-replaced';
 
 const STATE_KEY = 'tkr.local.user';
 const ACCOUNT = 'local';
@@ -30,8 +35,11 @@ function readState(): Row {
 }
 
 function writeState(next: Row): void {
+  const json = JSON.stringify(next);
+  // Where there is a portal account to keep it in, the record goes there as well.
+  saveRecord(STATE_KEY, json);
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(next));
+    localStorage.setItem(STATE_KEY, json);
     memory = null;
   } catch {
     // Private mode: keep it for the session rather than lose every coin on the next read.
@@ -103,15 +111,42 @@ function applyCoinsParam(): void {
   writeState({ ...readState(), coins: Math.min(n, COINS_PARAM_MAX) });
 }
 
+/**
+ * The account's copy arriving after the game has started on the local one: the race stamped in
+ * the meantime (`race`, see `beginRace` in server.js) goes into it, so the race under way is
+ * still paid, into the account that is further along.
+ */
+function carryRace(local: string | null, remote: string): string {
+  try {
+    const mine = JSON.parse(local ?? 'null') as Row | null;
+    const theirs = JSON.parse(remote) as Row | null;
+    if (!mine || mine.race === undefined || !theirs || typeof theirs !== 'object') return remote;
+    return JSON.stringify({ ...theirs, race: mine.race });
+  } catch {
+    return remote;
+  }
+}
+
 type ServerInstance = Record<string, (...args: unknown[]) => unknown>;
 let instance: Promise<ServerInstance> | null = null;
 
 function server(): Promise<ServerInstance> {
   if (!instance) {
-    applyCoinsParam();
+    // Before the first read: if a portal SDK is on its way with a copy of this record from the
+    // player's account, give it a moment (bounded) to arrive, so a returning player on a new
+    // device is not taken for a new one. No SDK, no wait.
+    const settled = whenRecordSettled(
+      STATE_KEY,
+      () => {
+        memory = null;
+        window.dispatchEvent(new Event(RECORD_REPLACED_EVENT));
+      },
+      carryRace,
+    );
     // `?raw` keeps server.js a plain text asset: it is not part of the module graph and is only
     // fetched on this path.
-    instance = import('../../server.js?raw').then((mod) => {
+    instance = Promise.all([import('../../server.js?raw'), settled]).then(([mod]) => {
+      applyCoinsParam();
       const factory = new Function('$global', '$sender', '$room', `${mod.default}\nreturn Server;`);
       const Server = factory(localGlobal(), { account: ACCOUNT }, localRoom) as new () => ServerInstance;
       return new Server();

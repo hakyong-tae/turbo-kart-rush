@@ -13,7 +13,8 @@
 //     --no-race — a results screen (reached by sitting through one race untouched, about 3 minutes)
 //   * a bare translation key never reaches the screen (a removed line that was reachable after all)
 //   * every request of the whole walk goes to the build's own host — no font, script or beacon
-//     from anywhere else — and the three fonts load from the build
+//     from anywhere else, bar the one script of the CrazyGames SDK — and the three fonts load
+//     from the build
 //
 // Exit code 1 when a check fails.
 import { createRequire } from 'node:module';
@@ -227,10 +228,21 @@ for (const u of requests) {
   hosts[host] = (hosts[host] ?? 0) + 1;
 }
 const own = new URL(BASE).host;
-const external = Object.keys(hosts).filter((h) => h !== own);
+// The portal's SDK is the one thing the build may fetch from elsewhere (none at all when it was
+// built with CG_SDK=0).
+const SDK_HOST = 'sdk.crazygames.com';
+const external = Object.keys(hosts).filter((h) => h !== own && h !== SDK_HOST);
+// One script, asked for once per page load (the walk without a race loads the page twice).
+const sdkUrls = [...new Set(requests.filter((u) => !/^(data|blob):/.test(u) && new URL(u).host === SDK_HOST))];
+const pageLoads = RACE ? 1 : 2;
+check(
+  'the SDK, when present, is one script from its own host',
+  sdkUrls.length <= 1 && (hosts[SDK_HOST] ?? 0) <= pageLoads && sdkUrls.every((u) => u === `https://${SDK_HOST}/crazygames-sdk-v3.js`),
+  `${hosts[SDK_HOST] ?? 0} requests in ${pageLoads} page loads: ${sdkUrls.join(', ') || 'none'}`,
+);
 console.log('requests by host:', JSON.stringify(hosts));
 check('no page error', errors.length === 0, errors.join(' | '));
-check('every request goes to the build itself', external.length === 0, external.join(', ') || `${hosts[own]} requests, all to ${own}`);
+check('every request goes to the build itself or to the SDK', external.length === 0, external.join(', ') || `${hosts[own]} requests, all to ${own}`);
 
 const failed = checks.filter((c) => !c.pass);
 console.log(`\n${checks.length - failed.length}/${checks.length} checks passed${failed.length ? ` — failed: ${failed.map((c) => c.name).join('; ')}` : ''}`);

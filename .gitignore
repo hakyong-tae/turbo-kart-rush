@@ -4,6 +4,8 @@ node_modules/
 # build output (rebuilt by CI for GitHub Pages)
 dist/
 dist-crazygames/
+# the CrazyGames edition built without the SDK into its own folder, for a side-by-side timing
+dist-crazygames-nosdk/
 
 # local env / secrets
 .env

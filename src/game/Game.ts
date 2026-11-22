@@ -42,6 +42,9 @@ import { initQuality, quality, setTier, stepDownForNextRace, type GfxTier } from
 import { ensureKartThumbnails, setKartThumbnailsAllowed } from '../ui/kartThumbnails';
 import { dismissBootSplash } from '../ui/bootSplash';
 import { prefetchEngineSample } from '../audio/engineSample';
+import { crazyDevice, crazyGameplay, crazyHappytime, crazyLoading, crazyLocale, onCrazyMute, onCrazyReady } from '../platform/crazygames';
+import { RECORD_REPLACED_EVENT } from '../verse8/localServer';
+import { adoptLocale } from '../core/i18n';
 import { ResolutionGovernor } from '../gfx/ResolutionGovernor';
 import { findSky } from '../track/builders/sky';
 import { isTeamMode } from '../core/teams';
@@ -399,6 +402,11 @@ export class Game {
   /** Races in a row the player finished without touching the controls. */
   private idleRaces = 0;
   private splashUp = true;
+  /** The player's own mute (M key), and the portal's, which outranks it. */
+  private userMuted = false;
+  private platformMuted = false;
+  /** The pause menu is up because the window lost focus, not because the player asked for it. */
+  private focusPaused = false;
   private elapsed = 0;
   private accumulator = 0;
   private pendingUseItem = false;
@@ -523,6 +531,7 @@ export class Game {
     window.addEventListener('blur', this.onBlur);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.unsubLang = events.on('ui:langChange', () => this.onLangChange());
+    this.hookPortal();
 
     this.onResize();
   }
@@ -644,6 +653,7 @@ export class Game {
     if (!cup) return;
     const place = cupPlaceOf(cup.table);
     if (place > 0) void saveCupResult(cup.id, place);
+    if (place === 1) crazyHappytime();
   }
 
   private buildResults(): ResultsScreen {
@@ -1412,6 +1422,7 @@ export class Game {
       dismissBootSplash();
       // Something is on screen: now is the time to start fetching what nothing waits for.
       prefetchEngineSample();
+      crazyLoading(false);
     }
   };
 
@@ -2174,6 +2185,8 @@ export class Game {
       events.on('race:finish', (e) => {
         if (this.race !== r || !e.isPlayer) return;
         this.onPlayerFinished(r);
+        // A win is the one thing the portal is told to celebrate (and a cup, in finishCup).
+        if (e.place === 1 && !e.retired && e.time > 0) crazyHappytime();
         this.settleRace(r, e.place, Boolean(e.retired) || !(e.time > 0), e.time);
         if (!e.retired && e.time > 0) this.maybeSubmitTime(r, e.time);
       }),
@@ -2424,9 +2437,45 @@ export class Game {
   }
 
   private toggleMute(): void {
-    const muted = !this.audio.muted;
+    this.userMuted = !this.userMuted;
+    this.applyMute();
+  }
+
+  /** Silent when either the player or the portal says so; the portal's switch cannot be overridden from here. */
+  private applyMute(): void {
+    const muted = this.userMuted || this.platformMuted;
     this.safe(() => this.audio.setMuted(muted));
     this.muteIndicator.classList.toggle('visible', muted);
+  }
+
+  /**
+   * What the game tells the portal it is published on, and what it takes from it
+   * (platform/crazygames.ts; every call is a no-op in a build without that SDK).
+   */
+  private hookPortal(): void {
+    // On the grid and racing is gameplay; menus, results and the pause menu are breaks. A pause
+    // the game made itself because the window lost focus is not reported: the portal sees focus
+    // for itself and asks not to be told.
+    this.unsubs.push(
+      events.on('game:stateChange', ({ to }) => {
+        if (to !== 'paused') this.focusPaused = false;
+        crazyGameplay(to === 'countdown' || to === 'racing' || to === 'finished' || (to === 'paused' && this.focusPaused));
+      }),
+      onCrazyMute((muted) => {
+        this.platformMuted = muted;
+        this.applyMute();
+      }),
+    );
+    onCrazyReady(() => {
+      // The portal knows what the device is; a touch screen is not always a phone, nor a phone always "coarse".
+      const device = crazyDevice();
+      if (device === 'mobile' || device === 'tablet') this.touch.setEnabled(true);
+      adoptLocale(crazyLocale());
+    });
+    // The account's copy of the record arrived after the game had read the local one: read again.
+    const reread = (): void => void refreshEntitlements();
+    window.addEventListener(RECORD_REPLACED_EVENT, reread);
+    this.unsubs.push(() => window.removeEventListener(RECORD_REPLACED_EVENT, reread));
   }
 
   // ------------------------------------------------------------- listeners
@@ -2460,7 +2509,10 @@ export class Game {
   };
 
   private readonly onBlur = (): void => {
-    if (this.state === 'racing' || this.state === 'countdown') this.pause();
+    if (this.state === 'racing' || this.state === 'countdown') {
+      this.focusPaused = true;
+      this.pause();
+    }
   };
 
   private readonly onVisibility = (): void => {

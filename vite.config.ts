@@ -134,16 +134,31 @@ const SDK_ALIASES = [
   { find: /^@verse8\/ads$/, replacement: SDK_STUB },
 ];
 
+/** The CrazyGames HTML5 SDK. The same address as `SDK_URL` in src/platform/crazygames.ts. */
+const CG_SDK_URL = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+const CG_SDK_TAG =
+  `<script async src="${CG_SDK_URL}" onerror="this.dataset.failed='1'" ` +
+  `onload="try{window.__cgInit=window.CrazyGames.SDK.init().then(function(){return null},function(e){return e||new Error('init failed')})}catch(e){window.__cgInit=Promise.resolve(e)}"></script>`;
+
 export default defineConfig(({ mode }) => {
   const target = TARGETS[mode];
+  const withSdk = mode === 'crazygames' && process.env.CG_SDK !== '0';
   return {
     base: './',
     define: {
       __BUILD_ID__: JSON.stringify(buildId()),
       // A bare boolean the minifier can fold: code behind `if (!__VX__) return` leaves the bundle.
       __VX__: JSON.stringify(!target),
+      // The CrazyGames edition carries the portal's SDK unless it is built with CG_SDK=0
+      // (`CG_SDK=0 npm run build:crazygames`): the way out if the SDK ever gets in QA's way.
+      __CG_SDK__: JSON.stringify(withSdk),
     },
     resolve: { alias: target ? SDK_ALIASES : [] },
+    // An edition's dev server keeps its pre-bundled dependencies to itself. The editions do not
+    // depend on the same packages (the SDK stand-ins above), and two dev servers sharing one cache
+    // folder overwrite each other's: the one started first then answers 504 "Outdated Optimize
+    // Dep" for its SDK imports and the game never starts.
+    cacheDir: target ? `node_modules/.vite-${mode}` : 'node_modules/.vite',
     server: { port: 5178, strictPort: false, open: false },
     build: {
       target: 'es2022',
@@ -173,7 +188,16 @@ export default defineConfig(({ mode }) => {
                     `$1${target.title.toUpperCase().split(' ').slice(0, -1).join(' ')}$2${target.title.toUpperCase().split(' ').slice(-1)[0]}$3`,
                   )
                   .replace(/\s*<link rel="preconnect"[^>]*>/g, '')
-                  .replace(/<link\s+rel="stylesheet"\s+href="https:\/\/fonts\.googleapis\.com[^>]*>/, '<link rel="stylesheet" href="/src/styles/fonts-local.css" />');
+                  .replace(/<link\s+rel="stylesheet"\s+href="https:\/\/fonts\.googleapis\.com[^>]*>/, '<link rel="stylesheet" href="/src/styles/fonts-local.css" />')
+                  // The portal's SDK, asked for from the first bytes of the page so that it downloads
+                  // alongside the game's own code. `async`: nothing waits for it, and a host that is
+                  // blocked or slow costs the first screen nothing. Its init() is started the moment
+                  // the script is in, for the same reason: it takes a fifth of a second of waiting,
+                  // which is free while the game's bundle is still on its way. `__cgInit` settles to
+                  // null, or to the error. src/platform/crazygames.ts picks all of this up (and reads
+                  // `data-failed` if the error came before it was listening).
+                  .replace(/(<title>[^<]*<\/title>)/, withSdk ? `$1\n    ${CG_SDK_TAG}` : '$1');
+                if (withSdk !== out.includes(CG_SDK_URL)) throw new Error('target-brand: the SDK tag is not where it should be');
                 if (/fonts\.g(oogleapis|static)\.com/.test(out)) throw new Error('target-brand: index.html still points at Google Fonts');
                 if (!out.includes(`<span class="boot-plate">${target.title.toUpperCase().split(' ').slice(-1)[0]}</span>`)) {
                   throw new Error('target-brand: the splash in index.html does not carry this edition\'s name');

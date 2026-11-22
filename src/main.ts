@@ -11,6 +11,7 @@ import { el } from './ui/dom';
 import { showToast } from './ui/toast';
 import { t } from './core/i18n';
 import { initEmbedHandshake } from './verse8/embed';
+import { startCrazyGames } from './platform/crazygames';
 
 function hasWebGL2(): boolean {
   try {
@@ -54,6 +55,8 @@ function blockTouchZoom(): void {
 }
 
 function boot(): void {
+  // First, so the portal's SDK downloads while the game starts. Nothing waits for it here.
+  startCrazyGames();
   initEmbedHandshake();
   blockTouchZoom();
   const app = document.getElementById('app') ?? el('div', '', undefined, document.body);

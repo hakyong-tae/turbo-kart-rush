@@ -87,8 +87,37 @@ Alternates if a tag is not offered: Arcade, Cartoon, Action.
   edition has (double coins, mission swap, streak recovery) are hidden, and a check-in streak
   broken by one day can be carried on for free.
 - No online multiplayer.
-- No account: progress is kept in the browser's local storage.
-- The CrazyGames SDK is not integrated yet. See "Before a Full Launch" below.
+- No account of its own: progress is kept in the browser's local storage and, through the
+  CrazyGames SDK's data module, with the player's CrazyGames account (see "CrazyGames SDK").
+
+## CrazyGames SDK
+
+Integrated on 2026-11-22 (HTML5 SDK v3, an `async` script tag for
+`https://sdk.crazygames.com/crazygames-sdk-v3.js` in the page's `<head>`, written by the build).
+The rest is in `src/platform/crazygames.ts`; the Verse8 build carries none of it.
+
+- **On the submission form, switch on the Data Module ("Progress Save")**. Without it the SDK's
+  data calls fail (`dataModuleDisabled`); the game then keeps saving to local storage only, which
+  works but does not follow the account.
+- Events sent: `loadingStart` / `loadingStop` around start-up, `gameplayStart` when a race goes to
+  its grid, when the player resumes from pause, and for each next race; `gameplayStop` at the
+  results screen, on a pause the player asked for, and back in the menus. A pause caused by the
+  window losing focus is not reported (the documentation says not to). `happytime` on a first
+  place and on winning a cup.
+- Data: the player's record (one JSON string under `tkr.local.user`, a few kB; the limit is 1 MB)
+  is written to the data module on every change. At start the copy that is further along (races
+  run, then coins and XP) is used, so neither side overwrites the other's progress.
+- The portal's mute switch (`game.settings.muteAudio`) mutes the game over the player's own setting.
+- Device type from the SDK (`mobile` / `tablet`) switches touch controls on; the SDK's locale
+  picks Korean or English until the player chooses a language.
+- No ad calls. Basic Launch has ads off; see "Before a Full Launch".
+- If the SDK does not load, is slow, or reports itself disabled (a host that is not CrazyGames),
+  the game plays the same without it. The first race waits for the account record for at most
+  0.4 seconds; an SDK later than that still brings the account's record in.
+- A build without the SDK, should QA object to it: `CG_SDK=0 npm run build:crazygames`.
+- Checked with `tools/crazygames-sdk-check.mjs` (a stand-in SDK that records what it is told).
+  **Not checked on crazygames.com itself**: the real SDK only runs fully inside the portal, so the
+  QA tool there (developer portal preview) is the first real test.
 
 ## Covers and preview videos
 
@@ -117,14 +146,16 @@ See the "verification" section at the end of the relaunch spec for what was run 
 - Size: reported by `npm run build:crazygames` (limit 20 MB for the initial download).
 - First screen: under 10 seconds on the test machine.
 - The strings "VX", "WATCH AD" and "Drift Dash" do not appear in the built files or on screen.
-- No request leaves the build's own host, from the first screen to the results screen and through
-  every menu (`tools/crazygames-check.mjs` counts requests by host). The three fonts are in the
+- The only request that leaves the build's own host is the one for the CrazyGames SDK script,
+  from the first screen to the results screen and through every menu (`tools/crazygames-check.mjs`
+  counts requests by host; with `CG_SDK=0` there is none). The three fonts are in the
   build (`src/assets/fonts/`, SIL Open Font License; the licence texts are next to them).
 
 ## Before a Full Launch
 
 These were out of scope for the Basic Launch build and are listed so they are not forgotten.
 
-- CrazyGames SDK: loading and gameplay events (`gameplayStart` / `gameplayStop`), the happy-time
-  call on a win, and data saving through the SDK's data module so progress follows the account.
-- Rewarded and midgame ads through the SDK, which is when the three hidden buttons come back.
+- Rewarded and midgame ads through the SDK (`SDK.ad.requestAd`), which is when the three hidden
+  buttons come back. The events, data saving and settings are already in (see "CrazyGames SDK").
+- SDK user module (sign-in prompt, account name on the kart) and invite links, if online play is
+  ever brought to this edition.
