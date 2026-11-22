@@ -217,9 +217,9 @@ export class HUD {
     this.minimap.setMode(mode);
   }
 
-  /** Off on devices that cannot afford to draw the scene a second time: the frame then never opens. */
-  setMirrorEnabled(on: boolean): void {
-    this.mirror.setEnabled(on);
+  /** Without a picture (devices that cannot afford to draw the scene twice) the mirror is a warning strip. */
+  setMirrorPictured(on: boolean): void {
+    this.mirror.setPictured(on);
   }
 
   /** Screen rectangle (CSS px) the rear camera should be drawn into, or null while the mirror is hidden. */

@@ -1728,7 +1728,7 @@ export class Game {
     this.render(dt);
 
     // Rear-view mirror PiP: drawn on top of the presented frame while the HUD shows a threat.
-    const mirrorRect = quality().mirror ? r.hud.getMirrorRect() : null;
+    const mirrorRect = r.hud.getMirrorRect();
     if (mirrorRect) {
       const h = this.container.clientHeight || window.innerHeight;
       this.safe(() => this.rearView.render(this.renderer, this.scene, player, mirrorRect, h));
@@ -1993,7 +1993,7 @@ export class Game {
     partial.hud = hud;
     hud.setTrack(track);
     hud.setMode(settings.mode ?? 'solo', localKartId);
-    hud.setMirrorEnabled(quality().mirror);
+    hud.setMirrorPictured(quality().mirror);
     // A new player's first races carry the control hints; after those the HUD is left clean.
     if (settings.intro) hud.setHints(this.touch.isEnabled ? 'touch' : 'keys');
 

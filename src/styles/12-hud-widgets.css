@@ -25,6 +25,31 @@
   aspect-ratio: 16 / 9;
   background: transparent;
 }
+/* No picture (low graphics tier): a strip of chevrons pointing behind, in the frame's colour. */
+.hud-mirror-strip {
+  display: none;
+}
+.hud-mirror.flat,
+#ui.touch .hud-mirror.flat {
+  width: auto;
+  background: var(--hud-bg);
+}
+.hud-mirror.flat .hud-mirror-view {
+  display: none;
+}
+.hud-mirror.flat .hud-mirror-strip {
+  display: flex;
+  gap: 2px;
+  padding: 3px 14px;
+  font-size: 22px;
+  color: var(--yellow);
+}
+.hud-mirror.flat.danger .hud-mirror-strip {
+  color: var(--red);
+}
+.hud-mirror.flat.blue .hud-mirror-strip {
+  color: #3f7fff;
+}
 /* A kart closing in: yellow, steady. Right behind: yellow, pulsing. */
 .hud-mirror.warn {
   border-color: var(--yellow);

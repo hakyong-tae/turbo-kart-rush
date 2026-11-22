@@ -11,6 +11,7 @@
 import type { HazardInfo, IKart } from '../../core/types';
 import { events } from '../../core/events';
 import { el, restartAnimation } from '../dom';
+import { icon } from '../icons';
 
 export interface ScreenRect {
   x: number;
@@ -31,12 +32,14 @@ export class MirrorPanel {
   private readonly rect: ScreenRect = { x: 0, y: 0, w: 0, h: 0 };
   private holdUntil = 0;
   private playerId = -1;
-  private enabled = true;
+  private pictured = true;
   private readonly unsubHit: () => void;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud-mirror', undefined, parent);
     this.view = el('div', 'hud-mirror-view', undefined, this.root);
+    const strip = el('div', 'hud-mirror-strip', undefined, this.root);
+    for (let i = 0; i < 3; i++) strip.appendChild(icon('chevron-down'));
     // Your own shell landing on someone behind you is the one thing worth looking back for, and
     // it is over before the mirror's own scan would notice: the hazard is destroyed by the hit.
     // So the hit itself pins the mirror open for a moment.
@@ -52,7 +55,7 @@ export class MirrorPanel {
 
   /** Rectangle (CSS px) to draw the rear camera into, or null while hidden. Reuses one object. */
   getRect(): ScreenRect | null {
-    if (!this.level) return null;
+    if (!this.level || !this.pictured) return null;
     const r = this.view.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return null;
     this.rect.x = r.left;
@@ -62,14 +65,20 @@ export class MirrorPanel {
     return this.rect;
   }
 
-  /** A mirror that will not be drawn into stays shut: an empty frame would only be in the way. */
-  setEnabled(on: boolean): void {
-    this.enabled = on;
+  /**
+   * Whether the mirror shows a picture. Without one (a device that cannot afford to draw the
+   * scene a second time) it is a short strip of chevrons pointing behind, in the same colours
+   * and with the same pulse: the warning stays, the view goes. That strip only comes up for
+   * something about to reach the player; a kart merely closing, or the player's own shell on
+   * its way, was only ever worth opening the mirror to watch.
+   */
+  setPictured(on: boolean): void {
+    this.pictured = on;
+    this.root.classList.toggle('flat', !on);
     if (!on) this.set('');
   }
 
   update(player: IKart, karts: readonly IKart[], hazards: readonly HazardInfo[]): void {
-    if (!this.enabled) return;
     const s = player.state;
     this.playerId = s.id;
     if (s.isFrozen || s.finished) {
@@ -136,6 +145,7 @@ export class MirrorPanel {
   }
 
   private set(level: string): void {
+    if (!this.pictured && (level === 'warn' || level === 'mine')) level = '';
     if (level !== this.level) {
       this.root.classList.remove('warn', 'warn-near', 'danger', 'blue', 'mine', 'visible');
       if (level) this.root.classList.add('visible', level);

@@ -29,7 +29,7 @@ export interface GfxQuality {
    * needs; karts keep the dark patch under them and trees the shade under their crowns.
    */
   readonly sunShadows: boolean;
-  /** The rear-view mirror is a picture of the scene (a third walk over it) rather than a frame that only changes colour. */
+  /** The rear-view mirror is a picture of the scene (a third walk over it) rather than a strip of chevrons in the warning's colour. */
   readonly mirror: boolean;
   /** Bloom mip levels (0 turns bloom off). */
   readonly bloomLevels: number;
