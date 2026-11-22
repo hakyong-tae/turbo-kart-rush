@@ -136,6 +136,9 @@ import {
 } from '../verse8/entitlements';
 import type { RaceKind } from '../verse8/server';
 
+/** How long a first visit waits for its record, in seconds of drawn frames (see `tickFirstBoot`). */
+const FIRST_BOOT_WAIT_HOSTED = 3;
+const FIRST_BOOT_WAIT_LOCAL = 10;
 const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
 const MAX_COMPILE_WAIT_SECONDS = 8;
@@ -345,7 +348,7 @@ export class Game {
    * Set while a device that has never been here waits to learn whether its account is new. Until
    * that is known the lobby stays hidden and nothing opens by itself.
    */
-  private firstBoot: { timer: number; off: () => void } | null = null;
+  private firstBoot: { alive: number; limit: number; off: () => void } | null = null;
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
@@ -945,18 +948,10 @@ export class Game {
     const params = new URLSearchParams(location.search);
     if (hasFlag(FIRST_RACE_KEY) || params.has('lobby') || this.isUnrankedRun(null)) return;
     this.uiRoot.classList.add('first-boot');
-    const release = (): void => {
-      const boot = this.firstBoot;
-      if (!boot) return;
-      this.firstBoot = null;
-      window.clearTimeout(boot.timer);
-      boot.off();
-      this.uiRoot.classList.remove('first-boot');
-    };
     const decide = (): void => {
       const ent = getEntitlements();
       if (!this.firstBoot || !ent.loaded) return;
-      release();
+      this.releaseFirstBoot();
       setFlag(FIRST_RACE_KEY);
       const ladder = ent.ladder;
       const fresh = Boolean(ladder && !ladder.all && ladder.races === 0);
@@ -965,13 +960,40 @@ export class Game {
     };
     this.firstBoot = {
       off: onEntitlementsChange(decide),
-      // The record did not come: show the lobby, and ask again on the next visit.
-      timer: window.setTimeout(() => {
-        release();
-        this.maybeOfferAttendance();
-      }, 3000),
+      alive: 0,
+      // A gameserver may not answer; a record kept in this browser always does, once its code
+      // has loaded, so that wait is only there for a page that could not load it at all.
+      limit: PLATFORM.hosted && inVerse8Host() ? FIRST_BOOT_WAIT_HOSTED : FIRST_BOOT_WAIT_LOCAL,
     };
     decide();
+  }
+
+  private releaseFirstBoot(): void {
+    const boot = this.firstBoot;
+    if (!boot) return;
+    this.firstBoot = null;
+    boot.off();
+    this.uiRoot.classList.remove('first-boot');
+  }
+
+  /**
+   * The wait for a first visitor's record, counted in frames the game actually drew.
+   *
+   * This was a three-second timer set while the game was still starting up. On a slow device the
+   * start-up alone holds the main thread for longer than that, so the timer was already due the
+   * moment the page could run anything, fired before the record's reply could be read, and the
+   * new player got the lobby instead of the race. A frame's worth of waiting is now at most a
+   * tenth of a second however long the frame took: time the page spent blocked is not time the
+   * record was given.
+   */
+  private tickFirstBoot(seconds: number): void {
+    const boot = this.firstBoot;
+    if (!boot) return;
+    boot.alive += Math.min(Math.max(seconds, 0), 0.1);
+    if (boot.alive < boot.limit) return;
+    // The record did not come: show the lobby, and ask again on the next visit.
+    this.releaseFirstBoot();
+    this.maybeOfferAttendance();
   }
 
   private startFirstRace(): void {
@@ -1339,6 +1361,7 @@ export class Game {
     if (this.lastTime < 0) this.lastTime = now;
     let dt = (now - this.lastTime) / 1000;
     this.lastTime = now;
+    this.tickFirstBoot(dt);
     // Only a race is measured: menus are light, and a loading screen is slow for its own reasons.
     if (this.governed && (this.state === 'racing' || this.state === 'countdown')) {
       const change = this.governor.sample(dt);
