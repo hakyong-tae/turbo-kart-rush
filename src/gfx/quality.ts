@@ -23,6 +23,14 @@ export interface GfxQuality {
   readonly shadowHalfExtent: number;
   /** Soft (PCF soft) or plain PCF shadow filtering. */
   readonly softShadows: boolean;
+  /**
+   * The sun casts real shadows. Without them the scene is drawn once a frame instead of twice
+   * (the shadow map is a second walk over everything that casts one), which is what a slow CPU
+   * needs; karts keep the dark patch under them and trees the shade under their crowns.
+   */
+  readonly sunShadows: boolean;
+  /** The rear-view mirror is a picture of the scene (a third walk over it) rather than a frame that only changes colour. */
+  readonly mirror: boolean;
   /** Bloom mip levels (0 turns bloom off). */
   readonly bloomLevels: number;
   /** Light shafts and lens flare from the sun. */
@@ -50,6 +58,8 @@ const TIERS: Readonly<Record<GfxTier, GfxQuality>> = {
     shadowMapSize: 4096,
     shadowHalfExtent: 52,
     softShadows: true,
+    sunShadows: true,
+    mirror: true,
     bloomLevels: 5,
     sunShafts: true,
     cloudOctaves: 5,
@@ -67,6 +77,8 @@ const TIERS: Readonly<Record<GfxTier, GfxQuality>> = {
     shadowMapSize: 2048,
     shadowHalfExtent: 34,
     softShadows: true,
+    sunShadows: true,
+    mirror: true,
     bloomLevels: 4,
     sunShafts: true,
     cloudOctaves: 4,
@@ -84,11 +96,13 @@ const TIERS: Readonly<Record<GfxTier, GfxQuality>> = {
     shadowMapSize: 1024,
     shadowHalfExtent: 24,
     softShadows: false,
+    sunShadows: false,
+    mirror: false,
     bloomLevels: 3,
     sunShafts: false,
     cloudOctaves: 3,
     envSize: 64,
-    groundDetail: 0.25,
+    groundDetail: 0,
     anisotropy: 4,
     detailNormals: false,
     particles: 0.6,
@@ -164,24 +178,98 @@ export function tierForGpu(name: string): GfxTier | null {
   return null;
 }
 
-/** The tier this device gets when nobody asked for one. */
-export function detectTier(): GfxTier {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
-  const nav = navigator as Navigator & { deviceMemory?: number };
-  const touchFirst = Boolean(window.matchMedia?.('(pointer: coarse)').matches) && !window.matchMedia?.('(any-pointer: fine)').matches;
-  const cores = nav.hardwareConcurrency ?? 8;
-  const memory = nav.deviceMemory ?? 8;
-  const byGpu = tierForGpu(gpuName());
-  if (touchFirst) {
+/** What is known about a device before it has drawn a frame. */
+export interface DeviceFacts {
+  /** The graphics driver's name, lower-cased ('' when the browser will not say). */
+  gpu: string;
+  /** Logical cores and gigabytes of memory as the browser reports them (it rounds memory down, and caps it at 8). */
+  cores: number;
+  memory: number;
+  /** A phone or tablet: touch is the only pointer. */
+  touchFirst: boolean;
+  userAgent: string;
+}
+
+/**
+ * The tier for a device, from what it says about itself.
+ *
+ * The GPU's name is the best single clue but not the whole machine: the frame is bound by the
+ * CPU on anything slow (the scene is a few hundred draw calls whatever the resolution), and an
+ * integrated GPU sits in a fast laptop and in a two-core Chromebook alike. So a weak machine
+ * round a middling GPU goes down a tier, and a Chromebook goes to the bottom unless its GPU is a
+ * discrete one — the portal this is published on switches a game off for Chrome OS when it does
+ * not run smoothly on a 4 GB device.
+ */
+export function tierFor(facts: DeviceFacts): GfxTier {
+  const byGpu = tierForGpu(facts.gpu);
+  const { cores, memory } = facts;
+  if (facts.touchFirst) {
     // A phone or tablet never gets `high`: its screen is small and its battery is not.
     if (byGpu === 'low' || cores <= 4 || memory <= 3) return 'low';
     return 'medium';
   }
-  if (byGpu) return byGpu;
+  const chromeOs = /\bCrOS\b/.test(facts.userAgent);
+  if (chromeOs && byGpu !== 'high') return 'low';
+  if (byGpu === 'low') return 'low';
+  if (byGpu === 'medium') return cores <= 4 && memory <= 4 ? 'low' : 'medium';
+  if (byGpu === 'high') return cores <= 2 || memory <= 2 ? 'medium' : 'high';
   // The driver will not say: go by the machine around it.
   if (cores <= 2 || memory <= 2) return 'low';
   if (cores <= 4 && memory <= 4) return 'medium';
   return 'high';
+}
+
+export const GFX_LEARNED_KEY = 'tkr.gfx.learned';
+
+/**
+ * What an earlier session on this device found out the hard way: a race that would not hold its
+ * frame rate at the lowest resolution. Never above what detection says; never used when the
+ * player has chosen a tier themselves.
+ */
+function learnedTier(): GfxTier | null {
+  try {
+    const saved = localStorage.getItem(GFX_LEARNED_KEY);
+    return isTier(saved) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+const ORDER: readonly GfxTier[] = ['low', 'medium', 'high'];
+
+/**
+ * Called when a race could not hold its frame rate even with the resolution at its floor: the
+ * next race starts one tier lower, on this visit and on later ones. Returns the tier now
+ * remembered, or null when there was nothing to step down to or the player picked their own.
+ */
+export function stepDownForNextRace(): GfxTier | null {
+  if (requestedTier()) return null;
+  const now = quality().tier;
+  const i = ORDER.indexOf(now);
+  if (i <= 0) return null;
+  const next = ORDER[i - 1];
+  try {
+    localStorage.setItem(GFX_LEARNED_KEY, next);
+  } catch {
+    /* storage unavailable: the step still holds for this visit */
+  }
+  current = TIERS[next];
+  return next;
+}
+
+/** The tier this device gets when nobody asked for one. */
+export function detectTier(): GfxTier {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const detected = tierFor({
+    gpu: gpuName(),
+    cores: nav.hardwareConcurrency ?? 8,
+    memory: nav.deviceMemory ?? 8,
+    touchFirst: Boolean(window.matchMedia?.('(pointer: coarse)').matches) && !window.matchMedia?.('(any-pointer: fine)').matches,
+    userAgent: nav.userAgent ?? '',
+  });
+  const learned = learnedTier();
+  return learned && ORDER.indexOf(learned) < ORDER.indexOf(detected) ? learned : detected;
 }
 
 let current: GfxQuality | null = null;

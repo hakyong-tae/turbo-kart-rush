@@ -38,7 +38,7 @@ import { PostFX } from '../fx/PostFX';
 import { RearView } from '../fx/RearView';
 import { EnvProbe } from '../gfx/EnvProbe';
 import { lookFor } from '../gfx/looks';
-import { initQuality, quality, setTier, type GfxTier } from '../gfx/quality';
+import { initQuality, quality, setTier, stepDownForNextRace, type GfxTier } from '../gfx/quality';
 import { ensureKartThumbnails, setKartThumbnailsAllowed } from '../ui/kartThumbnails';
 import { dismissBootSplash } from '../ui/bootSplash';
 import { ResolutionGovernor } from '../gfx/ResolutionGovernor';
@@ -388,7 +388,7 @@ export class Game {
   private rafId = 0;
   private lastTime = -1;
   /** Lowers the render resolution when frames run long (not under automation: its frames are not real time). */
-  private readonly governor: ResolutionGovernor;
+  private governor: ResolutionGovernor;
   private readonly governed = typeof navigator === 'undefined' || !navigator.webdriver;
   private resolutionScale = 1;
   /** Seconds the lobby has been up (-1 once the racer sheet has been asked for). */
@@ -1064,8 +1064,16 @@ export class Game {
    */
   private setGraphics(tier: GfxTier | 'auto'): void {
     setTier(tier);
+    this.applyGraphicsTier();
+  }
+
+  /** Rebuilds what the renderer holds for the tier now in force, and starts the governor afresh. */
+  private applyGraphicsTier(): void {
+    this.governor = new ResolutionGovernor({ minScale: quality().minResolutionScale });
+    this.resolutionScale = 1;
     if (this.postfxOk) {
       try {
+        this.postfx.setLean(false);
         this.postfx.init(this.renderer, this.scene, this.camera);
       } catch (err) {
         console.error('[Game] PostFX re-init failed, using plain rendering', err);
@@ -1720,7 +1728,7 @@ export class Game {
     this.render(dt);
 
     // Rear-view mirror PiP: drawn on top of the presented frame while the HUD shows a threat.
-    const mirrorRect = r.hud.getMirrorRect();
+    const mirrorRect = quality().mirror ? r.hud.getMirrorRect() : null;
     if (mirrorRect) {
       const h = this.container.clientHeight || window.innerHeight;
       this.safe(() => this.rearView.render(this.renderer, this.scene, player, mirrorRect, h));
@@ -1836,6 +1844,10 @@ export class Game {
   private startRace(settings: RaceSettings): void {
     // From here to the next menu every frame belongs to the race.
     setKartThumbnailsAllowed(false);
+    // The last race could not hold its frame rate with everything the governor has: this one
+    // is built a tier lower (and so is every later one on this device, unless the player has
+    // picked a tier in the settings).
+    if (this.governor.overwhelmed && stepDownForNextRace()) this.applyGraphicsTier();
     this.disposeRace();
     this.backdrop.detach(this.scene);
     this.mainMenu.hide();
@@ -1981,6 +1993,7 @@ export class Game {
     partial.hud = hud;
     hud.setTrack(track);
     hud.setMode(settings.mode ?? 'solo', localKartId);
+    hud.setMirrorEnabled(quality().mirror);
     // A new player's first races carry the control hints; after those the HUD is left clean.
     if (settings.intro) hud.setHints(this.touch.isEnabled ? 'touch' : 'keys');
 
@@ -1988,7 +2001,7 @@ export class Game {
     const q = quality();
     const look = lookFor(trackDef);
     const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity * look.sunScale);
-    sun.castShadow = true;
+    sun.castShadow = q.sunShadows;
     sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
     const sc = sun.shadow.camera;
     const reach = q.shadowHalfExtent;

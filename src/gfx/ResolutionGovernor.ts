@@ -49,6 +49,7 @@ export class ResolutionGovernor {
   private fpsBeforeStep = 0;
   private fruitless = 0;
   private stoodDown = false;
+  private exhausted = false;
 
   constructor(limits: GovernorLimits) {
     this.limits = limits;
@@ -61,6 +62,15 @@ export class ResolutionGovernor {
   /** True once lowering the resolution was found not to help: the governor no longer acts. */
   get hasStoodDown(): boolean {
     return this.stoodDown;
+  }
+
+  /**
+   * True when frames stayed long with nothing left to take away here: the resolution at its
+   * floor and the effects already off, or fewer pixels making no difference at all. Either way
+   * the answer is a lower tier, which is the caller's to arrange.
+   */
+  get overwhelmed(): boolean {
+    return this.exhausted;
   }
 
   /**
@@ -89,6 +99,7 @@ export class ResolutionGovernor {
         if (this.fruitless >= 2) {
           // Fewer pixels made no difference: the rate is capped, or the CPU is the limit.
           this.stoodDown = true;
+          this.exhausted = true;
           this.scale = 1;
           this.lean = false;
           return this.state;
@@ -106,6 +117,7 @@ export class ResolutionGovernor {
         this.lean = true;
         return this.state;
       }
+      this.exhausted = true;
       return null;
     }
 

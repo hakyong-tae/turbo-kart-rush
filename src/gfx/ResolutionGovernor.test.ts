@@ -51,12 +51,20 @@ describe('ResolutionGovernor', () => {
     runDevice(g, 9, 60);
     expect(g.state.scale).toBeCloseTo(0.5, 5);
     expect(g.state.lean).toBe(true);
+    expect(g.overwhelmed).toBe(true);
+  });
+
+  it('is not overwhelmed by a device it managed to settle', () => {
+    const g = new ResolutionGovernor({ minScale: 0.5 });
+    runDevice(g, 36, 40);
+    expect(g.overwhelmed).toBe(false);
   });
 
   it('gives the resolution back when lowering it buys nothing (a 30 fps cap)', () => {
     const g = new ResolutionGovernor({ minScale: 0.5 });
     run(g, 30, 30);
     expect(g.hasStoodDown).toBe(true);
+    expect(g.overwhelmed).toBe(true);
     expect(g.state).toEqual({ scale: 1, lean: false });
     // And it stays out of the way afterwards.
     expect(run(g, 30, 60)).toBeNull();

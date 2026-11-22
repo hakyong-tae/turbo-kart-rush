@@ -31,6 +31,7 @@ export class MirrorPanel {
   private readonly rect: ScreenRect = { x: 0, y: 0, w: 0, h: 0 };
   private holdUntil = 0;
   private playerId = -1;
+  private enabled = true;
   private readonly unsubHit: () => void;
 
   constructor(parent: HTMLElement) {
@@ -61,7 +62,14 @@ export class MirrorPanel {
     return this.rect;
   }
 
+  /** A mirror that will not be drawn into stays shut: an empty frame would only be in the way. */
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    if (!on) this.set('');
+  }
+
   update(player: IKart, karts: readonly IKart[], hazards: readonly HazardInfo[]): void {
+    if (!this.enabled) return;
     const s = player.state;
     this.playerId = s.id;
     if (s.isFrozen || s.finished) {

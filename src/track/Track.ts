@@ -25,6 +25,11 @@ const BOOST_PAD_HALF_LENGTH = BOOST_PAD_LENGTH / 2;
 const OFFROAD_BLEND_START = 0.5;
 const OFFROAD_BLEND_END = 4.5;
 
+const STAY = (): void => {};
+
+/** Top-level groups of a built circuit in which nothing changes its transform after the build. */
+const STILL_GROUPS: ReadonlySet<string> = new Set(['sky', 'terrain', 'mountains', 'sea', 'road', 'barriers', 'decor', 'groundCover']);
+
 export function createTrackSample(): TrackSample {
   return {
     position: new THREE.Vector3(),
@@ -151,6 +156,21 @@ export class Track implements ITrack {
     const obstacleGroup = buildObstacles(ctx, fixed);
     if (obstacleGroup) root.add(obstacleGroup);
     root.add(buildAnimatedProps(ctx));
+    // Nothing in these ever moves: work their matrices out once and tell three to leave them
+    // alone. It otherwise recomposes and re-multiplies every object's matrix every frame, and a
+    // circuit is a few hundred objects. (Windmills, balloons, searchlights, trams and the other
+    // things that do move live in other groups and are untouched.)
+    root.updateMatrixWorld(true);
+    for (const child of root.children) {
+      if (!STILL_GROUPS.has(child.name)) continue;
+      child.traverse((o) => {
+        o.matrixAutoUpdate = false;
+        o.matrixWorldAutoUpdate = false;
+      });
+      // And do not even walk them: visiting a still object costs little, but
+      // there are hundreds, sixty times a second. Their matrices are final as of the line above.
+      child.updateMatrixWorld = STAY;
+    }
     // For whoever draws splashes: the height of the sea, where the circuit has one.
     root.userData.seaLevel = this.field.seaLevel;
     this.object = root;
