@@ -604,37 +604,57 @@ export function makeLabelTexture(text: string, bg: number, fg: number): THREE.Ca
   return finishTexture(canvas);
 }
 
-/** Skyscraper facade: emissive window grid (used as emissiveMap + map). */
+/**
+ * Skyscraper facade: a few floors of large windows per tile (used as map + emissiveMap).
+ *
+ * One tile is four windows by five floors, laid over 12.8 m by 14.4 m of wall (see the uv scale in
+ * decor.ts). Windows the size of windows: small ones turn to noise a block away.
+ */
 export function makeWindowTexture(seed: number): { map: THREE.CanvasTexture; emissive: THREE.CanvasTexture } {
   const S = 256;
   const a = makeCanvas(S, S);
   const e = makeCanvas(S, S);
-  a.ctx.fillStyle = '#141420';
+  a.ctx.fillStyle = '#10111c';
   a.ctx.fillRect(0, 0, S, S);
   e.ctx.fillStyle = '#000';
   e.ctx.fillRect(0, 0, S, S);
   const rng = seededRandom(seed);
-  const cols = 8;
-  const rows = 12;
+  const cols = 4;
+  const rows = 5;
   const cw = S / cols;
   const ch = S / rows;
-  const colours = ['#ffe9a8', '#9fe8ff', '#ff9ad6', '#c9b8ff', '#ffffff'];
+  // Mostly warm room light, some cold screens, the odd coloured sign.
+  const colours = ['#ffd9a0', '#ffe9c4', '#fff3dc', '#9fdcff', '#c8f0ff', '#ff9ad6', '#b9a8ff'];
   for (let y = 0; y < rows; y++) {
+    // Floor slab: a thin lighter band the eye reads as storeys.
+    a.ctx.fillStyle = '#1b1d2c';
+    a.ctx.fillRect(0, y * ch, S, 3);
     for (let x = 0; x < cols; x++) {
-      const lit = rng() < 0.62;
-      const px = x * cw + cw * 0.2;
-      const py = y * ch + ch * 0.2;
-      const w = cw * 0.6;
-      const h = ch * 0.55;
-      a.ctx.fillStyle = lit ? '#2a2a3a' : '#0c0c14';
+      const px = x * cw + cw * 0.14;
+      const py = y * ch + ch * 0.24;
+      const w = cw * 0.72;
+      const h = ch * 0.56;
+      const roll = rng();
+      const lit = roll < 0.5;
+      // Glass, lit or not, with a mullion down the middle.
+      a.ctx.fillStyle = lit ? '#2b2d40' : '#0a0b13';
       a.ctx.fillRect(px, py, w, h);
-      if (lit) {
-        const col = colours[Math.floor(rng() * colours.length)];
-        e.ctx.fillStyle = col;
-        e.ctx.globalAlpha = 0.5 + rng() * 0.5;
-        e.ctx.fillRect(px, py, w, h);
-        e.ctx.globalAlpha = 1;
-      }
+      a.ctx.fillStyle = '#10111c';
+      a.ctx.fillRect(px + w / 2 - 1, py, 2, h);
+      if (!lit) continue;
+      const col = colours[Math.floor(rng() * colours.length)];
+      const level = 0.35 + rng() * 0.65;
+      // A lit room is brighter low down (lamps, desks) and has a blind part-way down some windows.
+      const g = e.ctx.createLinearGradient(0, py, 0, py + h);
+      g.addColorStop(0, col);
+      g.addColorStop(1, col);
+      e.ctx.globalAlpha = level;
+      e.ctx.fillStyle = g;
+      e.ctx.fillRect(px, py, w, h);
+      e.ctx.globalAlpha = 1;
+      e.ctx.fillStyle = '#000';
+      e.ctx.fillRect(px + w / 2 - 1, py, 2, h);
+      if (rng() < 0.4) e.ctx.fillRect(px, py, w, h * (0.2 + rng() * 0.4));
     }
   }
   return { map: finishTexture(a.canvas), emissive: finishTexture(e.canvas) };

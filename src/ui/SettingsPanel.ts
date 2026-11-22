@@ -9,6 +9,7 @@ import { currentAccount } from '../verse8/server';
 import { isAnonymousAccount } from '../verse8/identity';
 import { normalizeNickname } from '../verse8/nickname';
 import { readAutoAccel, writeAutoAccel } from '../game/settingsStore';
+import { requestedTier, type GfxTier } from '../gfx/quality';
 import { button, el, TextField } from './dom';
 import { buildControlsLegend } from './controlsLegend';
 import { ItemGuide } from './ItemGuide';
@@ -25,7 +26,11 @@ export interface SettingsHooks {
   getVolumes: () => { music: number; sfx: number };
   /** Live while dragging: v is 0..1. */
   onVolume: (kind: VolumeKind, v: number) => void;
+  /** The player picked a graphics quality ('auto' = let the game decide for this device). */
+  onGraphics: (tier: GfxTier | 'auto') => void;
 }
+
+const GFX_CHOICES: readonly (GfxTier | 'auto')[] = ['auto', 'low', 'medium', 'high'];
 
 export class SettingsPanel {
   onClose: (() => void) | null = null;
@@ -39,6 +44,7 @@ export class SettingsPanel {
   private readonly controlsHost: HTMLElement;
   private readonly autoField: HTMLElement;
   private readonly autoButtons: HTMLButtonElement[] = [];
+  private readonly gfxButtons: HTMLButtonElement[] = [];
   private readonly unsubEntitlements: () => void;
   /** True once the player has touched the field, so a late arrival never overwrites their typing. */
   private nickEdited = false;
@@ -85,7 +91,10 @@ export class SettingsPanel {
     el('span', 'settings-hint', t('settings.nicknameHint'), nickField);
     this.accountHint = new TextField(el('span', 'settings-hint settings-account', '', nickField));
 
-    const langField = el('div', 'settings-field', undefined, panel);
+    // Language and graphics share a row: two short pickers, and the panel still fits a 720p
+    // window without scrolling.
+    const pair = el('div', 'settings-pair', undefined, panel);
+    const langField = el('div', 'settings-field', undefined, pair);
     el('span', 'settings-label', t('settings.language'), langField);
     const seg = el('div', 'segmented', undefined, langField);
     for (const lang of ['ko', 'en'] as Lang[]) {
@@ -97,6 +106,22 @@ export class SettingsPanel {
       });
       this.langButtons.push(b);
     }
+
+    // Graphics quality: the game picks one for the device; this is for the device it got wrong.
+    const gfxField = el('div', 'settings-field', undefined, pair);
+    el('span', 'settings-label', t('settings.graphics'), gfxField);
+    const gfxSeg = el('div', 'segmented', undefined, gfxField);
+    for (const choice of GFX_CHOICES) {
+      const b = el('button', 'seg', t(`settings.gfx.${choice}`), gfxSeg);
+      b.type = 'button';
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.hooks.onGraphics(choice);
+        this.syncGraphics();
+      });
+      this.gfxButtons.push(b);
+    }
+    el('span', 'settings-hint settings-pair-hint', t('settings.graphicsHint'), panel);
 
     this.buildSlider(panel, 'music', t('settings.music'));
     this.buildSlider(panel, 'sfx', t('settings.sfx'));
@@ -187,9 +212,15 @@ export class SettingsPanel {
     this.syncSliders();
     this.autoField.classList.toggle('hidden', !this.touchDevice());
     this.syncAuto();
+    this.syncGraphics();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
     if (!softKeyboardLikely()) this.nickInput.focus();
+  }
+
+  private syncGraphics(): void {
+    const chosen = requestedTier() ?? 'auto';
+    this.gfxButtons.forEach((b, i) => b.classList.toggle('selected', GFX_CHOICES[i] === chosen));
   }
 
   private touchDevice(): boolean {

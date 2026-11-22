@@ -17,6 +17,8 @@ const SIZES = {
   pc: { width: 1920, height: 1080, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
 };
 const STEP = 1000 / 60;
+/** Frames timed per run. The lower quartile is the steadiest figure when the machine is busy with other things. */
+const FRAMES = Number(process.env.FRAMES || 240);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await puppeteer.launch({
   headless: 'new',
@@ -85,7 +87,7 @@ try {
         if ((await page.evaluate(() => document.getElementById('ui').dataset.state)) === 'racing') break;
       }
       await page.evaluate((dt) => window.__step(dt, 420), STEP);
-      const out = await page.evaluate((dt) => {
+      const out = await page.evaluate(([dt, frames]) => {
         const r = window.__tkr.renderer;
         const gl = r.getContext();
         const times = [];
@@ -93,7 +95,7 @@ try {
         r.info.autoReset = false;
         let calls = 0;
         let tris = 0;
-        for (let i = 0; i < 240; i++) {
+        for (let i = 0; i < frames; i++) {
           r.info.reset();
           const t0 = performance.now();
           window.__step(dt, 1);
@@ -104,20 +106,22 @@ try {
           calls += r.info.render.calls;
           tris += r.info.render.triangles;
         }
+        const at = (q) => times[Math.min(times.length - 1, Math.floor(times.length * q))];
         r.info.autoReset = true;
         times.sort((a, b) => a - b);
         const size = { x: gl.drawingBufferWidth, y: gl.drawingBufferHeight };
         return {
-          median: times[120],
-          p95: times[228],
-          calls: Math.round(calls / 240),
-          tris: Math.round(tris / 240),
+          quiet: at(0.25),
+          median: at(0.5),
+          p95: at(0.95),
+          calls: Math.round(calls / frames),
+          tris: Math.round(tris / frames),
           buffer: `${size.x}x${size.y}`,
           programs: r.info.programs?.length ?? 0,
         };
-      }, STEP);
+      }, [STEP, FRAMES]);
       console.log(
-        `${SIZE} ${tier || 'auto'} ${track}: ${out.median.toFixed(2)} ms median, ${out.p95.toFixed(2)} ms p95, ${out.calls} draw calls, ${(out.tris / 1000).toFixed(0)}k triangles, buffer ${out.buffer}, ${out.programs} programs, load ${load.toFixed(1)}s`,
+        `${SIZE} ${tier || 'auto'} ${track}: ${out.quiet.toFixed(2)} ms lower quartile, ${out.median.toFixed(2)} ms median, ${out.p95.toFixed(2)} ms p95, ${out.calls} draw calls, ${(out.tris / 1000).toFixed(0)}k triangles, buffer ${out.buffer}, ${out.programs} programs, load ${load.toFixed(1)}s`,
       );
       void t0;
       await page.close();

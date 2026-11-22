@@ -112,7 +112,7 @@ export function noiseTexture(): THREE.DataTexture {
   return tex;
 }
 
-export type DetailKind = 'asphalt' | 'grass' | 'sand' | 'snow' | 'ice' | 'rock';
+export type DetailKind = 'asphalt' | 'grass' | 'sand' | 'snow' | 'ice' | 'rock' | 'water';
 
 const detailCache = new Map<DetailKind, THREE.DataTexture>();
 
@@ -148,6 +148,12 @@ function detailHeight(kind: DetailKind, u: number, v: number): number {
       const cracks = Math.pow(periodicWorley(u, v, 7, 19), 0.35);
       return broad * 0.5 + cracks * 0.6;
     }
+    case 'water': {
+      // Chop: ridged noise at two scales, so crests are sharp and troughs round.
+      const a = 1 - Math.abs(periodicFbm(u, v, 5, 3, 33) - 0.5) * 2;
+      const b = 1 - Math.abs(periodicFbm(u, v, 13, 3, 37) - 0.5) * 2;
+      return a * a * 0.9 + b * 0.45;
+    }
     case 'rock': {
       const strata = periodicFbm(u, v * 3, 6, 5, 21, 0.6);
       const chips = 1 - periodicWorley(u, v, 14, 23);
@@ -163,6 +169,7 @@ const DETAIL_STRENGTH: Readonly<Record<DetailKind, number>> = {
   snow: 2.4,
   ice: 1.6,
   rock: 4.2,
+  water: 3.4,
 };
 
 /**

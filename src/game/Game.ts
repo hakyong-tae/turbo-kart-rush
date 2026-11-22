@@ -38,7 +38,7 @@ import { PostFX } from '../fx/PostFX';
 import { RearView } from '../fx/RearView';
 import { EnvProbe } from '../gfx/EnvProbe';
 import { lookFor } from '../gfx/looks';
-import { quality } from '../gfx/quality';
+import { quality, setTier, type GfxTier } from '../gfx/quality';
 import { ResolutionGovernor } from '../gfx/ResolutionGovernor';
 import { findSky } from '../track/builders/sky';
 import { isTeamMode } from '../core/teams';
@@ -411,7 +411,9 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = quality().softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    // PCF with the light's own blur radius (set per race from the quality tier). The "soft"
+    // type is gone from three and only logged a warning before falling back to this one.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.domElement.className = 'game-canvas';
     container.appendChild(this.renderer.domElement);
@@ -1023,7 +1025,26 @@ export class Game {
     return new SettingsPanel(this.uiRoot, {
       getVolumes: () => ({ music: this.audio.musicVolumeLevel, sfx: this.audio.sfxVolumeLevel }),
       onVolume: (kind, v) => this.setVolume(kind, v),
+      onGraphics: (tier) => this.setGraphics(tier),
     });
+  }
+
+  /**
+   * A new graphics quality from the settings panel. What belongs to the renderer changes now
+   * (resolution, multisampling, bloom); what was built for the circuit on
+   * screen — its plants, its shadow map, its sky — is rebuilt with the next race.
+   */
+  private setGraphics(tier: GfxTier | 'auto'): void {
+    setTier(tier);
+    if (this.postfxOk) {
+      try {
+        this.postfx.init(this.renderer, this.scene, this.camera);
+      } catch (err) {
+        console.error('[Game] PostFX re-init failed, using plain rendering', err);
+        this.postfxOk = false;
+      }
+    }
+    this.onResize();
   }
 
   private lockSheetHandlers(def: CharacterDef): LockSheetHandlers {
@@ -1971,6 +1992,7 @@ export class Game {
     const peak = Math.max(ambient.r, ambient.g, ambient.b, 1e-3);
     if (peak > 1) ambient.multiplyScalar(1 / peak);
     this.particles.setScene(ambient, new THREE.Color(trackDef.palette.offroad));
+    this.particles.setSea((track.object.userData.seaLevel as number | null | undefined) ?? null);
 
     const r: RaceContext = {
       settings,

@@ -102,9 +102,9 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
     const wet = theme === 'neon';
     const mat = new THREE.MeshStandardMaterial({
       map: tex.map,
-      roughness: theme === 'snow' ? 0.3 : wet ? 0.22 : 0.8,
+      roughness: theme === 'snow' ? 0.3 : wet ? 0.3 : 0.8,
       metalness: theme === 'snow' ? 0.1 : 0.0,
-      envMapIntensity: wet ? 1.4 : theme === 'snow' ? 1.3 : 1,
+      envMapIntensity: wet ? 0.8 : theme === 'snow' ? 1.3 : 1,
       emissive: tex.emissiveMap ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
       emissiveMap: tex.emissiveMap ?? null,
       emissiveIntensity: tex.emissiveMap ? 1.6 : 0,
@@ -117,7 +117,7 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
       relief.needsUpdate = true;
       track(ctx, relief);
       mat.normalMap = relief;
-      const depth = theme === 'snow' ? 0.35 : wet ? 0.22 : 0.6;
+      const depth = theme === 'snow' ? 0.35 : wet ? 0.16 : 0.6;
       mat.normalScale = new THREE.Vector2(depth, depth);
     }
     const mesh = new THREE.Mesh(geo, mat);

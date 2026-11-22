@@ -62,7 +62,10 @@ export function scatter(ctx: BuildContext, count: number, minDist: number, maxDi
     const dsz = z - startZ;
     if (dsx * dsx + dsz * dsz < 55 * 55) continue;
     if (extraReject && extraReject(x, z)) continue;
-    pts.push({ x, y: field.heightAt(x, z), z });
+    const y = field.heightAt(x, z);
+    // Nothing grows in the sea, or with its feet in the wash.
+    if (field.seaLevel !== null && y < field.seaLevel + 0.6) continue;
+    pts.push({ x, y, z });
   }
   return pts;
 }
@@ -396,7 +399,8 @@ function buildNeon(ctx: BuildContext, group: THREE.Group): void {
       const [su, sv] = sizes[f];
       for (let v = f * 4; v < f * 4 + 4; v++) {
         const isRoof = f === 2 || f === 3;
-        uv.setXY(v, isRoof ? 0 : (uv.getX(v) * su) / 3.2, isRoof ? 0 : (uv.getY(v) * sv) / 3.6);
+        // One tile of facade is 12.8 m wide and 14.4 m (five floors) tall.
+        uv.setXY(v, isRoof ? 0 : (uv.getX(v) * su) / 12.8, isRoof ? 0 : (uv.getY(v) * sv) / 14.4);
       }
     }
     g.translate(p.x, field.heightAt(p.x, p.z) + h / 2 - 0.5, p.z);
@@ -411,9 +415,9 @@ function buildNeon(ctx: BuildContext, group: THREE.Group): void {
       map: win.map,
       emissive: 0xffffff,
       emissiveMap: win.emissive,
-      emissiveIntensity: 1.3,
-      roughness: 0.6,
-      metalness: 0.3,
+      emissiveIntensity: 1.5,
+      roughness: 0.35,
+      metalness: 0.4,
     });
     const city = new THREE.Mesh(cityGeo, mat);
     city.name = 'skyscrapers';

@@ -134,6 +134,62 @@ try {
     await page.evaluate(closeUp, { f: 3.4, r: 1.6, u: 0.8, look: 0.5, fov: 40 });
     await page.screenshot({ path: `${OUT}/${slug}-0-kart.jpg`, type: 'jpeg', quality: 92 });
     await page.evaluate(restore);
+    if (process.env.AERIAL) {
+      // The whole circuit from the air: what the land around it looks like.
+      for (const [name, up, back] of [['aerial', 150, 330], ['low', 14, 120]]) {
+        await page.evaluate(
+          ([up, back]) => {
+            const g = window.__tkr.game;
+            const r = window.__tkr.getRace();
+            const c = g.camera;
+            window.__camSave = { p: c.position.clone(), q: c.quaternion.clone(), fov: c.fov };
+            const mm = r.track.minimap;
+            const s = r.karts[0].state.position;
+            let cx = 0, cz = 0, n = 0;
+            for (let t = 0; t < 1; t += 0.02) { const p = r.track.sample(t).position; cx += p.x; cz += p.z; n++; }
+            cx /= n; cz /= n;
+            const dx = s.x - cx, dz = s.z - cz;
+            const d = Math.hypot(dx, dz) || 1;
+            c.position.set(cx + (dx / d) * back, s.y + up, cz + (dz / d) * back);
+            c.fov = 55;
+            c.updateProjectionMatrix();
+            c.lookAt(cx, s.y, cz);
+            c.updateMatrixWorld(true);
+            g.render(0);
+            void mm;
+          },
+          [up, back],
+        );
+        await page.screenshot({ path: `${OUT}/${slug}-0-${name}.jpg`, type: 'jpeg', quality: 92 });
+        await page.evaluate(restore);
+      }
+    }
+
+    if (process.env.LOOK) {
+      // LOOK=t,t: stand on the road at each lap fraction and look out to either side.
+      for (const t of process.env.LOOK.split(',').map(Number)) {
+        for (const side of [-1, 1]) {
+          await page.evaluate(
+            ([t, side]) => {
+              const g = window.__tkr.game;
+              const r = window.__tkr.getRace();
+              const c = g.camera;
+              window.__camSave = { p: c.position.clone(), q: c.quaternion.clone(), fov: c.fov };
+              const sm = r.track.sample(t);
+              c.position.set(sm.position.x, sm.position.y + 2.2, sm.position.z);
+              c.fov = 70;
+              c.updateProjectionMatrix();
+              c.lookAt(sm.position.x + sm.binormal.x * side * 60 + sm.tangent.x * 40, sm.position.y - 2, sm.position.z + sm.binormal.z * side * 60 + sm.tangent.z * 40);
+              c.updateMatrixWorld(true);
+              g.render(0);
+            },
+            [t, side],
+          );
+          await page.screenshot({ path: `${OUT}/${slug}-0-look-${t}-${side > 0 ? 'r' : 'l'}.jpg`, type: 'jpeg', quality: 92 });
+          await page.evaluate(restore);
+        }
+      }
+    }
 
     for (let i = 0; i < 400; i++) {
       await page.evaluate((dt) => window.__step(dt, 3), STEP);

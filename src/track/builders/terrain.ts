@@ -9,6 +9,8 @@ import { addGroundDetail } from '../../gfx/materials';
 import { quality } from '../../gfx/quality';
 
 const TERRAIN_SEGMENTS = 240;
+const DRY_SAND = new THREE.Color(0xf0dca6);
+const WET_SAND = new THREE.Color(0xa88f66);
 
 /** Which relief the open ground of each theme carries. */
 export const GROUND_DETAIL: Readonly<Record<string, DetailKind>> = {
@@ -86,6 +88,12 @@ export function buildTerrain(ctx: BuildContext): THREE.Mesh {
     c.copy(tmp);
     c.lerp(rock, slope * (theme === 'desert' ? 0.7 : 0.85));
     c.lerp(roadBand, nearRoad * 0.55);
+    if (field.seaLevel !== null) {
+      // wet sand where the sea reaches, pale dry sand just above it
+      const above = h - field.seaLevel;
+      c.lerp(DRY_SAND, (1 - smoothstep(0.6, 3.2, above)) * 0.85);
+      c.lerp(WET_SAND, 1 - smoothstep(-0.2, 0.7, above));
+    }
     if (theme === 'snow') {
       // deep basin = frozen water; snow stays bright on the flats
       const depthBelowRoad = roadYMin - h;
@@ -278,8 +286,6 @@ export function buildMountains(ctx: BuildContext): THREE.Mesh {
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'mountains';
-  // Behind everything but the sky: the range is past the far plane's worth of fog anyway.
-  mesh.renderOrder = -900;
   trackMesh(ctx, mesh);
   return mesh;
 }

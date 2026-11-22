@@ -27,8 +27,8 @@ import {
 
 const HIT_EVENT_DECAY = 0.6;
 /** Display-space grain amplitude at rest / added at full boost. */
-const GRAIN_REST = 0.022;
-const GRAIN_BOOST = 0.014;
+const GRAIN_REST = 0.014;
+const GRAIN_BOOST = 0.012;
 
 /** How a scene is developed into the picture on screen. */
 export interface PostLook {

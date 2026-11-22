@@ -50,7 +50,7 @@ The contract every agent built against is in [CONTRACT.md](CONTRACT.md). It fixe
 - **Fourteen items**: banana, green shell, red shell, blue shell, nitro, triple nitro, overdrive (timed unlimited nitro), star, lightning, bob-omb and magnet. Item odds are weighted by race position.
 - **AI drivers** that follow a racing line, drift on corners, dodge hazards, hunt item boxes, use items sensibly and rubber-band toward the player.
 - **Fully synthesised audio**: per-kart engine synthesis with positional panning, dozens of sound effects, and a procedural chiptune sequencer with separate menu, race, final-lap and results music.
-- **Effects**: a 6000-particle GPU pool for drift sparks, boost flames, tyre smoke, dust and speed streaks, plus bloom, speed lines, radial blur, chromatic aberration and vignette in a post-processing stack.
+- **Effects**: a 6000-particle GPU pool for drift sparks, boost flames, tyre smoke, dust and speed streaks, skid marks, a sky with drifting clouds, reflections from an environment probe, and a post-processing stack with bloom, sun shafts, speed lines, radial blur, chromatic aberration, vignette and a colour grade per theme.
 - **Broadcast-style presentation**: 3-2-1-GO countdown, position and lap HUD, item roulette, minimap, final-lap and wrong-way banners, results screen with confetti.
 - **Gamepad support** alongside the keyboard.
 

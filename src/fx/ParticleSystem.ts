@@ -617,6 +617,8 @@ export class ParticleSystem implements IParticleSystem {
   private readonly tmp = new THREE.Vector3();
   /** Colour of the dust a kart kicks up off the road: the circuit's own ground (linear RGB). */
   private readonly dustColor: RGB = { r: 0.55, g: 0.45, b: 0.3 };
+  private seaLevel: number | null = null;
+  private readonly lastY = new Float32Array(MAX_KARTS).fill(Infinity);
 
   /**
    * Tells the particles what light they are in. Smoke and dust are drawn unlit, so without this
@@ -628,6 +630,12 @@ export class ParticleSystem implements IParticleSystem {
     this.dustColor.r = ground.r * 0.9 + 0.08;
     this.dustColor.g = ground.g * 0.9 + 0.07;
     this.dustColor.b = ground.b * 0.9 + 0.06;
+  }
+
+  /** Height of the sea on this circuit (null = none): a kart dropping through it makes a splash. */
+  setSea(level: number | null): void {
+    this.seaLevel = level;
+    this.lastY.fill(Infinity);
   }
 
   constructor() {
@@ -802,6 +810,12 @@ export class ParticleSystem implements IParticleSystem {
     const st = kart.state;
     const idx = this.slot(st.id);
     const p = st.position;
+    // Into the sea: the frame a kart's height crosses the surface on the way down.
+    if (this.seaLevel !== null) {
+      const sea = this.seaLevel;
+      if (this.lastY[idx] > sea && p.y <= sea && this.lastY[idx] !== Infinity) this.splash(p.x, sea, p.z, now);
+      this.lastY[idx] = p.y;
+    }
     const h = st.heading;
     const fx = -Math.sin(h);
     const fz = -Math.cos(h);
@@ -1512,6 +1526,39 @@ export class ParticleSystem implements IParticleSystem {
       S.gravity = 0.3; S.atlas = ATLAS_STAR; S.align = 0; S.drag = 1.2;
       this.additive.spawn(S, now);
     }
+  }
+
+  /** A kart hitting the water: a crown of drops thrown up and out, spray, and rings spreading on the surface. */
+  private splash(x: number, y: number, z: number, now: number): void {
+    for (let i = 0; i < 46; i++) {
+      const a = rnd(0, TAU);
+      const out = rnd(1.5, 5.5);
+      S.x = x + Math.cos(a) * 0.5; S.y = y + 0.05; S.z = z + Math.sin(a) * 0.5;
+      S.vx = Math.cos(a) * out; S.vy = rnd(5, 11); S.vz = Math.sin(a) * out;
+      S.life = rnd(0.7, 1.2);
+      S.size0 = rnd(0.16, 0.34); S.size1 = 0.06;
+      S.r0 = 0.9; S.g0 = 1.0; S.b0 = 1.0; S.r1 = 0.7; S.g1 = 0.9; S.b1 = 1.0;
+      S.a0 = 0.95; S.a1 = 0;
+      S.rot = 0; S.rotSpeed = 0;
+      S.gravity = 1.1; S.atlas = ATLAS_DOT; S.align = 0; S.drag = 0.4;
+      this.alpha.spawn(S, now);
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = rnd(0, TAU);
+      S.x = x + Math.cos(a) * 0.6; S.y = y + 0.2; S.z = z + Math.sin(a) * 0.6;
+      S.vx = Math.cos(a) * rnd(0.8, 2.4); S.vy = rnd(1.5, 4); S.vz = Math.sin(a) * rnd(0.8, 2.4);
+      S.life = rnd(0.7, 1.1);
+      S.size0 = 0.7; S.size1 = 2.4;
+      S.r0 = 1; S.g0 = 1; S.b0 = 1; S.r1 = 0.85; S.g1 = 0.95; S.b1 = 1;
+      S.a0 = 0.5; S.a1 = 0;
+      S.rot = rnd(0, TAU); S.rotSpeed = rnd(-1, 1);
+      S.gravity = 0.25; S.atlas = ATLAS_SMOKE; S.align = 0; S.drag = 1.6;
+      this.alpha.spawn(S, now);
+    }
+    // The ring sprite faces the camera rather than lying on the water: kept faint and quick.
+    const white: RGB = { r: 0.9, g: 1, b: 1 };
+    this.ring(x, y + 0.1, z, 0.8, 5.5, 0.7, white, 0.7, now);
+    this.ring(x, y + 0.1, z, 0.4, 3.4, 0.5, white, 0.5, now);
   }
 
   private landPuff(x: number, y: number, z: number, s: number, now: number): void {

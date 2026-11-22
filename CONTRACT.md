@@ -140,10 +140,12 @@ life, velocity, gravity, size over life, colour over life, additive + alpha blen
 emitters from kart state: drift sparks at rear wheels coloured by `driftStage` (blue/orange/purple),
 boost flames from exhausts, tyre smoke while drifting, dust on off-road, star sparkle, shrink puff,
 speed streaks. `emit()` presets per `ParticlePreset`.
-`PostFX`: `EffectComposer` (`three/examples/jsm/postprocessing/*`) with `RenderPass`, selective-ish
-`UnrealBloomPass` (strength ~0.5, threshold ~0.85), custom `ShaderPass` for speed lines + radial blur +
-chromatic aberration + vignette + hit tint + flash, `OutputPass`. Must gracefully fall back to plain
-`renderer.render` if disabled.
+`PostFX`: the scene into a multisampled HDR buffer, a small bloom chain, then one pass to the screen
+(sun shafts + lens flare + speed lines + radial blur + chromatic aberration + vignette + hit tint +
+flash + exposure + tone curve + colour grade). No `EffectComposer` (replaced 2026-11: every pass
+resolved the multisampled buffer again). Contract additions on the class: `setLook`, `setSun`,
+`setLean`, `sceneRenderTarget`. Must gracefully fall back to plain `renderer.render` if disabled or
+if the device cannot render to a float buffer.
 
 ## Quality bar
 

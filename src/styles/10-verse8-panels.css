@@ -144,6 +144,20 @@
   align-items: center;
   justify-content: space-between;
 }
+/* Two short pickers side by side (language, graphics), and the note that goes with the second. */
+.settings-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 26px;
+  margin: 12px 0 0;
+}
+.settings-pair > .settings-field {
+  margin: 0;
+}
+.settings-pair-hint {
+  display: block;
+  margin: 6px 0 12px;
+}
 .settings-label {
   font-family: var(--display);
   font-style: italic;

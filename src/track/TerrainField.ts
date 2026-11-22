@@ -56,6 +56,12 @@ export class TerrainField {
   private readonly flatRadius: number;
   private readonly seed: number;
   private readonly hasVoid: boolean;
+  /**
+   * Height of the sea, on circuits that have one (beach). The circuit then stands on an island:
+   * past `islandRadius` from the middle the ground runs down under the water.
+   */
+  readonly seaLevel: number | null;
+  private readonly islandRadius: number;
 
   /** Results of the last `sampleField` call (avoids allocations). */
   fDist = 0;
@@ -75,6 +81,16 @@ export class TerrainField {
     this.voidW = new Float32Array(total);
     this.flatRadius = cl.maxWallHalfWidth + 6;
     this.seed = hashString(def.id);
+    if (def.theme === 'beach') {
+      // The lowest road is a kart's height above the water: a pier is a pier.
+      this.seaLevel = cl.minY - 1.6;
+      let reach = 0;
+      for (let i = 0; i < cl.n; i += 4) reach = Math.max(reach, Math.hypot(cl.px[i] - this.centerX, cl.pz[i] - this.centerZ));
+      this.islandRadius = reach + 140;
+    } else {
+      this.seaLevel = null;
+      this.islandRadius = Infinity;
+    }
     const voids = def.voidRanges ?? [];
     this.hasVoid = voids.length > 0;
 
@@ -188,6 +204,14 @@ export class TerrainField {
     const rx = x - this.centerX;
     const rz = z - this.centerZ;
     const r = Math.sqrt(rx * rx + rz * rz);
+    if (this.seaLevel !== null) {
+      // An island: land that sits mostly clear of the water (the odd lagoon where the hills dip),
+      // and a beach running down under the sea all round instead of a rim of hills.
+      const land = this.seaLevel + 4.2 + broad + detail + bumps;
+      const wobble = (fbm2(sx * 0.006 + 2.2, sz * 0.006 + 5.1, 2) - 0.5) * 90;
+      const shore = smoothstep(this.islandRadius + wobble, this.islandRadius + wobble + 150, r);
+      return lerp(land, this.seaLevel - 16, shore);
+    }
     const rim = smoothstep(430, 780, r) * p.rim * (0.6 + 0.4 * fbm2(sx * 0.01, sz * 0.01, 2));
     return p.base + broad + detail + bumps + rim;
   }
@@ -209,7 +233,9 @@ export class TerrainField {
       // Cliff edge just outside the wall line, deep frozen basin, rising back to the hills far away.
       const wall = this.flatRadius - 6;
       const drop = smoothstep(wall - 1.5, wall + 9, d);
-      const basin = lerp(roadY, roadY - VOID_BASIN_DEPTH, drop);
+      // By the sea the "void" is water: a sandy bed a few metres under the surface, not a pit.
+      const depth = this.seaLevel !== null ? Math.max(4, roadY - (this.seaLevel - 5.5)) : VOID_BASIN_DEPTH;
+      const basin = lerp(roadY, roadY - depth, drop);
       const back = smoothstep(95, 150, d);
       const hv = lerp(basin, raw, back);
       h = lerp(h, hv, this.fVoid);

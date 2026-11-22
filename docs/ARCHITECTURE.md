@@ -11,7 +11,8 @@ src/kart        Kart physics/visuals + assists (slipstream, magnet) + body specs
 src/items       ItemManager (boxes, roulette, hazards, use) + itemVisuals (icons, meshes)
 src/ai          AIDriver (racing line, hazards, item decisions)
 src/track       Centerline LUT, Track builder, track defs (tracks/*.ts)
-src/fx          ParticleSystem, PostFX, RearView (mirror PiP)
+src/fx          ParticleSystem, SkidMarks, PostFX, RearView (mirror PiP)
+src/gfx         quality tiers, resolution governor, environment probe, looks, noise
 src/audio       AudioEngine (buses, voices), engine.ts (engine voice), music, sfx, synth
 src/game        Game (orchestrator), RaceManager, FollowCamera, MenuBackdrop,
                 TeamMarkers, OrientationGate, settingsStore

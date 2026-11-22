@@ -11,6 +11,7 @@ import { buildMountains, buildTerrain } from './builders/terrain';
 import { buildSky } from './builders/sky';
 import { buildDecorations } from './builders/decor';
 import { buildGroundCover } from './builders/foliage';
+import { buildSea } from './builders/water';
 import { BOOST_PAD_LENGTH, buildBoostPads, buildGantry, buildGrandstands, buildSponsorBridges, computeItemBoxPositions, type BoostPadInfo } from './builders/props';
 import { buildAnimatedProps } from './builders/animated';
 import { buildLandmarks } from './builders/landmarks';
@@ -127,6 +128,8 @@ export class Track implements ITrack {
     root.name = `track:${def.id}`;
     root.add(buildSky(ctx));
     root.add(buildTerrain(ctx));
+    const sea = buildSea(ctx);
+    if (sea) root.add(sea);
     root.add(buildMountains(ctx));
     root.add(buildRoad(ctx));
     root.add(buildBarriers(ctx));
@@ -148,6 +151,8 @@ export class Track implements ITrack {
     const obstacleGroup = buildObstacles(ctx, fixed);
     if (obstacleGroup) root.add(obstacleGroup);
     root.add(buildAnimatedProps(ctx));
+    // For whoever draws splashes: the height of the sea, where the circuit has one.
+    root.userData.seaLevel = this.field.seaLevel;
     this.object = root;
   }
 

@@ -7,6 +7,11 @@
  * resolution drops a step; at the floor, the costliest effects go too (`lean`). Going back up is
  * tried only after a long calm spell, and given up for good if the step up brings the slowness
  * straight back, so a device on the edge settles instead of pumping.
+ *
+ * Not every slow frame rate is the picture's fault. A phone in low-power mode is held at 30
+ * frames a second whatever is drawn, and a device held back by its CPU gains nothing from fewer
+ * pixels. So each step down is checked: if two steps in a row buy no speed, the resolution is
+ * given back and the governor stands down for the rest of the session.
  */
 
 export interface GovernorLimits {
@@ -27,6 +32,8 @@ const SLOW_FPS = 48;
 const CALM_SECONDS = 25;
 const STEP_DOWN = 0.86;
 const STEP_UP = 1.08;
+/** A step down must raise the frame rate by at least this factor to count as having helped. */
+const HELPED = 1.07;
 
 export class ResolutionGovernor {
   private readonly limits: GovernorLimits;
@@ -38,6 +45,10 @@ export class ResolutionGovernor {
   private calm = 0;
   private sinceUp = Infinity;
   private upBlocked = false;
+  /** Frame rate just before the last step down (0 = no step is waiting to be judged). */
+  private fpsBeforeStep = 0;
+  private fruitless = 0;
+  private stoodDown = false;
 
   constructor(limits: GovernorLimits) {
     this.limits = limits;
@@ -47,12 +58,17 @@ export class ResolutionGovernor {
     return { scale: this.scale, lean: this.lean };
   }
 
+  /** True once lowering the resolution was found not to help: the governor no longer acts. */
+  get hasStoodDown(): boolean {
+    return this.stoodDown;
+  }
+
   /**
    * Feed one frame's real duration in seconds. Returns the new state when it changed, else null.
    * Frames longer than a quarter second are not counted: that is a tab coming back, not a slow GPU.
    */
   sample(seconds: number): GovernorState | null {
-    if (!(seconds > 0) || seconds > 0.25) return null;
+    if (this.stoodDown || !(seconds > 0) || seconds > 0.25) return null;
     this.sum += seconds;
     this.frames++;
     this.sinceUp += seconds;
@@ -66,13 +82,27 @@ export class ResolutionGovernor {
       this.slowWindows++;
       if (this.slowWindows < 2) return null;
       this.slowWindows = 0;
+      // Did the last step down buy anything?
+      if (this.fpsBeforeStep > 0) {
+        if (fps < this.fpsBeforeStep * HELPED) this.fruitless++;
+        else this.fruitless = 0;
+        if (this.fruitless >= 2) {
+          // Fewer pixels made no difference: the rate is capped, or the CPU is the limit.
+          this.stoodDown = true;
+          this.scale = 1;
+          this.lean = false;
+          return this.state;
+        }
+      }
       // A step up that is followed at once by slowness was a step too far: do not try again.
       if (this.sinceUp < 6) this.upBlocked = true;
       if (this.scale > this.limits.minScale + 1e-3) {
+        this.fpsBeforeStep = fps;
         this.scale = Math.max(this.limits.minScale, this.scale * STEP_DOWN);
         return this.state;
       }
       if (!this.lean) {
+        this.fpsBeforeStep = fps;
         this.lean = true;
         return this.state;
       }
@@ -80,6 +110,8 @@ export class ResolutionGovernor {
     }
 
     this.slowWindows = 0;
+    this.fpsBeforeStep = 0;
+    this.fruitless = 0;
     this.calm++;
     if (this.calm >= CALM_SECONDS && !this.upBlocked && this.scale < 1) {
       this.calm = 0;

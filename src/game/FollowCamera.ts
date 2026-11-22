@@ -8,12 +8,13 @@ import type { IKart, ITrack, SurfaceQuery } from '../core/types';
 import { events } from '../core/events';
 import { clamp, clamp01, damp, angleDelta, smoothstep, wrapAngle, lerp } from '../core/math';
 
-const CHASE_DISTANCE = 5.6;
-const CHASE_HEIGHT = 2.25;
+// Close enough that the kart is a real presence in the frame, not a marker on the road.
+const CHASE_DISTANCE = 5.0;
+const CHASE_HEIGHT = 2.05;
 const LOOK_UP = 0.8;
 const LOOK_AHEAD = 2.5;
-const FOV_MIN = 68;
-const FOV_MAX = 80;
+const FOV_MIN = 62;
+const FOV_MAX = 77;
 const YAW_LAMBDA = 6;
 const YAW_LAMBDA_DRIFT = 3.4;
 const YAW_LAMBDA_LOOKBACK = 9;

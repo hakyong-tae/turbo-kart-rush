@@ -90,7 +90,8 @@ void main() {
   // ---- night: stars, a band of nebula --------------------------------------
   if (uStars > 0.001) {
     vec2 sph = vec2(atan(d.z, d.x), asin(clamp(y, -1.0, 1.0)));
-    float seen = smoothstep(0.02, 0.3, y);
+    // No stars through the glare round the sun, or low down where the air is bright.
+    float seen = smoothstep(0.02, 0.3, y) * (1.0 - smoothstep(0.55, 0.98, sd) * step(uNight, 0.5));
     for (int layer = 0; layer < 2; layer++) {
       float density = layer == 0 ? 70.0 : 150.0;
       vec2 g = sph * density;
@@ -209,8 +210,8 @@ export function starAmount(env: EnvironmentDef): number {
 
 /**
  * Sky dome: gradient, sun or moon, drifting clouds lit from the sun's side, stars at night.
- * Drawn first and never fogged; its horizon is blended into the fog colour so distant ground
- * and sky meet without a seam.
+ * Drawn behind everything solid and never fogged; its horizon is blended into the fog colour so
+ * distant ground and sky meet without a seam.
  */
 export function buildSky(ctx: BuildContext): THREE.Group {
   const group = new THREE.Group();
@@ -271,11 +272,14 @@ export function buildSky(ctx: BuildContext): THREE.Group {
     fragmentShader: SKY_FRAG,
     side: THREE.BackSide,
     depthWrite: false,
-    depthTest: false,
+    // Drawn after everything solid and tested against it: the clouds are only worked out for
+    // the pixels of sky that are actually seen, which on most frames is under half the screen.
+    depthTest: true,
+    depthFunc: THREE.LessEqualDepth,
     fog: false,
   });
   const dome = new THREE.Mesh(geo, mat);
-  dome.renderOrder = -1000;
+  dome.renderOrder = 1000;
   dome.frustumCulled = false;
   dome.name = SKY_DOME_NAME;
   const handles: SkyHandles = {

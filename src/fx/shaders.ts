@@ -371,9 +371,9 @@ void main() {
       float d1 = length(vec2((uv.x - g1.x) * aspect, uv.y - g1.y));
       float d2 = length(vec2((uv.x - g2.x) * aspect, uv.y - g2.y));
       float d3 = length(vec2((uv.x - g3.x) * aspect, uv.y - g3.y));
-      ghosts += vec3(0.45, 0.75, 1.0) * smoothstep(0.06, 0.0, d1) * 0.55;
-      ghosts += vec3(1.0, 0.72, 0.4) * smoothstep(0.11, 0.07, d2) * smoothstep(0.03, 0.07, d2) * 0.5;
-      ghosts += vec3(0.6, 1.0, 0.7) * smoothstep(0.17, 0.0, d3) * 0.22;
+      ghosts += vec3(0.45, 0.75, 1.0) * smoothstep(0.06, 0.0, d1) * 0.3;
+      ghosts += vec3(1.0, 0.72, 0.4) * smoothstep(0.13, 0.085, d2) * smoothstep(0.03, 0.085, d2) * 0.16;
+      ghosts += vec3(0.6, 1.0, 0.7) * smoothstep(0.17, 0.0, d3) * 0.14;
       // A wide soft veil around the sun itself.
       ghosts += uSunColor * exp(-dist * 4.5) * 0.35;
       col += ghosts * flare;

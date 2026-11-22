@@ -98,8 +98,16 @@ turbo-kart-rush/
     │
     └── fx/                  [E]
         ├── ParticleSystem.ts (1315) 6000개 GPU 풀 (Points, 수명/속도/중력/사이즈·컬러 커브), 프리셋별 emit + 카트 상태 기반 연속 이미터
-        ├── PostFX.ts (248)  EffectComposer: RenderPass → UnrealBloom(0.5/0.85) → 커스텀 ShaderPass → OutputPass
-        └── shaders.ts (223) 스피드라인·래디얼블러·색수차·비네트·히트틴트·플래시 GLSL
+        ├── PostFX.ts        장면 → MSAA HDR 버퍼 → 블룸(반해상도 체인) → 화면으로 한 번(빛줄기·플레어·속도선·노출·톤 커브·색 보정). EffectComposer 안 씀
+        ├── SkidMarks.ts     드리프트 타이어 자국(링 버퍼 쿼드, 나이로 사라짐)
+        └── shaders.ts       파티클 + 후처리 GLSL (블룸 3종, 최종 합성)
+    └── gfx/                 그래픽 공통
+        ├── quality.ts       품질 단계 low/medium/high (기기·GPU 이름으로 선택, `?gfx=`·설정으로 강제)
+        ├── ResolutionGovernor.ts 프레임이 밀리면 렌더 해상도를 내림
+        ├── EnvProbe.ts      출발선에서 본 장면 → 반사·주변광 텍스처(레이스마다 1회)
+        ├── looks.ts         테마별 색 보정·블룸·주변광 배분
+        ├── noise.ts         타일링 노이즈 텍스처, 지면 요철 노멀맵
+        └── materials.ts     지면 텍스처 반복 숨김 패치
 ```
 
 ---
@@ -154,8 +162,9 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | **아이템 파라미터** | `ItemManager.ts:28-49` | GREEN 34m/s(벽 6회 바운스) · RED 30 · BLUE 45 · BANANA_LIFE 40s · BOMB_FUSE 2.5s · EXPLOSION_RADIUS 4 · LIGHTNING_COOLDOWN 20s |
 | **AI 난이도** | `src/ai/AIDriver.ts:53` `PROFILES` | easy/normal/hard 별 noise(0.09/0.045/0.015), reaction, driftThreshold, releaseStage(1/2/3), usesMushrooms, 스타트 타이밍. 러버밴딩 ±8% (`:397`) |
 | **레이스 규칙** | `src/game/RaceManager.ts:14-28` | START_BOOST_WINDOW 0.6s(약 1.2s) / 부스트 너무 일찍 = 스핀아웃 2.6s / WRONG_WAY 1.2s / STUCK 6s / FINISH_GRACE 12s |
-| **카메라** | `FollowCamera.ts` | 거리 6.5, 높이 2.6, FOV 70→82 |
-| **포스트FX** | `PostFX.ts` | bloom strength 0.5 / threshold 0.85 |
+| **카메라** | `FollowCamera.ts` | 거리 5.0, 높이 2.05, FOV 62→77 |
+| **화면 룩** | `gfx/looks.ts` | 테마별 노출·톤 커브·대비·채도·블룸·빛줄기, 주변광을 반구 조명과 환경 프로브에 나누는 비율 |
+| **품질 단계** | `gfx/quality.ts` | 단계별 해상도 상한·MSAA·그림자 맵·블룸 단계·풀 밀도·파티클 양 |
 | **음악** | `audio/music.ts` | 트랙별 코드진행·BPM 상수 |
 
 ---
@@ -192,6 +201,7 @@ boot → title → characterSelect → trackSelect → loading → countdown →
 | 16 | 렉 두 가지(26-11-19, QC 제보) | ✅ **레이서 선택**: 카드에 커서가 지날 때마다 3D 카트를 새로 만들던 것을 고쳤다. `MenuBackdrop`이 만든 카트를 id별로 보관하고, 메뉴가 열리면 0.8초 뒤부터 0.18초마다 한 대씩 16대를 미리 만들며(텍스처 업로드·셰이더 준비 포함), 새 카트는 선택이 0.12초 머물 때만 만든다. 16장 5번 훑기에서 50ms 넘는 프레임 90번이 0번이 됐다. **레이스**: 배기 불꽃·아이템 상자 링처럼 더해 그리는 양면 반투명 재질에 `forceSinglePass`를 넣었다(three가 매 프레임 두 번 그리며 `needsUpdate`를 세우던 것: 60프레임에 3,960번이 0번). 안 보이는 불꽃은 숨기고, `warmShaders`가 컴파일 직전에 불꽃을 잠깐 보이게 한다 | 보관 카트는 다시 보여 줄 때 저장된 꾸미기와 비교해 다시 칠한다(`cosKey`). `forceSinglePass`는 AdditiveBlending + `depthWrite:false` 재질에만 넣는다. 불꽃을 숨기는 코드와 `warmShaders`의 보이기 코드는 짝이라 하나만 옮기면 안 된다 |
 | 17 | 온라인 참가자(미러) 쪽 코인 정산(26-11-19) | ✅ 브라우저 두 개(방장·참가자)로 실제 온라인 레이스를 돌려 확인했다. **완주**: 참가자 2위 → 45코인·경험치 50, 미션 집계(아이템·명중·묘기)가 서버 진행도와 일치. **방장 이탈**: 15초에 방장 창을 닫으면 참가자가 방장으로 승계돼 결승선에서 정상 지급(3위 35 + 미션 40). **리타이어(버그, 수정)**: 참가자는 카운트다운 뒤 자기 `RaceManager`를 돌리지 않아 `raceTime`이 0에 멈춰 있는데, `settleRace`가 리타이어 때 그 값을 레이스 길이로 보내 서버가 `bad-time`으로 거절했다(결과 화면엔 "레이스 시작이 서버에 기록되지 않아…"). 이제 `Game.raceClock()`이 참가자에서는 방장 스냅샷의 시계를 쓴다 → 리타이어 +5코인·경험치 10. 방장이 사라져 승계할 사람도 없을 때의 정산(`showOnlineResults`)도 같은 시계를 쓴다(실행 확인은 못 함). 도구: `node tools/online-settle-check.mjs finish|retire|migrate` (개발 서버 필요, 릴레이를 Node가 대신하고 `ONLINE_ENABLED`를 켜서 띄운다). ⚠️ 온라인은 여전히 `ONLINE_ENABLED = false`로 출시 중이라 플레이어가 이 경로에 닿지는 않는다. 실제 Verse8 릴레이·실기기 2대는 미확인. |
 | 18 | CrazyGames 재도전: Drift Kart(26-11-20) | ✅ 브랜치 `crazygames-relaunch`. CrazyGames Basic Launch 탈락(PC 8/15·모바일 7/15, 플레이타임과 D1이 약점)에 대한 수정. 명세·판단·검증은 `docs/superpowers/specs/2026-11-20-drift-kart-crazygames-relaunch.md`. **빌드 타깃**: `src/core/platform.ts`가 이름과 기능 스위치를 정한다. `npm run build` = Verse8·원스토어판(DRIFT DASH GP), `npm run build:crazygames` = CrazyGames판(DRIFT KART, `dist-crazygames/`, VX·보상형 광고·온라인 없음, Verse8 SDK 대신 스텁, 문구 테이블에서 상대 판 문구 제거). **첫 세션**: 새 계정은 로비 없이 바로 Sunny Circuit 레이스, 첫 카드가 출발을 붙잡는 4단계 안내, 첫 3판은 입문 난이도(`BALANCE.ai.intro`, AI는 공격 아이템 없음), 플레이어는 우승자 +30초(전진 중이면 +75초까지) 리타이어 유예. **해금 사다리**(`server.js` `lad`): 서킷 4개로 시작해 완주마다 +1, 완주 1·2·3·5회 / 3위 안 / 1등 / 드리프트 부스트 10회 / 출석 2일차에 차고 항목 무료. 기존 계정은 16개 그대로. **결과 화면**: 보상을 위로, "새로 열림" 카드, "다음 해금" 진행 바, 주 버튼 "다음 레이스 · 서킷 이름", 폰은 상위 3명+나. **그 밖**: 터치 자동 가속(설정에서 끔)과 상시 스틱, HUD 조작 안내와 이벤트 피드, 로비 버튼 정리, 마지막 랩 아이템 상자 한 줄 추가. 도구: `tools/first-session.mjs`(새 저장 3판 주행 점검), `tools/crazygames-check.mjs`(CrazyGames 빌드 문구·크기·첫 화면·요청 호스트 점검), `tools/unlock-card-check.mjs`(결과 화면 해금 카드 이름 잘림), `tools/hud-feed-check.mjs`(피드와 순위 번쩍임 겹침). **글꼴**: CrazyGames 빌드는 외부 요청 0건이다. `src/assets/fonts/`의 Anton·Black Han Sans·Noto Sans KR(OFL)을 싣고 빌드가 `index.html`의 Google Fonts 링크를 `src/styles/fonts-local.css`로 바꾼다. 한글 두 글꼴은 게임에 나오는 글자만 추린 것이라 **한국어 문구를 추가하면 `python3 tools/subset-fonts.py <원본 글꼴 폴더>`로 다시 만든다**(`src/assets/fonts/charset.test.ts`가 잡는다). 기본 빌드는 그대로 Google Fonts. | Verse8 호스트 안 동작, 실기기 터치, 사람이 모는 입문 난이도 체감은 확인하지 못했다. CrazyGames SDK는 연동하지 않았다(`marketing/crazygames/SUBMISSION.md`의 "Before a Full Launch"). 첫날 미션·사다리의 "드리프트 부스트"는 2단계 이상만 센다: 초보가 3판 안에 10회를 채우기 어려울 수 있다. |
+| 19 | 그래픽 강화(26-11-22) | ✅ 브랜치 `graphics-overhaul`(`crazygames-relaunch`에서 분기). 레이스 장면에 반사·구름·안티앨리어싱·색 보정이 없던 것을 채웠다. **하늘**(`track/builders/sky.ts`): 해 쪽에서 빛을 받는 구름·권운, 밤에는 별과 성운, 수평선은 안개 색과 이어짐. 색은 서킷의 `environment`에서 뽑는다. **환경 프로브**(`gfx/EnvProbe.ts`): 출발선에서 본 장면을 레이스마다 한 번 걸러 `scene.environment`로 쓴다. 카트 도장에 하늘이 비치고 네온 서킷의 젖은 노면·얼음이 주변을 비춘다. 텍스처는 한 번만 할당해 재사용(셰이더가 환경 크기에 묶여 있어서, 컴파일 전에 빈 텍스처를 먼저 꽂고 나중에 채운다). **후처리**(`fx/PostFX.ts`): EffectComposer를 걷어내고 MSAA HDR 버퍼 → 블룸 체인 → 화면으로 한 번. 빛줄기·렌즈 플레어·노출·톤 커브(ACES↔뉴트럴)·대비·채도, 테마별 룩은 `gfx/looks.ts`. 메뉴는 전과 같은 룩. **셰이더 예열**을 실제로 그리는 버퍼 기준으로 바꿔 프로그램 수 99 → 70(전에는 화면용으로 예열하고 첫 프레임에 HDR용을 또 만들었다). **지형**: 저폴리 3겹 산맥(색에 조명·안개를 미리 계산), 지면·도로 요철 노멀맵, 텍스처 반복 숨김, 레이싱 라인 고무 자국. **식생**(`builders/foliage.ts`): 면이 살아 있는 나무·야자·바위, 도로변 풀과 자갈, 나무 밑 그늘, 바람에 흔들림. 해변 서킷은 야자수로. **바다**(`builders/water.ts`): 해변 서킷 2곳은 섬이 됐다. 수심 지도로 얕은 곳은 청록, 해안선에 거품. 부두 구간의 허공은 얕은 바다고, 빠지면 물보라가 튄다(물리는 그대로: 떨어지면 구조). **방호벽**을 구간별 인스턴스 메시로 쪼개 화면 밖은 컬링. **카트**: 단면을 돌려 만든 슬릭 타이어, 접지 그림자. **파티클**: 스키드 마크(`fx/SkidMarks.ts`), 결이 있는 연기, 장면 조명 색을 받는 연기·먼지. **네온 도시** 창문을 실제 창 크기로. **카메라**: 거리 5.6→5.0, 높이 2.25→2.05, FOV 68–80→62–77(카트가 화면에서 약 1/4 커짐). **품질 단계**(`gfx/quality.ts`): low/medium/high를 기기·GPU 이름으로 고르고 `?gfx=`와 설정(그래픽: 자동·낮음·보통·높음)으로 강제. `ResolutionGovernor`가 레이스 중 48fps 아래로 2초 가면 해상도를 한 단계씩 내리고, 내려도 안 빨라지면(30fps 고정 기기·CPU 한계) 되돌리고 손을 뗀다. 도구: `tools/gfx-shots.mjs`(같은 레이스의 같은 순간 캡처, `AERIAL=1`·`LOOK=t`), `tools/gfx-perf.mjs`(픽셀을 읽어 GPU까지 기다리는 프레임 비용), `tools/gfx-compare.py`(전후 대조). 테스트 317개. | **성능(M1 Max, 헤드리스, Sunny Circuit)**: 1920×1080에서 전 4.8ms → high 7.5 / medium 6.0 / low 5.4. 폰 크기(844×390 @3x)에서는 medium이 전과 비슷, low는 조금 가볍다(해상도 상한이 2 → 1.75 / 1.5라서). 삼각형 1,394k → 1,855k / 1,049k / 964k. **실기기에서는 재지 못했다**: 폰 GPU에서 MSAA·환경 반사·노멀맵이 실제로 얼마나 드는지 모른다. 거울(RearView)에 위협이 뜬 장면, 온라인 레이스, Verse8 호스트 안은 새 그래픽으로 확인하지 못했다. 해변 서킷은 지형이 바뀌어(섬) 도로 밖 풍경이 전과 다르다(주로·기록은 그대로). 카메라가 가까워져 좌우 시야가 약 6° 줄었다. |
 | 10 | ~~카트 8대가 색놀이~~ | ✅ **완료(kart-bodies, 26-09-07)** `kart/bodies.ts`에 캐릭터별 차체 스펙 8종(화살촉·버블카·사막버기·기준형·스텔스웨지·서프덱·몬스터·트럭). 바퀴/시트/드라이버/배기는 공통, 재질별 배치 병합 유지(카트당 ≤28 메시). 검증 `node tools/kart-lineup.mjs` | 물리·충돌 반경 변경 없음(비주얼만) |
 
 ---

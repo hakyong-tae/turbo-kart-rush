@@ -47,7 +47,7 @@ const THEME_LOOKS: Readonly<Record<TrackTheme, SceneLook>> = {
   beach: day({ exposure: 1.03, saturation: 1.14, highTint: 0xfffbf0, shadowTint: 0xeef6ff }),
   desert: day({ saturation: 1.08, highTint: 0xfff4e2, shadowTint: 0xf1eeff, shafts: 0.8, flare: 0.75, bloom: 0.7 }),
   volcano: day(
-    { filmic: 0.45, contrast: 1.1, saturation: 1.1, shadowTint: 0xefe6ff, highTint: 0xfff1de, shafts: 0.65, flare: 0.8, bloom: 0.8, bloomThreshold: 0.9, vignette: 0.26 },
+    { filmic: 0.45, contrast: 1.1, saturation: 1.1, shadowTint: 0xefe6ff, highTint: 0xfff1de, shafts: 0.55, flare: 0.6, bloom: 0.8, bloomThreshold: 0.9, vignette: 0.26 },
     { envIntensity: 0.9, hemiScale: 0.7 },
   ),
   snow: day({ exposure: 0.94, saturation: 1.06, vibrance: 0.22, shadowTint: 0xeaf2ff, highTint: 0xffffff, bloomThreshold: 1.15, bloom: 0.5, shafts: 0.5 }, { envIntensity: 0.7, hemiScale: 0.5 }),

@@ -349,7 +349,8 @@ export function buildGroundCover(ctx: BuildContext): THREE.Group | null {
     const t = s / cl.length;
     if (ctx.features.hasGap && ctx.features.inGap(s)) return null;
     const side = rng() < 0.5 ? -1 : 1;
-    const inner = cl.hw[i] + CURB_WIDTH + 0.3;
+    // Clear of the curb by more than a blade's reach: grass must not lie over the paint.
+    const inner = cl.hw[i] + CURB_WIDTH + 0.6;
     const wall = cl.whw[i];
     const outer = wall + kind.reach;
     const lat = lerp(inner, outer, Math.pow(rng(), nearBias));
@@ -363,6 +364,7 @@ export function buildGroundCover(ctx: BuildContext): THREE.Group | null {
     if (field.distanceToTrack(x, z) < lat - 0.6) return null;
     if (!ctx.features.empty && !beyondWall && ctx.features.rampHeight(s, side * lat) > 0) return null;
     const y = beyondWall ? heightAt(x, z) : cl.py[i] - 0.02;
+    if (field.seaLevel !== null && y < field.seaLevel + 0.35) return null;
     return { x, y, z };
   };
 
