@@ -167,9 +167,17 @@ export default defineConfig(({ mode }) => {
                 const out = html
                   .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
                   .replace(/(fill='%23ffd400'%3E)D(%3C\/text%3E)/, `$1${target.initial}$2`)
+                  // The splash carries the wordmark too: all but the last word, then the last on the plate.
+                  .replace(
+                    /(<span class="boot-word">)[^<]*(<\/span><span class="boot-plate">)[^<]*(<\/span>)/,
+                    `$1${target.title.toUpperCase().split(' ').slice(0, -1).join(' ')}$2${target.title.toUpperCase().split(' ').slice(-1)[0]}$3`,
+                  )
                   .replace(/\s*<link rel="preconnect"[^>]*>/g, '')
                   .replace(/<link\s+rel="stylesheet"\s+href="https:\/\/fonts\.googleapis\.com[^>]*>/, '<link rel="stylesheet" href="/src/styles/fonts-local.css" />');
                 if (/fonts\.g(oogleapis|static)\.com/.test(out)) throw new Error('target-brand: index.html still points at Google Fonts');
+                if (!out.includes(`<span class="boot-plate">${target.title.toUpperCase().split(' ').slice(-1)[0]}</span>`)) {
+                  throw new Error('target-brand: the splash in index.html does not carry this edition\'s name');
+                }
                 return out;
               },
             },

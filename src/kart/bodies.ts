@@ -9,9 +9,8 @@
  * See docs/superpowers/specs/2026-09-07-kart-bodies-design.md for the silhouette table.
  */
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { lerp, smoothstep } from '../core/math';
-import { Batch, limbGeometry, profileChassis } from './modelUtils';
+import { Batch, limbGeometry, profileChassis, roundedBox } from './modelUtils';
 
 export interface WheelSize {
   /** Multiplier on the base wheel radius (visual only — the hub stays put). */
@@ -76,7 +75,7 @@ export function createBodyKit(body: Batch, accent: Batch, dark: Batch, chrome: B
       for (const p of placements) batch.add(geo, ...(p as [number, number, number, number, number, number, number, number, number]));
       geo.dispose();
     },
-    rb: (w, h, d, radius = 0.04) => new RoundedBoxGeometry(w, h, d, 2, radius),
+    rb: (w, h, d, radius = 0.04) => roundedBox(w, h, d, 2, radius),
     box: (w, h, d) => new THREE.BoxGeometry(w, h, d),
     cyl: (rTop, rBottom, h, segments = 12) => new THREE.CylinderGeometry(rTop, rBottom, h, segments),
     cone: (r, h, segments = 8) => new THREE.ConeGeometry(r, h, segments),

@@ -109,6 +109,7 @@ export class GaragePreview {
     this.running = true;
     if (!this.renderer) {
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
+      this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
       this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;

@@ -4,12 +4,35 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const _m = new THREE.Matrix4();
 const _p = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _s = new THREE.Vector3();
+
+/**
+ * A rounded box of these measurements, made once and shared.
+ *
+ * Eight karts on a grid each asked for the same floor pan, seat and engine block, and a rounded
+ * box is the most expensive primitive there is to make. The result is a template: callers hand
+ * it to `Batch.add`, which copies it. Disposing it does nothing that matters (it never reaches
+ * the GPU), so code written for a box of its own keeps working.
+ */
+const boxTemplates = new Map<string, THREE.BufferGeometry>();
+export function roundedBox(width: number, height: number, depth: number, segments: number, radius: number): THREE.BufferGeometry {
+  const key = `${width}|${height}|${depth}|${segments}|${radius}`;
+  let geo = boxTemplates.get(key);
+  if (!geo) {
+    geo = new RoundedBoxGeometry(width, height, depth, segments, radius);
+    boxTemplates.set(key, geo);
+  }
+  return geo;
+}
+
+/** The indexed form of a geometry that came without an index, remembered for as long as the source lives. */
+const indexedForm = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
 
 /** Collects transformed geometry copies and merges them into one indexed geometry. */
 export class Batch {
@@ -28,12 +51,18 @@ export class Batch {
     sy = 1,
     sz = 1,
   ): this {
-    let g = geo.clone();
-    if (!g.index) {
-      const indexed = mergeVertices(g);
-      g.dispose();
-      g = indexed;
+    let source = geo;
+    if (!geo.index) {
+      // Welding the vertices is the slow part, and the same template comes through here for
+      // every kart: do it once per geometry.
+      let indexed = indexedForm.get(geo);
+      if (!indexed) {
+        indexed = mergeVertices(geo);
+        indexedForm.set(geo, indexed);
+      }
+      source = indexed;
     }
+    const g = source.clone();
     _m.compose(_p.set(x, y, z), _q.setFromEuler(_e.set(rx, ry, rz)), _s.set(sx, sy, sz));
     g.applyMatrix4(_m);
     this.parts.push(g);

@@ -8,7 +8,7 @@ import { quality } from '../../gfx/quality';
 const SEA_RADIUS = 2300;
 /** The depth map: a square this wide round the middle of the circuit, this many texels across. */
 const DEPTH_SPAN = 1640;
-const DEPTH_SIZE = 256;
+const DEPTH_SIZE = 176;
 /** Depths the map can hold, in metres (negative = dry land above the water). */
 const DEPTH_MIN = -2;
 const DEPTH_MAX = 14;

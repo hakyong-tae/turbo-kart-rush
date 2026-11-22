@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import { hash2 } from '../core/math';
+import { quality } from './quality';
 
 function wrap(i: number, period: number): number {
   return ((i % period) + period) % period;
@@ -72,14 +73,16 @@ export function periodicWorley(u: number, v: number, period: number, seed: numbe
 let shared: THREE.DataTexture | null = null;
 
 /**
- * The shared noise texture (256², repeating, mipmapped).
+ * The shared noise texture (256², or 128² on the low tier; repeating, mipmapped).
  *   R: soft fbm, large shapes          G: fbm, a second independent field
  *   B: billowy cellular fbm (puffs)    A: fine fbm
  * Never disposed: it is 256 KB and every race uses it.
  */
 export function noiseTexture(): THREE.DataTexture {
   if (shared) return shared;
-  const S = 256;
+  // The low tier reads the two coarse channels at a few scales and nothing else: a tile half
+  // the size each way is a quarter of the work and looks the same there.
+  const S = quality().tier === 'low' ? 128 : 256;
   const data = new Uint8Array(S * S * 4);
   for (let y = 0; y < S; y++) {
     const v = y / S;

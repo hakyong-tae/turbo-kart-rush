@@ -1,3 +1,4 @@
+import { dismissBootSplash } from './ui/bootSplash';
 import './buildTag';
 /**
  * Bootstrap: WebGL2 detection, global error handling, then hand over to Game.
@@ -22,6 +23,7 @@ function hasWebGL2(): boolean {
 }
 
 function showFatal(root: HTMLElement, title: string, body: string): void {
+  dismissBootSplash();
   root.replaceChildren();
   const wrap = el('div', 'fatal', undefined, root);
   const panel = el('div', 'panel fatal-panel', undefined, wrap);

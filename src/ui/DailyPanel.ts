@@ -16,7 +16,7 @@ import { fetchDailyTop, type DailyTop } from '../verse8/server';
 import { badgeElement } from './badges';
 import { unpackCosmetics } from '../core/cosmetics';
 import { button, el, TextField } from './dom';
-import { getKartThumbnail, getLookThumbnail } from './kartThumbnails';
+import { ensureKartThumbnails, getKartThumbnail, getLookThumbnail } from './kartThumbnails';
 
 type LocaleKey = Parameters<typeof t>[0];
 const tk = (key: string): string => t(key as LocaleKey);
@@ -63,6 +63,12 @@ export class DailyPanel {
     this.renderChallenge();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
+    // The kart row draws from the racer sheet, which is only made when someone asks for it.
+    if (this.characters.some((ch) => !getKartThumbnail(ch.id))) {
+      void ensureKartThumbnails(this.characters).then(() => {
+        if (this.visible) void this.refresh();
+      });
+    }
     void this.refresh();
   }
 

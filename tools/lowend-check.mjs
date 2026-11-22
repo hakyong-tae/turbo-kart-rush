@@ -1,6 +1,6 @@
 // A slow device, simulated: the build under CPU throttling, from a first visit to a race.
 //
-//   node tools/lowend-check.mjs <base> [rates=1,4,6] [gfx=auto|low|medium|high] [pc|touch] [--no-race]
+//   node tools/lowend-check.mjs <base> [rates=1,4,6] [gfx=auto|low|medium|high] [pc|touch] [--no-race] [--trace]
 //
 // <base> is a served production build (`vite preview --mode crazygames --outDir dist-crazygames`)
 // or the dev server. For each throttling rate, with empty storage, it records
@@ -104,6 +104,8 @@ for (const rate of RATES.split(',').map(Number)) {
     longestTaskS: +(Math.max(0, ...blocked.map((l) => l.ms)) / 1000).toFixed(2),
   };
   if (!out.firstRace) failed = true;
+  // --trace: every change of state and every long task, for finding where the time went.
+  if (flags.includes('--trace')) console.log(JSON.stringify({ states: log.states, longTasks: log.longTasks }));
 
   if (RACE) {
     const click = (sel, which = 0) =>

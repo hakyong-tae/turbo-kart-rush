@@ -28,7 +28,7 @@ import {
 } from '../verse8/entitlements';
 import { finishesToOpen, formatCoins, levelInfo } from '../core/economy';
 import { setButtonContent } from './dom';
-import { ensureKartThumbnails, getKartThumbnail } from './kartThumbnails';
+import { ensureKartThumbnails, getKartThumbnail, onKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
 import { buildLogo } from './logo';
 import type { IconName } from './icons';
@@ -93,6 +93,9 @@ export class MainMenu {
 
   // Character select
   private readonly charCards: HTMLElement[] = [];
+  /** Cards still showing a colour swatch, waiting for their kart's picture. */
+  private readonly thumbTargets = new Map<string, { thumb: HTMLImageElement; card: HTMLElement }>();
+  private readonly unsubThumbs: () => void;
   private charIndex = 0;
   private readonly charName: TextField;
   private readonly charTagline: TextField;
@@ -373,6 +376,13 @@ export class MainMenu {
     trActions.appendChild(this.startButton);
 
     this.panels = { title, characterSelect: chars, trackSelect: tr };
+    this.unsubThumbs = onKartThumbnail((id, url) => {
+      const target = this.thumbTargets.get(id);
+      if (!target) return;
+      this.thumbTargets.delete(id);
+      target.thumb.src = url;
+      target.card.classList.add('has-thumb');
+    });
     this.unsubEntitlements = onEntitlementsChange(() => {
       this.refreshLocks();
       this.refreshTrackLocks();
@@ -412,6 +422,7 @@ export class MainMenu {
 
   dispose(): void {
     this.unsubEntitlements();
+    this.unsubThumbs();
     this.rootNode.remove();
   }
 
@@ -537,6 +548,8 @@ export class MainMenu {
     }
     const changed = panel !== this.panel;
     this.panel = panel;
+    // The racer sheet is about to be looked at: its pictures are wanted now.
+    if (panel === 'characterSelect') void ensureKartThumbnails(this.characters);
     this.applyPanel();
     if (changed) this.onPanelChange?.(panel);
   }
@@ -812,12 +825,8 @@ export class MainMenu {
       thumb.src = ready;
       card.classList.add('has-thumb');
     } else {
-      void ensureKartThumbnails(this.characters).then((thumbs) => {
-        const src = thumbs.get(c.id);
-        if (!src || !card.isConnected) return;
-        thumb.src = src;
-        card.classList.add('has-thumb');
-      });
+      // Drawn later, one kart at a time (see kartThumbnails.ts): the card fills in when its turn comes.
+      this.thumbTargets.set(c.id, { thumb, card });
     }
     if (c.premium) {
       card.dataset.premium = '1';

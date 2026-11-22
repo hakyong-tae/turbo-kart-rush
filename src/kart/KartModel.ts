@@ -9,10 +9,9 @@
  * (floor pan, engine, steering, seat, driver, wheels, plates, exhausts).
  */
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { CharacterDef } from '../core/types';
 import { createBodyKit, getBodySpec, type WheelSize } from './bodies';
-import { Batch, limbGeometry, makeMesh } from './modelUtils';
+import { Batch, limbGeometry, makeMesh, roundedBox } from './modelUtils';
 import { CHARACTERS } from './roster';
 import type { FlameId, KartCosmetics, WheelFxId } from '../core/cosmetics';
 import { attachPatternShader } from './patternShader';
@@ -297,7 +296,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   root.add(body);
 
   // --- dark metal parts ----------------------------------------------------
-  const floorPan = new RoundedBoxGeometry(0.98, 0.06, 1.34, 1, 0.02);
+  const floorPan = roundedBox(0.98, 0.06, 1.34, 1, 0.02);
   darkBatch.add(floorPan, 0, 0.13, -0.02);
   floorPan.dispose();
   const mount = new THREE.BoxGeometry(0.04, 0.04, 0.14);
@@ -308,14 +307,14 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   darkBatch.add(column);
   column.dispose();
   if (spec.engine) {
-    const engine = new RoundedBoxGeometry(0.4, 0.24, 0.26, 1, 0.04);
+    const engine = roundedBox(0.4, 0.24, 0.26, 1, 0.04);
     darkBatch.add(engine, 0, 0.55, 0.66);
     engine.dispose();
     const strut = new THREE.BoxGeometry(0.04, 0.26, 0.05);
     darkBatch.add(strut, 0.3, 0.575, 0.68);
     darkBatch.add(strut, -0.3, 0.575, 0.68);
     strut.dispose();
-    const head = new RoundedBoxGeometry(0.3, 0.1, 0.16, 1, 0.03);
+    const head = roundedBox(0.3, 0.1, 0.16, 1, 0.03);
     chromeBatch.add(head, 0, 0.7, 0.64);
     head.dispose();
     const filter = new THREE.CylinderGeometry(0.07, 0.07, 0.12, 12);
@@ -418,10 +417,10 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   const seatBack = new THREE.CylinderGeometry(0.23, 0.21, 0.42, 14, 1, true, -Math.PI / 2, Math.PI);
   seatBatch.add(seatBack, 0, 0.57 + lift, 0.3, 0.12, 0, 0);
   seatBack.dispose();
-  const seatBase = new RoundedBoxGeometry(0.46, 0.09, 0.4, 1, 0.03);
+  const seatBase = roundedBox(0.46, 0.09, 0.4, 1, 0.03);
   seatBatch.add(seatBase, 0, 0.37 + lift, 0.16);
   seatBase.dispose();
-  const headrest = new RoundedBoxGeometry(0.2, 0.12, 0.08, 1, 0.03);
+  const headrest = roundedBox(0.2, 0.12, 0.08, 1, 0.03);
   seatBatch.add(headrest, 0, 0.84 + lift, 0.4);
   headrest.dispose();
   root.add(makeMesh(track(seatBatch.build()), seatMat, 'seat'));

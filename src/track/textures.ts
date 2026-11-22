@@ -53,6 +53,15 @@ function fillNoise(
   seed: number,
   tint?: { color: number; strength: number },
 ): void {
+  // The mottling has no detail finer than a few pixels of the full tile, so it is worked out on
+  // a canvas a quarter of the size each way and stretched: a sixteenth of the noise to compute,
+  // and the same picture. (Grain and painted lines go on afterwards at full size.)
+  const full = { w, h, ctx };
+  const small = Math.min(w, h) >= 256 ? 4 : 2;
+  w = Math.max(32, Math.round(w / small));
+  h = Math.max(32, Math.round(h / small));
+  const lowRes = makeCanvas(w, h);
+  ctx = lowRes.ctx;
   const img = ctx.createImageData(w, h);
   const data = img.data;
   const [br, bg, bb] = hexToRgb(base);
@@ -86,6 +95,13 @@ function fillNoise(
     }
   }
   ctx.putImageData(img, 0, 0);
+  // Stretched back up. The source tiles, so drawing it at the eight neighbouring offsets as well
+  // lets the smoothing wrap round the edges instead of leaving a seam.
+  full.ctx.imageSmoothingEnabled = true;
+  full.ctx.imageSmoothingQuality = 'high';
+  for (let oy = -1; oy <= 1; oy++) {
+    for (let ox = -1; ox <= 1; ox++) full.ctx.drawImage(lowRes.canvas, ox * full.w, oy * full.h, full.w, full.h);
+  }
 }
 
 export interface RoadTextures {

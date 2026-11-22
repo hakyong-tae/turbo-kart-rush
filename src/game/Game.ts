@@ -38,7 +38,9 @@ import { PostFX } from '../fx/PostFX';
 import { RearView } from '../fx/RearView';
 import { EnvProbe } from '../gfx/EnvProbe';
 import { lookFor } from '../gfx/looks';
-import { quality, setTier, type GfxTier } from '../gfx/quality';
+import { initQuality, quality, setTier, type GfxTier } from '../gfx/quality';
+import { ensureKartThumbnails, setKartThumbnailsAllowed } from '../ui/kartThumbnails';
+import { dismissBootSplash } from '../ui/bootSplash';
 import { ResolutionGovernor } from '../gfx/ResolutionGovernor';
 import { findSky } from '../track/builders/sky';
 import { isTeamMode } from '../core/teams';
@@ -358,7 +360,8 @@ export class Game {
   private readonly orientationGate: OrientationGate;
   private readonly postfx: PostFX;
   /** Reflections and ambient light for the race scene; null where the device cannot make them. */
-  private readonly envProbe: EnvProbe | null;
+  private envProbe: EnvProbe | null = null;
+  private envProbeTried = false;
   private postfxOk = true;
 
   private readonly backdrop: MenuBackdrop;
@@ -385,9 +388,12 @@ export class Game {
   private rafId = 0;
   private lastTime = -1;
   /** Lowers the render resolution when frames run long (not under automation: its frames are not real time). */
-  private readonly governor = new ResolutionGovernor({ minScale: quality().minResolutionScale });
+  private readonly governor: ResolutionGovernor;
   private readonly governed = typeof navigator === 'undefined' || !navigator.webdriver;
   private resolutionScale = 1;
+  /** Seconds the lobby has been up (-1 once the racer sheet has been asked for). */
+  private menuIdle = 0;
+  private splashUp = true;
   private elapsed = 0;
   private accumulator = 0;
   private pendingUseItem = false;
@@ -410,6 +416,12 @@ export class Game {
 
     // ---------------------------------------------------------- renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Asking the driver whether a shader compiled makes the page wait until it has: over a second
+    // of start-up, to learn something a shipped build does nothing with. The dev server still asks.
+    this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
+    // The quality tier is read off this context's driver name, before anything asks for it.
+    initQuality(this.renderer.getContext());
+    this.governor = new ResolutionGovernor({ minScale: quality().minResolutionScale });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -449,13 +461,7 @@ export class Game {
     this.scene.add(this.rescueDrones.object);
     this.postfx = new PostFX();
     this.rearView = new RearView();
-    let probe: EnvProbe | null = null;
-    try {
-      probe = new EnvProbe(this.renderer, quality().envSize);
-    } catch (err) {
-      console.warn('[Game] no environment probe; races render without reflections', err);
-    }
-    this.envProbe = probe;
+
     try {
       this.postfx.init(this.renderer, this.scene, this.camera);
     } catch (err) {
@@ -1362,6 +1368,7 @@ export class Game {
     let dt = (now - this.lastTime) / 1000;
     this.lastTime = now;
     this.tickFirstBoot(dt);
+    this.tickMenuIdle(dt);
     // Only a race is measured: menus are light, and a loading screen is slow for its own reasons.
     if (this.governed && (this.state === 'racing' || this.state === 'countdown')) {
       const change = this.governor.sample(dt);
@@ -1384,6 +1391,12 @@ export class Game {
     } catch (err) {
       console.error('[Game] frame error', err);
       events.emit('ui:error', {});
+    }
+    // The page's own splash goes once the game has drawn something to take its place: the lobby,
+    // or the loading screen of a first visitor's race (not the empty wait before either).
+    if (this.splashUp && !this.firstBoot) {
+      this.splashUp = false;
+      dismissBootSplash();
     }
   };
 
@@ -1784,6 +1797,21 @@ export class Game {
     this.setState(panel);
     this.playMusic('menu');
     this.maybeOfferAttendance();
+    setKartThumbnailsAllowed(true);
+    this.menuIdle = 0;
+  }
+
+  /**
+   * A lobby that has been on screen for a moment draws the racer sheet in the background, one
+   * kart a frame, so it is ready by the time anyone opens it. Not for a first visitor still
+   * waiting to be sent into a race.
+   */
+  private tickMenuIdle(seconds: number): void {
+    if (this.menuIdle < 0 || this.firstBoot || this.state !== 'title') return;
+    this.menuIdle += Math.min(seconds, 0.1);
+    if (this.menuIdle < 1.2) return;
+    this.menuIdle = -1;
+    void ensureKartThumbnails(CHARACTERS as readonly CharacterDef[]);
   }
 
   private onMenuPanel(panel: MenuPanel): void {
@@ -1806,6 +1834,8 @@ export class Game {
   }
 
   private startRace(settings: RaceSettings): void {
+    // From here to the next menu every frame belongs to the race.
+    setKartThumbnailsAllowed(false);
     this.disposeRace();
     this.backdrop.detach(this.scene);
     this.mainMenu.hide();
@@ -1980,6 +2010,16 @@ export class Game {
     if (this.sunDir.y < 0) this.sunDir.y = -this.sunDir.y;
     if (this.sunDir.y < 0.15) this.sunDir.y = 0.15;
     this.sunDir.normalize();
+    // The probe is made with the first race, behind its loading screen: it has shaders of its own
+    // to build, and the lobby has no use for it.
+    if (!this.envProbeTried) {
+      this.envProbeTried = true;
+      try {
+        this.envProbe = new EnvProbe(this.renderer, q.envSize);
+      } catch (err) {
+        console.warn('[Game] no environment probe; races render without reflections', err);
+      }
+    }
     const hasProbe = Boolean(this.envProbe?.texture);
     const hemi = new THREE.HemisphereLight(env.ambientSky, env.ambientGround, env.ambientIntensity * (hasProbe ? look.hemiScale : 1));
     // Camera-following fill: strong on dim night tracks, zero on sunny ones.

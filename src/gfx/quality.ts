@@ -114,16 +114,36 @@ export function requestedTier(): GfxTier | null {
   return null;
 }
 
+let knownGpu: string | null = null;
+
+function readGpuName(gl: WebGLRenderingContext | WebGL2RenderingContext): string {
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  return String(name ?? '').toLowerCase();
+}
+
+/**
+ * Hands the quality module the game's own WebGL context to read the driver's name from, so
+ * detection does not have to open (and throw away) a second one. Call before the first `quality()`.
+ */
+export function initQuality(gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+  try {
+    knownGpu = readGpuName(gl);
+  } catch {
+    knownGpu = '';
+  }
+}
+
 /** What the graphics driver calls itself, lower-cased ('' when the browser will not say). */
 function gpuName(): string {
+  if (knownGpu !== null) return knownGpu;
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
     if (!gl) return '';
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    const name = readGpuName(gl);
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return String(name ?? '').toLowerCase();
+    return name;
   } catch {
     return '';
   }

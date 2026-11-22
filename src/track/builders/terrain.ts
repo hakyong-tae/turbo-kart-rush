@@ -8,7 +8,8 @@ import { detailNormalTexture, type DetailKind } from '../../gfx/noise';
 import { addGroundDetail } from '../../gfx/materials';
 import { quality } from '../../gfx/quality';
 
-const TERRAIN_SEGMENTS = 240;
+/** Cells across the terrain mesh. The low tier gets a coarser one: fewer heights to work out while loading, fewer vertices every frame. */
+const terrainSegments = (): number => (quality().tier === 'low' ? 168 : 240);
 const DRY_SAND = new THREE.Color(0xf0dca6);
 const WET_SAND = new THREE.Color(0xa88f66);
 
@@ -26,7 +27,8 @@ export const GROUND_DETAIL: Readonly<Record<string, DetailKind>> = {
 export function buildTerrain(ctx: BuildContext): THREE.Mesh {
   const { def, field } = ctx;
   const theme = def.theme;
-  const geo = new THREE.PlaneGeometry(TERRAIN_EXTENT, TERRAIN_EXTENT, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
+  const segments = terrainSegments();
+  const geo = new THREE.PlaneGeometry(TERRAIN_EXTENT, TERRAIN_EXTENT, segments, segments);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.getAttribute('position') as THREE.BufferAttribute;
   const count = pos.count;
@@ -54,7 +56,7 @@ export function buildTerrain(ctx: BuildContext): THREE.Mesh {
   geo.computeVertexNormals();
   // The mesh's own height between its vertices, for things that must sit exactly on it.
   // PlaneGeometry lays its vertices out row by row and cuts each cell along the same diagonal.
-  const N = TERRAIN_SEGMENTS;
+  const N = segments;
   const x0 = field.centerX - TERRAIN_EXTENT / 2;
   const z0 = field.centerZ - TERRAIN_EXTENT / 2;
   ctx.terrainHeight = (x, z) => {
