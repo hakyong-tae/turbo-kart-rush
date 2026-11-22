@@ -257,6 +257,7 @@ export class Kart implements IKart {
     this.object.add(this.visual);
     // Outside `visual` on purpose: the road glow follows the chassis, not the body's roll and squash.
     this.object.add(this.parts.underglow.mesh);
+    this.object.add(this.parts.contactShadow.mesh);
     // Announced even when empty: the FX and audio caches key on kart id, and a fresh kart in that
     // slot must clear whatever the last race's owner was wearing.
     this.cosmetics = cosmetics ?? {};
@@ -446,6 +447,8 @@ export class Kart implements IKart {
     // shrinks with a squished kart rather than spilling out from under it.
     this.visUnderglow = damp(this.visUnderglow, s.isAirborne ? 0.15 : 1, 7, dt);
     this.parts.underglow.setStrength(this.visUnderglow * (s.isShrunk ? 0.5 : 1));
+    // The same goes for the dark patch under the chassis: none in the air (the sun's shadow is far below).
+    this.parts.contactShadow.setStrength(Math.max(0, (this.visUnderglow - 0.15) / 0.85));
 
     // Star rainbow.
     if (s.isInvincible) {

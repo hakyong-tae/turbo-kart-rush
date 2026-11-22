@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import type { BuildContext } from './context';
 import { track, trackMesh } from './context';
 import { makeRoadTextures, makeGroundTexture, makeCheckerTexture, ROAD_TILE_LENGTH } from '../textures';
+import { detailNormalTexture } from '../../gfx/noise';
+import { addGroundDetail } from '../../gfx/materials';
+import { quality } from '../../gfx/quality';
+import { GROUND_DETAIL } from './terrain';
 
 /** Height of the curb top above the road surface. */
 const CURB_HEIGHT = 0.1;
@@ -93,14 +97,29 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
     const tex = makeRoadTextures(def);
     track(ctx, tex.map);
     if (tex.emissiveMap) track(ctx, tex.emissiveMap);
+    // Night streets are wet: smooth enough to mirror the city. Ice shines; dry asphalt keeps a
+    // dull sheen that only shows looking toward the sun.
+    const wet = theme === 'neon';
     const mat = new THREE.MeshStandardMaterial({
       map: tex.map,
-      roughness: theme === 'snow' ? 0.35 : theme === 'neon' ? 0.55 : 0.92,
+      roughness: theme === 'snow' ? 0.3 : wet ? 0.22 : 0.8,
       metalness: theme === 'snow' ? 0.1 : 0.0,
+      envMapIntensity: wet ? 1.4 : theme === 'snow' ? 1.3 : 1,
       emissive: tex.emissiveMap ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
       emissiveMap: tex.emissiveMap ?? null,
       emissiveIntensity: tex.emissiveMap ? 1.6 : 0,
     });
+    if (quality().detailNormals) {
+      // The road's own uv runs 0..1 across and one tile per 8 m along: the relief gets its own
+      // repeat so the aggregate is a few centimetres, not a road-wide blob.
+      const relief = detailNormalTexture(theme === 'snow' ? 'ice' : 'asphalt').clone();
+      relief.repeat.set(6, 3);
+      relief.needsUpdate = true;
+      track(ctx, relief);
+      mat.normalMap = relief;
+      const depth = theme === 'snow' ? 0.35 : wet ? 0.22 : 0.6;
+      mat.normalScale = new THREE.Vector2(depth, depth);
+    }
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'roadSurface';
     mesh.receiveShadow = true;
@@ -270,9 +289,14 @@ export function buildRoad(ctx: BuildContext): THREE.Group {
     track(ctx, tex);
     const mat = new THREE.MeshStandardMaterial({
       map: tex,
-      roughness: 1,
+      roughness: theme === 'snow' ? 0.72 : theme === 'neon' ? 0.5 : 0.95,
       metalness: 0,
     });
+    if (quality().detailNormals && theme !== 'neon') {
+      mat.normalMap = detailNormalTexture(GROUND_DETAIL[theme] ?? 'grass');
+      mat.normalScale = new THREE.Vector2(0.9, 0.9);
+    }
+    addGroundDetail(mat, { macro: 0.22, second: theme === 'neon' ? 0 : 0.6 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'shoulder';
     mesh.receiveShadow = true;

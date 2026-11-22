@@ -10,6 +10,7 @@ import { buildBarriers, isVoidT } from './builders/barriers';
 import { buildMountains, buildTerrain } from './builders/terrain';
 import { buildSky } from './builders/sky';
 import { buildDecorations } from './builders/decor';
+import { buildGroundCover } from './builders/foliage';
 import { BOOST_PAD_LENGTH, buildBoostPads, buildGantry, buildGrandstands, buildSponsorBridges, computeItemBoxPositions, type BoostPadInfo } from './builders/props';
 import { buildAnimatedProps } from './builders/animated';
 import { buildLandmarks } from './builders/landmarks';
@@ -130,6 +131,8 @@ export class Track implements ITrack {
     root.add(buildRoad(ctx));
     root.add(buildBarriers(ctx));
     root.add(buildDecorations(ctx));
+    const cover = buildGroundCover(ctx);
+    if (cover) root.add(cover);
     root.add(buildLandmarks(ctx));
     root.add(buildGrandstands(ctx));
     root.add(buildGantry(ctx));

@@ -12,6 +12,9 @@ import { events } from '../core/events';
 import { BASE_TOP_SPEED, GRAVITY, KART_COUNT } from '../core/constants';
 import { clamp01, TAU } from '../core/math';
 import { PARTICLE_FRAGMENT, PARTICLE_VERTEX } from './shaders';
+import { SkidMarks } from './SkidMarks';
+import { periodicFbm } from '../gfx/noise';
+import { quality } from '../gfx/quality';
 
 // Sprite atlas indices (4x4 grid, row-major from the top-left).
 const ATLAS_CIRCLE = 0;
@@ -214,21 +217,38 @@ function buildAtlas(): THREE.CanvasTexture {
   });
 
   // 2 smoke puff (clustered soft blobs)
+  // A puff is not a disc: its edge is torn by turbulence and it is lit from above. Noise carves
+  // the outline; the upper half is brighter than the lower.
   withCell(ATLAS_SMOKE, (c, h) => {
-    const blobs = 9;
-    for (let i = 0; i < blobs; i++) {
-      const a = (i / blobs) * TAU + 0.4;
-      const d = i === 0 ? 0 : h * 0.28;
-      const x = Math.cos(a) * d;
-      const y = Math.sin(a) * d;
-      const rr = h * (i === 0 ? 0.55 : 0.42);
-      const g = c.createRadialGradient(x, y, 0, x, y, rr);
-      g.addColorStop(0, 'rgba(255,255,255,0.55)');
-      g.addColorStop(0.6, 'rgba(255,255,255,0.22)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      c.fillStyle = g;
-      c.fillRect(-h, -h, h * 2, h * 2);
+    const n = Math.floor(h * 2);
+    const img = c.createImageData(n, n);
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const u = (x + 0.5) / n;
+        const v = (y + 0.5) / n;
+        const dx = u * 2 - 1;
+        const dy = v * 2 - 1;
+        const r = Math.hypot(dx, dy);
+        const turb = periodicFbm(u, v, 4, 4, 41);
+        const fine = periodicFbm(u, v, 9, 3, 53);
+        // The edge moves in and out with the noise; the body is thick, the rim thin.
+        const edge = 0.62 + (turb - 0.5) * 0.7;
+        let a = 1 - Math.min(1, Math.max(0, (r - edge * 0.45) / (edge * 0.55 + 1e-3)));
+        a = a * a * (3 - 2 * a) * (0.6 + fine * 0.55);
+        a *= Math.max(0, 1 - Math.pow(r, 6));
+        const light = 0.74 + 0.26 * Math.min(1, Math.max(0, 0.55 - dy * 0.6)) + (fine - 0.5) * 0.12;
+        const i = (y * n + x) * 4;
+        const g = Math.round(255 * Math.min(1, light));
+        img.data[i] = g;
+        img.data[i + 1] = g;
+        img.data[i + 2] = g;
+        img.data[i + 3] = Math.round(255 * Math.min(1, a * 0.9));
+      }
     }
+    // putImageData ignores the transform: place the cell by hand.
+    const cx = (ATLAS_SMOKE % 4) * cell;
+    const cy = Math.floor(ATLAS_SMOKE / 4) * cell;
+    c.putImageData(img, cx, cy);
   });
 
   // 3 four-point star with glow
@@ -435,6 +455,7 @@ class ParticleGroup {
         uHeightPx: { value: 1080 },
         uAspect: { value: 16 / 9 },
         uAtlas: { value: atlas },
+        uTint: { value: new THREE.Color(1, 1, 1) },
       },
       vertexShader: PARTICLE_VERTEX,
       fragmentShader: PARTICLE_FRAGMENT,
@@ -460,6 +481,10 @@ class ParticleGroup {
 
   setTime(t: number): void {
     this.material.uniforms.uTime.value = t;
+  }
+
+  setTint(c: THREE.Color): void {
+    (this.material.uniforms.uTint.value as THREE.Color).copy(c);
   }
 
   spawn(p: SpawnParams, now: number): void {
@@ -550,6 +575,9 @@ export class ParticleSystem implements IParticleSystem {
   private readonly atlas: THREE.CanvasTexture;
   private readonly additive: ParticleGroup;
   private readonly alpha: ParticleGroup;
+  private readonly skids = new SkidMarks();
+  /** Share of each emitter's rate this device is asked to draw. */
+  private readonly rateScale = quality().particles;
   private time = 0;
   private karts: readonly IKart[] = [];
   private readonly unsubs: (() => void)[] = [];
@@ -587,6 +615,20 @@ export class ParticleSystem implements IParticleSystem {
   private readonly camRight = new THREE.Vector3();
   private readonly camUp = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
+  /** Colour of the dust a kart kicks up off the road: the circuit's own ground (linear RGB). */
+  private readonly dustColor: RGB = { r: 0.55, g: 0.45, b: 0.3 };
+
+  /**
+   * Tells the particles what light they are in. Smoke and dust are drawn unlit, so without this
+   * a white puff glows at night; `light` is the colour and strength of the scene's ambient light,
+   * `ground` the colour of the circuit's off-road surface.
+   */
+  setScene(light: THREE.Color, ground: THREE.Color): void {
+    this.alpha.setTint(light);
+    this.dustColor.r = ground.r * 0.9 + 0.08;
+    this.dustColor.g = ground.g * 0.9 + 0.07;
+    this.dustColor.b = ground.b * 0.9 + 0.06;
+  }
 
   constructor() {
     this.atlas = buildAtlas();
@@ -595,6 +637,7 @@ export class ParticleSystem implements IParticleSystem {
     const root = new THREE.Group();
     root.name = 'ParticleSystem';
     root.matrixAutoUpdate = false;
+    root.add(this.skids.mesh);
     root.add(this.alpha.points);
     root.add(this.additive.points);
     this.object = root;
@@ -749,6 +792,7 @@ export class ParticleSystem implements IParticleSystem {
     }
 
     if (this.confettiTimer > 0) this.updateResultsConfetti(dt, now);
+    this.skids.update(karts, now);
 
     this.additive.flush();
     this.alpha.flush();
@@ -808,11 +852,11 @@ export class ParticleSystem implements IParticleSystem {
         S.vx = -fx * rnd(0.8, 2.0) + rx * side * rnd(0.2, 0.9) + rnd(-0.25, 0.25);
         S.vy = rnd(0.12, 0.4);
         S.vz = -fz * rnd(0.8, 2.0) + rz * side * rnd(0.2, 0.9) + rnd(-0.25, 0.25);
-        S.life = rnd(0.55, 0.9);
-        S.size0 = 0.3 * shrink; S.size1 = 0.95 * shrink;
-        S.r0 = 0.66; S.g0 = 0.66; S.b0 = 0.68;
-        S.r1 = 0.52; S.g1 = 0.52; S.b1 = 0.54;
-        S.a0 = 0.34; S.a1 = 0;
+        S.life = rnd(0.5, 0.85);
+        S.size0 = 0.26 * shrink; S.size1 = 0.82 * shrink;
+        S.r0 = 0.9; S.g0 = 0.9; S.b0 = 0.92;
+        S.r1 = 0.7; S.g1 = 0.7; S.b1 = 0.73;
+        S.a0 = 0.3; S.a1 = 0;
         S.rot = rnd(0, TAU); S.rotSpeed = rnd(-1.2, 1.2);
         S.gravity = 0;
         S.atlas = ATLAS_SMOKE;
@@ -954,11 +998,11 @@ export class ParticleSystem implements IParticleSystem {
         S.vx = -fx * rnd(1, 3) + rx * side * rnd(0.5, 2) + rnd(-0.5, 0.5);
         S.vy = rnd(0.8, 2.2);
         S.vz = -fz * rnd(1, 3) + rz * side * rnd(0.5, 2) + rnd(-0.5, 0.5);
-        S.life = rnd(0.6, 1.1);
-        S.size0 = 0.45; S.size1 = 1.6;
-        S.r0 = 0.55; S.g0 = 0.45; S.b0 = 0.3;
-        S.r1 = 0.45; S.g1 = 0.38; S.b1 = 0.26;
-        S.a0 = 0.42; S.a1 = 0;
+        S.life = rnd(0.6, 1.05);
+        S.size0 = 0.4; S.size1 = 1.3;
+        S.r0 = this.dustColor.r; S.g0 = this.dustColor.g; S.b0 = this.dustColor.b;
+        S.r1 = this.dustColor.r * 0.82; S.g1 = this.dustColor.g * 0.82; S.b1 = this.dustColor.b * 0.82;
+        S.a0 = 0.36; S.a1 = 0;
         S.rot = rnd(0, TAU); S.rotSpeed = rnd(-1, 1);
         S.gravity = 0.02;
         S.atlas = ATLAS_SMOKE;
@@ -1140,7 +1184,7 @@ export class ParticleSystem implements IParticleSystem {
   }
 
   private take(acc: Float32Array, idx: number, rate: number, dt: number): number {
-    acc[idx] += rate * dt;
+    acc[idx] += rate * this.rateScale * dt;
     let n = Math.floor(acc[idx]);
     acc[idx] -= n;
     if (n > MAX_PER_EMITTER_PER_FRAME) n = MAX_PER_EMITTER_PER_FRAME;
@@ -1508,6 +1552,7 @@ export class ParticleSystem implements IParticleSystem {
   reset(): void {
     this.additive.clear();
     this.alpha.clear();
+    this.skids.clear();
     this.accDrift.fill(0);
     this.accFlame.fill(0);
     this.accSmoke.fill(0);
@@ -1527,6 +1572,7 @@ export class ParticleSystem implements IParticleSystem {
     this.unsubs.length = 0;
     this.additive.dispose();
     this.alpha.dispose();
+    this.skids.dispose();
     this.atlas.dispose();
     this.object.removeFromParent();
     this.karts = [];

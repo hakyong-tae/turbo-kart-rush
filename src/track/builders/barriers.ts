@@ -5,6 +5,8 @@ import { color, headingFromDir, indexAtS, paintGeometry, track, trackMesh } from
 import { makeSandstoneTexture } from '../textures';
 import { wrap01 } from '../../core/math';
 import type { TrackDefinition } from '../../core/types';
+import { addChunkedInstances, type InstanceSpec } from './instancing';
+import { quality } from '../../gfx/quality';
 
 /** True if t lies inside any void range (ranges may wrap around 0). */
 export function isVoidT(def: TrackDefinition, t: number): boolean {
@@ -89,6 +91,15 @@ function setInstance(mesh: THREE.InstancedMesh, i: number, x: number, y: number,
   mesh.setMatrixAt(i, _m);
 }
 
+/** A transform as its own matrix, for `addChunkedInstances`. */
+function placed(x: number, y: number, z: number, heading: number, sx = 1, sy = 1, sz = 1, tilt = 0): THREE.Matrix4 {
+  _p.set(x, y, z);
+  _e.set(tilt, heading, 0);
+  _q.setFromEuler(_e);
+  _s.set(sx, sy, sz);
+  return new THREE.Matrix4().compose(_p, _q, _s);
+}
+
 /** Themed barriers along the wall line (none in void ranges: warning posts instead). */
 export function buildBarriers(ctx: BuildContext): THREE.Group {
   const group = new THREE.Group();
@@ -107,11 +118,14 @@ export function buildBarriers(ctx: BuildContext): THREE.Group {
 const TYRE_SPACING = 1.02;
 
 function buildTyres(ctx: BuildContext, group: THREE.Group): void {
-  // Three thin kart tyres per stack: outer diameter ~0.96 m, stack height ~0.88 m (about one kart tall).
-  // 3 x (4 x 8 segments) = 192 tris per instance.
+  // Three kart tyres per stack: outer diameter ~0.96 m, stack height ~0.88 m (about one kart tall).
+  // Round enough to read as tyres where the device can afford it; the stacks are cut into
+  // stretches of track (addChunkedInstances), so most of them are culled.
+  const tier = quality().tier;
+  const [radial, tubular] = tier === 'high' ? [6, 12] : tier === 'medium' ? [6, 10] : [4, 8];
   const parts: THREE.BufferGeometry[] = [];
   for (let k = 0; k < 3; k++) {
-    const t = new THREE.TorusGeometry(0.33, 0.145, 4, 8);
+    const t = new THREE.TorusGeometry(0.33, 0.145, radial, tubular);
     t.rotateX(Math.PI / 2);
     t.translate((k % 2) * 0.03, 0.145 + k * 0.29, k === 1 ? 0.03 : 0);
     parts.push(t);
@@ -119,25 +133,19 @@ function buildTyres(ctx: BuildContext, group: THREE.Group): void {
   const geo = mergeGeometries(parts, false);
   for (const p of parts) p.dispose();
   const slots = wallSlots(ctx, TYRE_SPACING, 0.5, false);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
-  const mesh = new THREE.InstancedMesh(geo, mat, slots.length);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.82, metalness: 0 });
   const rng = ctx.rng;
-  for (let i = 0; i < slots.length; i++) {
-    const sl = slots[i];
-    setInstance(mesh, i, sl.x, sl.y, sl.z, sl.heading + (rng() - 0.5) * 0.5, 1, 0.96 + rng() * 0.08, 1);
+  const specs: InstanceSpec[] = [];
+  for (const sl of slots) {
+    const matrix = placed(sl.x, sl.y, sl.z, sl.heading + (rng() - 0.5) * 0.5, 1, 0.96 + rng() * 0.08, 1);
     const k = Math.floor(sl.s / TYRE_SPACING);
-    if (k % 8 === 0) _c.setHex(0xe9e9e9);
-    else if (k % 8 === 4) _c.setHex(0xd12b2b);
-    else _c.setHex(0x1d1d22).offsetHSL(0, 0, (rng() - 0.5) * 0.04);
-    mesh.setColorAt(i, _c);
+    const c = new THREE.Color();
+    if (k % 8 === 0) c.setHex(0xe9e9e9);
+    else if (k % 8 === 4) c.setHex(0xd12b2b);
+    else c.setHex(0x1d1d22).offsetHSL(0, 0, (rng() - 0.5) * 0.04);
+    specs.push({ s: sl.s, matrix, color: c });
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.name = 'tyreBarriers';
-  trackMesh(ctx, mesh);
-  group.add(mesh);
+  addChunkedInstances(ctx, group, geo, mat, specs, 'tyreBarriers');
 }
 
 // ------------------------------------------------------------------ desert: sandstone blocks + canyon walls
@@ -150,11 +158,8 @@ function buildSandstone(ctx: BuildContext, group: THREE.Group): void {
   // Canyon: tall stacked walls in the descent section.
   const canyon: [number, number][] = ctx.def.id === 'dune_drift' ? [[0.49, 0.685]] : [];
   const rows = 7;
-  let extra = 0;
-  for (const sl of slots) if (inRanges(canyon, sl.t)) extra += rows;
-  const mesh = new THREE.InstancedMesh(geo, mat, slots.length + extra);
   const rng = ctx.rng;
-  let idx = 0;
+  const specs: InstanceSpec[] = [];
   const base = color(ctx.def.palette.wall);
   for (const sl of slots) {
     const canyonHere = inRanges(canyon, sl.t);
@@ -170,20 +175,12 @@ function buildSandstone(ctx: BuildContext, group: THREE.Group): void {
       const lean = r * 0.14 * sl.side;
       const lx = Math.cos(yaw) * lean;
       const lz = -Math.sin(yaw) * lean;
-      setInstance(mesh, idx, sl.x + dx + lx, sl.y + 0.45 + r * 0.9, sl.z + dz + lz, yaw, 1 + r * 0.08, sy, 1 + r * 0.12);
+      const matrix = placed(sl.x + dx + lx, sl.y + 0.45 + r * 0.9, sl.z + dz + lz, yaw, 1 + r * 0.08, sy, 1 + r * 0.12);
       _c.copy(base).offsetHSL((rng() - 0.5) * 0.02, 0, (rng() - 0.5) * 0.12 - r * 0.012);
-      mesh.setColorAt(idx, _c);
-      idx++;
+      specs.push({ s: sl.s, matrix, color: _c.clone() });
     }
   }
-  mesh.count = idx;
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.name = 'sandstoneBarriers';
-  trackMesh(ctx, mesh);
-  group.add(mesh);
+  addChunkedInstances(ctx, group, geo, mat, specs, 'sandstoneBarriers');
 }
 
 function inRanges(ranges: [number, number][], t: number): boolean {
@@ -195,30 +192,25 @@ function inRanges(ranges: [number, number][], t: number): boolean {
 function buildIceBlocks(ctx: BuildContext, group: THREE.Group): void {
   // Kart-height ice blocks: 0.9 m tall (x0.85..1.15 variation, never above ~1.05 m).
   const geo = new THREE.BoxGeometry(0.7, 0.9, 1.35, 1, 1, 1);
+  // Ice takes its glow from the sky it mirrors now; only a trace of its own is left.
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.12,
+    roughness: 0.1,
     metalness: 0.05,
+    envMapIntensity: 1.5,
     emissive: 0x0d2a3f,
-    emissiveIntensity: 0.6,
+    emissiveIntensity: 0.25,
   });
   const slots = wallSlots(ctx, 1.48, 0.45, false);
-  const mesh = new THREE.InstancedMesh(geo, mat, slots.length);
   const rng = ctx.rng;
-  for (let i = 0; i < slots.length; i++) {
-    const sl = slots[i];
+  const specs: InstanceSpec[] = [];
+  for (const sl of slots) {
     const sy = 0.85 + rng() * 0.3;
-    setInstance(mesh, i, sl.x, sl.y + 0.45 * sy - 0.02, sl.z, sl.heading + (rng() - 0.5) * 0.1, 1, sy, 1, (rng() - 0.5) * 0.05);
+    const matrix = placed(sl.x, sl.y + 0.45 * sy - 0.02, sl.z, sl.heading + (rng() - 0.5) * 0.1, 1, sy, 1, (rng() - 0.5) * 0.05);
     _c.setHex(rng() < 0.5 ? 0xa8e2fb : 0xc7edff).offsetHSL(0, 0, (rng() - 0.5) * 0.08);
-    mesh.setColorAt(i, _c);
+    specs.push({ s: sl.s, matrix, color: _c.clone() });
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.name = 'iceBarriers';
-  trackMesh(ctx, mesh);
-  group.add(mesh);
+  addChunkedInstances(ctx, group, geo, mat, specs, 'iceBarriers');
 }
 
 // ------------------------------------------------------------------ warning posts for void edges
@@ -262,16 +254,15 @@ function buildNeonRails(ctx: BuildContext, group: THREE.Group): void {
   postGeo.translate(0, 0.43, 0);
   const postMat = new THREE.MeshStandardMaterial({ color: 0x1b1b28, roughness: 0.4, metalness: 0.7 });
   const slots = wallSlots(ctx, 2.5, 0.4, false);
-  const posts = new THREE.InstancedMesh(postGeo, postMat, slots.length);
-  for (let i = 0; i < slots.length; i++) {
-    const sl = slots[i];
-    setInstance(posts, i, sl.x, sl.y, sl.z, sl.heading);
-  }
-  posts.instanceMatrix.needsUpdate = true;
-  posts.castShadow = true;
-  posts.name = 'neonPosts';
-  trackMesh(ctx, posts);
-  group.add(posts);
+  addChunkedInstances(
+    ctx,
+    group,
+    postGeo,
+    postMat,
+    slots.map((sl) => ({ s: sl.s, matrix: placed(sl.x, sl.y, sl.z, sl.heading) })),
+    'neonPosts',
+    { receiveShadow: false },
+  );
 
   // rails: two thin glowing ribbons per side (top rail at ~0.8 m, second at knee height)
   const rails: { y0: number; y1: number; col: number }[] = [

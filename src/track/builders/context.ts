@@ -23,6 +23,12 @@ export interface BuildContext {
   features: TrackFeatures;
   /** One entry per moving obstacle car; `Track.setRaceTime` moves them, the meshes follow. */
   movers: MoverSlot[];
+  /**
+   * Height of the terrain mesh as drawn (set by `buildTerrain`). The field's `heightAt` is the
+   * smooth function the mesh samples every few metres; between samples the two differ by enough
+   * to float a tuft of grass. Anything small that must sit on the ground asks this.
+   */
+  terrainHeight?: (x: number, z: number) => number;
 }
 
 /** Register objects for disposal; returns the first argument for chaining. */

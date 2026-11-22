@@ -189,11 +189,16 @@ export function makeRoadTextures(def: TrackDefinition): RoadTextures {
         ctx.fillRect(side === 0 ? 0 : W * 0.88, 0, W * 0.12, H);
       }
     }
-    // occasional darker patch (repair) to break up the tile
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(W * 0.42, H * 0.3, W * 0.16, H * 0.22);
-    ctx.globalAlpha = 1;
+    // rubber laid down on the racing line: two soft dark bands where the tyres run
+    for (const cx of [0.34, 0.66]) {
+      const bw = W * 0.16;
+      const g = ctx.createLinearGradient(W * cx - bw / 2, 0, W * cx + bw / 2, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(0.5, theme === 'neon' ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0.11)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(W * cx - bw / 2, 0, bw, H);
+    }
   }
 
   // Edge lines + centre dash

@@ -4,6 +4,7 @@ import type { BuildContext } from './context';
 import { color, normalizeForMerge, paintGeometry, track, trackMesh } from './context';
 import { makeWindowTexture, makeBillboardTexture } from '../textures';
 import { lerp } from '../../core/math';
+import { addBlobShadows, broadleafTree, bush, coniferTree, palmTree, plantMaterial, rock, type BlobSpot } from './foliage';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -120,59 +121,59 @@ export function buildDecorations(ctx: BuildContext): THREE.Group {
     case 'neon':
       buildNeon(ctx, group);
       break;
+    case 'beach':
+      buildBeach(ctx, group);
+      break;
     default:
       buildGrassland(ctx, group);
   }
   return group;
 }
 
+/** Where each instance of a mesh stands and how wide its shade is (`radius` is for an instance of scale 1). */
+function blobsUnder(mesh: THREE.InstancedMesh, radius: number): BlobSpot[] {
+  const out: BlobSpot[] = [];
+  for (let i = 0; i < mesh.count; i++) {
+    mesh.getMatrixAt(i, _m);
+    _m.decompose(_p, _q, _s);
+    out.push({ x: _p.x, z: _p.z, radius: radius * Math.max(_s.x, _s.z) });
+  }
+  return out;
+}
+
+/** A near-white tint with a slight lean in hue: the plants' own colours are in their vertices. */
+const leafTint = (hue: number, spread: number) => (r: () => number): THREE.Color =>
+  _c.setHSL(hue + (r() - 0.5) * spread, 0.3, 0.8 + (r() - 0.5) * 0.24);
+
 // ------------------------------------------------------------------ grassland
 function buildGrassland(ctx: BuildContext, group: THREE.Group): void {
   const rng = ctx.rng;
-  // broadleaf trees (~7.8 m base, scaled 0.8..1.25 -> 6..10 m)
-  const trunk = new THREE.CylinderGeometry(0.3, 0.46, 3.2, 7);
-  trunk.translate(0, 1.6, 0);
-  const canopy = new THREE.IcosahedronGeometry(2.7, 1);
-  canopy.scale(1, 1.12, 1);
-  canopy.translate(0, 5.3, 0);
-  const canopy2 = new THREE.IcosahedronGeometry(1.7, 1);
-  canopy2.translate(1.4, 6.4, 0.6);
-  const canopy3 = new THREE.IcosahedronGeometry(1.4, 1);
-  canopy3.translate(-1.3, 6.0, -0.8);
-  const treeGeo = mergeParts([
-    { geo: trunk, color: 0x6b4a2b },
-    { geo: canopy, color: 0x3f8f36 },
-    { geo: canopy2, color: 0x4fa33e },
-    { geo: canopy3, color: 0x3a8a34 },
-  ]);
-  const treePts = scatter(ctx, 200, 4, 220);
-  const trees = makeInstanced(ctx, treeGeo, stdMat(), treePts.length, 'trees');
-  fillInstances(trees, treePts, rng, 0.8, 1.25, -0.15, 0.06, (r) => _c.setHSL(0.3 + (r() - 0.5) * 0.06, 0.55, 0.42 + (r() - 0.5) * 0.15));
-  group.add(trees);
+  const shade: BlobSpot[] = [];
+  // broadleaf trees (~8 m, scaled 0.8..1.3), in two cuts so a wood is not one tree repeated
+  const treePts = scatter(ctx, 210, 4, 220);
+  const half = Math.ceil(treePts.length / 2);
+  [treePts.slice(0, half), treePts.slice(half)].forEach((pts, i) => {
+    const geo = i === 0 ? broadleafTree(0x2c7a30, 0x7cc54a, 1) : broadleafTree(0x2a7040, 0x9acb4c, 2);
+    const trees = makeInstanced(ctx, geo, plantMaterial(ctx, 0.0035), pts.length, `trees${i}`);
+    fillInstances(trees, pts, rng, 0.8, 1.3, -0.15, 0.06, leafTint(0.27, 0.12));
+    group.add(trees);
+    shade.push(...blobsUnder(trees, 4.4));
+  });
 
-  // tall poplars / conifers for silhouette variety (9.5 m base, scaled 0.75..1.1)
-  const pTrunk = new THREE.CylinderGeometry(0.22, 0.36, 3.4, 6);
-  pTrunk.translate(0, 1.7, 0);
-  const pCone = new THREE.ConeGeometry(1.7, 7.2, 8);
-  pCone.translate(0, 6.2, 0);
-  const pCone2 = new THREE.ConeGeometry(1.2, 4.2, 8);
-  pCone2.translate(0, 8.3, 0);
-  const poplarGeo = mergeParts([
-    { geo: pTrunk, color: 0x5e4327 },
-    { geo: pCone, color: 0x2f7a33 },
-    { geo: pCone2, color: 0x3a8a3c },
-  ]);
-  const poplarPts = scatter(ctx, 90, 6, 230);
-  const poplars = makeInstanced(ctx, poplarGeo, stdMat(), poplarPts.length, 'poplars');
-  fillInstances(poplars, poplarPts, rng, 0.75, 1.1, -0.15, 0.04, (r) => _c.setHSL(0.32 + (r() - 0.5) * 0.05, 0.5, 0.4 + (r() - 0.5) * 0.12));
+  // conifers for silhouette variety (~9 m, scaled 0.75..1.15)
+  const poplarPts = scatter(ctx, 100, 6, 230);
+  const poplars = makeInstanced(ctx, coniferTree(0x1f5f33, 0x4f9a3f, null, 3), plantMaterial(ctx, 0.0022), poplarPts.length, 'poplars');
+  fillInstances(poplars, poplarPts, rng, 0.75, 1.15, -0.15, 0.04, leafTint(0.33, 0.08));
   group.add(poplars);
+  shade.push(...blobsUnder(poplars, 2.9));
 
   // bushes
-  const bushGeo = mergeParts([{ geo: new THREE.IcosahedronGeometry(0.9, 1).scale(1.2, 0.8, 1.2), color: 0x3d8a2f }]);
-  const bushPts = scatter(ctx, 200, 0.5, 90);
-  const bushes = makeInstanced(ctx, bushGeo, stdMat(), bushPts.length, 'bushes');
-  fillInstances(bushes, bushPts, rng, 0.9, 1.9, 0.2, 0.2, (r) => _c.setHSL(0.28 + (r() - 0.5) * 0.08, 0.6, 0.38 + (r() - 0.5) * 0.12), true);
+  const bushPts = scatter(ctx, 220, 0.5, 90);
+  const bushes = makeInstanced(ctx, bush(0x2f7a2c, 0x74c046, 4), plantMaterial(ctx, 0.02), bushPts.length, 'bushes');
+  fillInstances(bushes, bushPts, rng, 0.9, 1.9, 0.05, 0.2, leafTint(0.28, 0.14), true);
   group.add(bushes);
+  shade.push(...blobsUnder(bushes, 1.7));
+  addBlobShadows(ctx, group, shade);
 
   // flower clusters: dense near the road, sparser further out
   const petals = [0xff5da2, 0xffd93a, 0xffffff, 0xff8a3a, 0xb56cff, 0xff4d6d];
@@ -235,38 +236,74 @@ function buildDesert(ctx: BuildContext, group: THREE.Group): void {
   group.add(cacti);
 
   // rocks (boulders up to ~5 m)
-  const rockGeo = mergeParts([{ geo: new THREE.DodecahedronGeometry(1.1, 0), color: 0xb07a4a }]);
-  const rockPts = scatter(ctx, 220, 0.5, 200);
+  const volcanic = ctx.def.theme === 'volcano';
+  const rockGeo = volcanic ? rock(0x1a1214, 0x54383a, 11) : rock(0x8a4f2c, 0xdc9a62, 11);
+  const rockPts = scatter(ctx, 240, 0.5, 200);
   const rocks = makeInstanced(ctx, rockGeo, stdMat({ roughness: 1 }), rockPts.length, 'rocks');
-  fillInstances(rocks, rockPts, rng, 0.7, 3.4, -0.4, 0.6, (r) => _c.setHSL(0.07 + (r() - 0.5) * 0.03, 0.45, 0.42 + (r() - 0.5) * 0.18), true);
+  fillInstances(rocks, rockPts, rng, 0.9, 4.2, -0.3, 0.6, (r) => _c.setHSL(0.07, 0, 0.82 + (r() - 0.5) * 0.3), true);
   group.add(rocks);
 
   // palms (oasis feel, nearer the track)
-  const trunk = new THREE.CylinderGeometry(0.22, 0.34, 6.5, 7);
-  trunk.translate(0, 3.25, 0);
-  const palmParts: { geo: THREE.BufferGeometry; color: number }[] = [{ geo: trunk, color: 0x7a5a3a }];
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const frond = new THREE.PlaneGeometry(0.7, 3.4, 1, 3);
-    // droop: bend the frond down along its length
-    const pos = frond.getAttribute('position') as THREE.BufferAttribute;
-    for (let v = 0; v < pos.count; v++) {
-      const y = pos.getY(v);
-      const k = (y + 1.7) / 3.4;
-      pos.setY(v, -k * k * 1.4);
-      pos.setZ(v, k * 3.2);
-      pos.setX(v, pos.getX(v) * (1 - k * 0.7));
-    }
-    frond.rotateY(a);
-    frond.translate(0, 6.6, 0);
-    palmParts.push({ geo: frond, color: i % 2 === 0 ? 0x3f8f3a : 0x4fa844 });
-  }
-  const palmGeo = mergeParts(palmParts);
-  palmGeo.scale(1.25, 1.25, 1.25);
   const palmPts = scatter(ctx, 70, 0.5, 60);
-  const palms = makeInstanced(ctx, palmGeo, stdMat({ side: THREE.DoubleSide, roughness: 0.7 }), palmPts.length, 'palms');
+  const palms = makeInstanced(ctx, palmTree(6), plantMaterial(ctx, 0.0032, { side: THREE.DoubleSide, roughness: 0.7 }), palmPts.length, 'palms');
   fillInstances(palms, palmPts, rng, 0.85, 1.3, -0.15, 0.1);
   group.add(palms);
+  addBlobShadows(ctx, group, [...blobsUnder(palms, 3.2), ...blobsUnder(cacti, 1.6)], 0.38);
+}
+
+// ------------------------------------------------------------------ beach
+function buildBeach(ctx: BuildContext, group: THREE.Group): void {
+  const rng = ctx.rng;
+  const shade: BlobSpot[] = [];
+  // palms, tall and leaning, thickest near the road
+  const palmPts = scatter(ctx, 150, 1.5, 90).concat(scatter(ctx, 110, 90, 240));
+  const half = Math.ceil(palmPts.length / 2);
+  [palmPts.slice(0, half), palmPts.slice(half)].forEach((pts, i) => {
+    const palms = makeInstanced(ctx, palmTree(7 + i * 5), plantMaterial(ctx, 0.0034, { side: THREE.DoubleSide, roughness: 0.7 }), pts.length, `palms${i}`);
+    fillInstances(palms, pts, rng, 0.8, 1.35, -0.15, 0.1, leafTint(0.26, 0.1));
+    group.add(palms);
+    shade.push(...blobsUnder(palms, 3.2));
+  });
+
+  // a few broadleaf trees inland
+  const treePts = scatter(ctx, 60, 30, 230);
+  const trees = makeInstanced(ctx, broadleafTree(0x2a7a3c, 0x86cf52, 8), plantMaterial(ctx, 0.0035), treePts.length, 'trees');
+  fillInstances(trees, treePts, rng, 0.8, 1.2, -0.15, 0.06, leafTint(0.29, 0.1));
+  group.add(trees);
+  shade.push(...blobsUnder(trees, 4.4));
+
+  // tropical bushes
+  const bushPts = scatter(ctx, 200, 0.5, 80);
+  const bushes = makeInstanced(ctx, bush(0x2f8a3a, 0x9ad65a, 9), plantMaterial(ctx, 0.02), bushPts.length, 'bushes');
+  fillInstances(bushes, bushPts, rng, 0.8, 1.7, 0.05, 0.2, leafTint(0.3, 0.14), true);
+  group.add(bushes);
+  shade.push(...blobsUnder(bushes, 1.7));
+
+  // sea-worn rocks
+  const rockPts = scatter(ctx, 120, 0.5, 160);
+  const rocks = makeInstanced(ctx, rock(0x8a8272, 0xd8ccb4, 10), stdMat({ roughness: 0.95 }), rockPts.length, 'rocks');
+  fillInstances(rocks, rockPts, rng, 0.6, 2.6, -0.2, 0.5, undefined, true);
+  group.add(rocks);
+  shade.push(...blobsUnder(rocks, 1.3));
+  addBlobShadows(ctx, group, shade);
+
+  // flowers near the road
+  const petals = [0xff5da2, 0xffd93a, 0xffffff, 0xff8a3a, 0xff4d6d];
+  const parts: { geo: THREE.BufferGeometry; color: number }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const r = 0.2 + (i % 3) * 0.24;
+    const stem = new THREE.CylinderGeometry(0.02, 0.028, 0.5, 3, 1, true);
+    stem.translate(Math.cos(a) * r, 0.25, Math.sin(a) * r);
+    const head = new THREE.IcosahedronGeometry(0.14, 0);
+    head.translate(Math.cos(a) * r, 0.54, Math.sin(a) * r);
+    parts.push({ geo: stem, color: 0x3f8f36 }, { geo: head, color: petals[(i * 2) % petals.length] });
+  }
+  const flowerPts = scatter(ctx, 260, 0, 22);
+  const flowers = makeInstanced(ctx, mergeParts(parts), stdMat({ roughness: 0.6 }), flowerPts.length, 'flowers', false);
+  fillInstances(flowers, flowerPts, rng, 1.1, 1.9, 0, 0);
+  flowers.castShadow = false;
+  group.add(flowers);
 }
 
 // ------------------------------------------------------------------ snow
@@ -282,17 +319,13 @@ function buildSnow(ctx: BuildContext, group: THREE.Group): void {
   c3.translate(0, 5.0, 0);
   const snowCap = new THREE.ConeGeometry(0.45, 0.9, 7);
   snowCap.translate(0, 5.8, 0);
-  const pineGeo = mergeParts([
-    { geo: trunk, color: 0x5a3d26 },
-    { geo: c1, color: 0x1f5a3a },
-    { geo: c2, color: 0x256a44 },
-    { geo: c3, color: 0x2c7a4e },
-    { geo: snowCap, color: 0xf4faff },
-  ]);
-  const pinePts = scatter(ctx, 260, 2, 240, (x, z) => ctx.field.heightAt(x, z) < ctx.cl.minY - 8);
-  const pines = makeInstanced(ctx, pineGeo, stdMat(), pinePts.length, 'pines');
-  fillInstances(pines, pinePts, rng, 0.8, 1.7, -0.1, 0.06, (r) => _c.setHSL(0.4, 0.3, 0.5 + (r() - 0.5) * 0.2));
+  for (const g of [trunk, c1, c2, c3, snowCap]) g.dispose();
+  const pinePts = scatter(ctx, 280, 2, 240, (x, z) => ctx.field.heightAt(x, z) < ctx.cl.minY - 8);
+  // Snow lies on the upper side of every tier: the cones run from dark needles to white.
+  const pines = makeInstanced(ctx, coniferTree(0x1c5238, 0xdfeef8, 0xffffff, 12), plantMaterial(ctx, 0.002), pinePts.length, 'pines');
+  fillInstances(pines, pinePts, rng, 0.55, 1.15, -0.1, 0.06, leafTint(0.45, 0.08));
   group.add(pines);
+  addBlobShadows(ctx, group, blobsUnder(pines, 2.6), 0.3);
 
   // snowmen
   const b1 = new THREE.SphereGeometry(0.8, 10, 8);

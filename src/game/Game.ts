@@ -14,7 +14,6 @@ import type {
   IKart,
   InputState,
   IParticleSystem,
-  IPostFX,
   ITrack,
   MusicTrack,
   RaceSettings,
@@ -37,6 +36,11 @@ import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
 import { PostFX } from '../fx/PostFX';
 import { RearView } from '../fx/RearView';
+import { EnvProbe } from '../gfx/EnvProbe';
+import { lookFor } from '../gfx/looks';
+import { quality } from '../gfx/quality';
+import { ResolutionGovernor } from '../gfx/ResolutionGovernor';
+import { findSky } from '../track/builders/sky';
 import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
 import { tickPatternTime } from '../kart/patternShader';
@@ -138,7 +142,6 @@ const MAX_COMPILE_WAIT_SECONDS = 8;
 const RESULTS_DELAY_SECONDS = 1.6;
 const MAX_STEPS_PER_FRAME = 8;
 const SUN_DISTANCE = 90;
-const SHADOW_HALF_EXTENT = 30;
 const EMPTY_KARTS: readonly IKart[] = [];
 
 /** Display name of a circuit, for mission wording. Unknown ids read as themselves. */
@@ -293,6 +296,8 @@ interface RaceContext {
   heldFinish?: { place: number; retired: boolean; seconds: number };
   /** Items are disabled in online races (phase 2). */
   itemsEnabled: boolean;
+  /** The environment probe has been filled for this race. */
+  envCaptured?: boolean;
 }
 
 
@@ -344,11 +349,13 @@ export class Game {
 
   private readonly input: InputManager;
   private readonly audio: IAudioEngine;
-  private readonly particles: IParticleSystem;
+  private readonly particles: ParticleSystem;
   private readonly rearView: RearView;
   private readonly rescueDrones = new RescueDrones();
   private readonly orientationGate: OrientationGate;
-  private readonly postfx: IPostFX;
+  private readonly postfx: PostFX;
+  /** Reflections and ambient light for the race scene; null where the device cannot make them. */
+  private readonly envProbe: EnvProbe | null;
   private postfxOk = true;
 
   private readonly backdrop: MenuBackdrop;
@@ -374,6 +381,10 @@ export class Game {
 
   private rafId = 0;
   private lastTime = -1;
+  /** Lowers the render resolution when frames run long (not under automation: its frames are not real time). */
+  private readonly governor = new ResolutionGovernor({ minScale: quality().minResolutionScale });
+  private readonly governed = typeof navigator === 'undefined' || !navigator.webdriver;
+  private resolutionScale = 1;
   private elapsed = 0;
   private accumulator = 0;
   private pendingUseItem = false;
@@ -400,12 +411,13 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.shadowMap.type = quality().softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.domElement.className = 'game-canvas';
     container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
+    // Far enough to reach the last ring of mountains from any corner of a circuit.
+    this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 2400);
     this.camera.position.set(0, 3, 8);
     this.scene.add(this.camera);
 
@@ -432,6 +444,13 @@ export class Game {
     this.scene.add(this.rescueDrones.object);
     this.postfx = new PostFX();
     this.rearView = new RearView();
+    let probe: EnvProbe | null = null;
+    try {
+      probe = new EnvProbe(this.renderer, quality().envSize);
+    } catch (err) {
+      console.warn('[Game] no environment probe; races render without reflections', err);
+    }
+    this.envProbe = probe;
     try {
       this.postfx.init(this.renderer, this.scene, this.camera);
     } catch (err) {
@@ -546,6 +565,7 @@ export class Game {
     this.safe(() => this.audio.dispose());
     this.safe(() => this.particles.dispose());
     this.safe(() => this.postfx.dispose());
+    this.safe(() => this.envProbe?.dispose());
     this.safe(() => this.rearView.dispose());
     this.safe(() => this.rescueDrones.dispose());
     this.renderer.dispose();
@@ -1298,6 +1318,15 @@ export class Game {
     if (this.lastTime < 0) this.lastTime = now;
     let dt = (now - this.lastTime) / 1000;
     this.lastTime = now;
+    // Only a race is measured: menus are light, and a loading screen is slow for its own reasons.
+    if (this.governed && (this.state === 'racing' || this.state === 'countdown')) {
+      const change = this.governor.sample(dt);
+      if (change) {
+        this.resolutionScale = change.scale;
+        if (this.postfxOk) this.safe(() => this.postfx.setLean(change.lean));
+        this.onResize();
+      }
+    }
     if (dt > MAX_FRAME_DT) dt = MAX_FRAME_DT;
     if (dt < 0) dt = 0;
     this.elapsed += dt;
@@ -1410,6 +1439,10 @@ export class Game {
     this.loading.setProgress(this.loadingProgress);
 
     if (this.race && ready) {
+      if (!this.race.envCaptured) {
+        this.race.envCaptured = true;
+        this.captureEnvironment(this.race);
+      }
       // Warm the remaining passes (shadow depth, post-processing) behind the overlay.
       this.renderRace(dt, false);
       if (this.loadingElapsed >= MIN_LOADING_SECONDS && this.loadingProgress > 0.985) {
@@ -1423,6 +1456,22 @@ export class Game {
         }
       }
     }
+  }
+
+  /**
+   * Fills the environment probe from the start line, with everything that moves left out. Done
+   * once per race, after the shaders are ready (the six views use the programs just compiled).
+   */
+  private captureEnvironment(r: RaceContext): void {
+    const probe = this.envProbe;
+    if (!probe?.texture) return;
+    const slot = r.track.startGrid[0];
+    if (!slot) return;
+    const at = this.tmpA.copy(slot.position);
+    at.y += 2.2;
+    const hide: THREE.Object3D[] = [...r.karts.map((k) => k.object), r.items.object, this.particles.object, this.rescueDrones.object];
+    if (this.warmGroup) hide.push(this.warmGroup);
+    this.safe(() => probe.capture(this.scene, at, hide));
   }
 
   /** Kick off parallel shader compilation for the freshly built race scene. */
@@ -1455,7 +1504,17 @@ export class Game {
       // The synchronous half only: every program is created and starts compiling off-thread.
       // Whether they have finished is asked from the loading loop (pollShaders), not by three's
       // compileAsync — see there for why.
-      this.compiling = this.renderer.compile(this.scene, this.camera);
+      // Compiled against the buffer the race is drawn into: a material's program depends on
+      // whether it is headed for the screen (tone mapped, sRGB) or for the HDR buffer, and a race
+      // is always the second. Warmed against the screen, every program was built twice.
+      const target = this.postfxOk ? this.postfx.sceneRenderTarget : null;
+      const prevTarget = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(target);
+      try {
+        this.compiling = this.renderer.compile(this.scene, this.camera);
+      } finally {
+        this.renderer.setRenderTarget(prevTarget);
+      }
     } catch (err) {
       console.warn('[Game] shader warm-up failed; programs will compile on first use', err);
       this.endWarm();
@@ -1852,25 +1911,33 @@ export class Game {
     if (settings.intro) hud.setHints(this.touch.isEnabled ? 'touch' : 'keys');
 
     // Lights from the track environment.
-    const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity);
+    const q = quality();
+    const look = lookFor(trackDef);
+    const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity * look.sunScale);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
     const sc = sun.shadow.camera;
-    sc.left = -SHADOW_HALF_EXTENT;
-    sc.right = SHADOW_HALF_EXTENT;
-    sc.top = SHADOW_HALF_EXTENT;
-    sc.bottom = -SHADOW_HALF_EXTENT;
+    const reach = q.shadowHalfExtent;
+    sc.left = -reach;
+    sc.right = reach;
+    sc.top = reach;
+    sc.bottom = -reach;
     sc.near = 1;
-    sc.far = SUN_DISTANCE + SHADOW_HALF_EXTENT * 3;
+    sc.far = SUN_DISTANCE + reach * 3;
     sc.updateProjectionMatrix();
-    sun.shadow.bias = -0.0005;
-    sun.shadow.normalBias = 0.03;
+    // The bias is in shadow-map depth units, the normal bias in metres: both grow with the size
+    // of one shadow texel on the ground.
+    const texel = (reach * 2) / q.shadowMapSize;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = Math.max(0.03, texel * 1.6);
+    sun.shadow.radius = q.softShadows ? 2.2 : 1;
     this.sunDir.set(env.sunDirection.x, env.sunDirection.y, env.sunDirection.z);
     if (this.sunDir.lengthSq() < 1e-6) this.sunDir.set(0.4, 0.8, 0.3);
     if (this.sunDir.y < 0) this.sunDir.y = -this.sunDir.y;
     if (this.sunDir.y < 0.15) this.sunDir.y = 0.15;
     this.sunDir.normalize();
-    const hemi = new THREE.HemisphereLight(env.ambientSky, env.ambientGround, env.ambientIntensity);
+    const hasProbe = Boolean(this.envProbe?.texture);
+    const hemi = new THREE.HemisphereLight(env.ambientSky, env.ambientGround, env.ambientIntensity * (hasProbe ? look.hemiScale : 1));
     // Camera-following fill: strong on dim night tracks, zero on sunny ones.
     const darkness =
       clamp(0.9 - env.ambientIntensity, 0, 0.6) + clamp((1.6 - env.sunIntensity) * 0.3, 0, 0.3);
@@ -1890,6 +1957,20 @@ export class Game {
     this.scene.add(sun, sun.target, hemi, fill, fill.target);
     this.scene.fog = fog;
     this.scene.background = background;
+    // The probe's texture goes in now, still showing whatever it last held: what matters before
+    // the shaders compile is that an environment of this size is there. It is filled once they have.
+    this.scene.environment = this.envProbe?.texture ?? null;
+    this.scene.environmentIntensity = look.envIntensity;
+    const sky = findSky(track.object);
+    this.postfx.setLook(look.post);
+    this.postfx.setSun(sky?.sunDirection ?? null, sky?.sunColor, sky?.sunPresence ?? 0);
+    // Smoke and dust are unlit sprites: hand them the light they stand in, or they glow at night.
+    const ambient = new THREE.Color(env.ambientSky)
+      .multiplyScalar(env.ambientIntensity * 0.55)
+      .add(new THREE.Color(env.sunColor).multiplyScalar(env.sunIntensity * 0.22));
+    const peak = Math.max(ambient.r, ambient.g, ambient.b, 1e-3);
+    if (peak > 1) ambient.multiplyScalar(1 / peak);
+    this.particles.setScene(ambient, new THREE.Color(trackDef.palette.offroad));
 
     const r: RaceContext = {
       settings,
@@ -2160,6 +2241,10 @@ export class Game {
     r.hemi.dispose();
     r.fill.dispose();
     this.scene.fog = null;
+    if (this.scene.environment === this.envProbe?.texture) this.scene.environment = null;
+    this.scene.environmentIntensity = 1;
+    this.postfx.setLook(null);
+    this.postfx.setSun(null);
 
     this.safe(() => r.items.dispose());
     for (const k of r.karts) this.safe(() => k.dispose());
@@ -2222,7 +2307,7 @@ export class Game {
   private readonly onResize = (): void => {
     const w = Math.max(1, this.container.clientWidth || window.innerWidth);
     const h = Math.max(1, this.container.clientHeight || window.innerHeight);
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    const pr = this.pixelRatio();
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
@@ -2236,6 +2321,11 @@ export class Game {
       }
     }
   };
+
+  /** The pixel ratio the scene is drawn at: the device's, capped by the quality tier, scaled by the governor. */
+  private pixelRatio(): number {
+    return Math.min(window.devicePixelRatio || 1, quality().pixelRatioCap) * this.resolutionScale;
+  }
 
   private readonly onKeyDown = (ev: KeyboardEvent): void => {
     if (ev.repeat) return;

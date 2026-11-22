@@ -12,11 +12,12 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { CharacterDef } from '../core/types';
 import { createBodyKit, getBodySpec, type WheelSize } from './bodies';
-import { Batch, addVertexColor, limbGeometry, makeMesh } from './modelUtils';
+import { Batch, limbGeometry, makeMesh } from './modelUtils';
 import { CHARACTERS } from './roster';
 import type { FlameId, KartCosmetics, WheelFxId } from '../core/cosmetics';
 import { attachPatternShader } from './patternShader';
 import { createUnderglow, type UnderglowHandles } from './underglow';
+import { createContactShadow, type ContactShadowHandles } from './contactShadow';
 
 export interface KartModelParts {
   root: THREE.Group;
@@ -85,6 +86,8 @@ export interface KartModelPartsEx extends KartModelParts {
    * object so the pool ignores body roll, squash and shrink.
    */
   underglow: UnderglowHandles;
+  /** Soft dark patch on the road under the chassis; parented by the Kart like the underglow. */
+  contactShadow: ContactShadowHandles;
   /** Repaints and re-liveries this kart in place. Safe to call every frame in the garage. */
   applyCosmetics(cos: KartCosmetics): void;
   /** Disposes every geometry, material and texture owned by this model. */
@@ -141,17 +144,43 @@ interface WheelGeos {
 }
 
 function buildWheelGeometry(radius: number, width: number): WheelGeos {
-  const tube = width * 0.5;
-  const tyreBatch = new Batch();
-  const torus = addVertexColor(new THREE.TorusGeometry(radius - tube, tube, 8, 16), 0x15151a);
-  tyreBatch.add(torus, 0, 0, 0, 0, Math.PI / 2, 0);
-  torus.dispose();
-  const tread = addVertexColor(
-    new THREE.CylinderGeometry(radius * 1.005, radius * 1.005, width * 0.42, 22, 1, true),
-    0x2c2c33,
+  // A slick: flat tread, rounded shoulders, a sidewall that bulges and tucks in to the rim.
+  // Turned from its cross-section (x = distance from the axle, y = along it).
+  const hw = width * 0.5;
+  const profile: [number, number][] = [
+    [0.55, -0.7],
+    [0.72, -0.97],
+    [0.89, -0.96],
+    [0.975, -0.74],
+    [1, -0.42],
+    [1, 0.42],
+    [0.975, 0.74],
+    [0.89, 0.96],
+    [0.72, 0.97],
+    [0.55, 0.7],
+  ];
+  const tyre = new THREE.LatheGeometry(
+    profile.map(([r, y]) => new THREE.Vector2(radius * r, hw * y)),
+    24,
   );
-  tyreBatch.add(tread, 0, 0, 0, 0, 0, Math.PI / 2);
-  tread.dispose();
+  // The tread is a shade lighter than the sidewall, as worn rubber is.
+  const pos = tyre.attributes.position as THREE.BufferAttribute;
+  const tyreColors = new Float32Array(pos.count * 3);
+  const treadCol = new THREE.Color(0x2b2b31);
+  const wallCol = new THREE.Color(0x121216);
+  const mixed = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const r = Math.hypot(pos.getX(i), pos.getZ(i)) / radius;
+    mixed.copy(wallCol).lerp(treadCol, THREE.MathUtils.smoothstep(r, 0.9, 0.99));
+    tyreColors[i * 3] = mixed.r;
+    tyreColors[i * 3 + 1] = mixed.g;
+    tyreColors[i * 3 + 2] = mixed.b;
+  }
+  tyre.setAttribute('color', new THREE.BufferAttribute(tyreColors, 3));
+  tyre.rotateZ(Math.PI / 2); // axle along x
+  const tyreBatch = new Batch();
+  tyreBatch.add(tyre);
+  tyre.dispose();
 
   const rimBatch = new Batch();
   const rimR = radius * 0.58;
@@ -215,7 +244,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   );
   const darkMetal = mat(new THREE.MeshStandardMaterial({ color: 0x3a3f48, metalness: 0.55, roughness: 0.5 }));
   const rubber = mat(new THREE.MeshStandardMaterial({ color: 0x1b1b20, roughness: 0.9, metalness: 0.05 }));
-  const tyreMat = mat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 }));
+  const tyreMat = mat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0, side: THREE.DoubleSide }));
   const rimMat = mat(
     new THREE.MeshStandardMaterial({ color: 0xcfd6e0, metalness: 0.7, roughness: 0.3, emissive: 0x2a2e34, emissiveIntensity: 1 }),
   );
@@ -305,6 +334,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
   glowGeo.translate(0, 0, BASE_PIPE_LENGTH + 0.003);
   // Neon: a thin ring hugging the pipe tip (always lit) and an additive afterburner cone + halo.
   const underglow = createUnderglow(track, mat, character.accent);
+  const contactShadow = createContactShadow(track, mat);
   const neonColor = new THREE.Color(character.accent).lerp(new THREE.Color(0xffffff), 0.35);
   const neonRingMaterial = mat(
     new THREE.MeshBasicMaterial({ color: neonColor, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
@@ -539,6 +569,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
     textures.clear();
     root.removeFromParent();
     underglow.mesh.removeFromParent();
+    contactShadow.mesh.removeFromParent();
   };
 
   return {
@@ -566,6 +597,7 @@ export function buildKartModel(character: CharacterDef, cosmetics?: KartCosmetic
       return parts.neonCycle;
     },
     underglow,
+    contactShadow,
     applyCosmetics,
     dispose,
   };

@@ -1,0 +1,188 @@
+/**
+ * Graphics quality: one place that decides how much the renderer is asked to do.
+ *
+ * Three tiers. `high` is a desktop with a real GPU, `medium` a recent phone or tablet, `low` an
+ * older or weaker one. The tier is picked once at start-up from what the browser will say about
+ * the device, and can be forced with `?gfx=low|medium|high` (or the `tkr.gfx` setting). What a
+ * tier cannot know — how fast this particular device really is — is left to the resolution
+ * governor in `Game`, which lowers the render resolution when frames run long.
+ */
+
+export type GfxTier = 'low' | 'medium' | 'high';
+
+export interface GfxQuality {
+  readonly tier: GfxTier;
+  /** Upper bound on the device pixel ratio the scene is rendered at. */
+  readonly pixelRatioCap: number;
+  /** Lowest scale the resolution governor may fall to (fraction of the capped pixel ratio). */
+  readonly minResolutionScale: number;
+  /** MSAA samples on the scene buffer (0 = none). */
+  readonly msaa: number;
+  /** Sun shadow map edge in texels, and the half extent (metres) of ground it covers. */
+  readonly shadowMapSize: number;
+  readonly shadowHalfExtent: number;
+  /** Soft (PCF soft) or plain PCF shadow filtering. */
+  readonly softShadows: boolean;
+  /** Bloom mip levels (0 turns bloom off). */
+  readonly bloomLevels: number;
+  /** Light shafts and lens flare from the sun. */
+  readonly sunShafts: boolean;
+  /** Octaves of cloud detail in the sky shader. */
+  readonly cloudOctaves: number;
+  /** Edge of each face of the environment probe (reflections and ambient light). */
+  readonly envSize: number;
+  /** Multiplier on scattered ground detail (grass tufts, pebbles). 0 = none. */
+  readonly groundDetail: number;
+  /** Texture anisotropy cap. */
+  readonly anisotropy: number;
+  /** Procedural detail normal maps on road and ground. */
+  readonly detailNormals: boolean;
+  /** Multiplier on particle counts. */
+  readonly particles: number;
+}
+
+const TIERS: Readonly<Record<GfxTier, GfxQuality>> = {
+  high: {
+    tier: 'high',
+    pixelRatioCap: 2,
+    minResolutionScale: 0.6,
+    msaa: 4,
+    shadowMapSize: 4096,
+    shadowHalfExtent: 52,
+    softShadows: true,
+    bloomLevels: 5,
+    sunShafts: true,
+    cloudOctaves: 5,
+    envSize: 256,
+    groundDetail: 1,
+    anisotropy: 16,
+    detailNormals: true,
+    particles: 1,
+  },
+  medium: {
+    tier: 'medium',
+    pixelRatioCap: 1.75,
+    minResolutionScale: 0.55,
+    msaa: 2,
+    shadowMapSize: 2048,
+    shadowHalfExtent: 34,
+    softShadows: true,
+    bloomLevels: 4,
+    sunShafts: true,
+    cloudOctaves: 4,
+    envSize: 128,
+    groundDetail: 0.55,
+    anisotropy: 8,
+    detailNormals: true,
+    particles: 0.8,
+  },
+  low: {
+    tier: 'low',
+    pixelRatioCap: 1.5,
+    minResolutionScale: 0.5,
+    msaa: 0,
+    shadowMapSize: 1024,
+    shadowHalfExtent: 24,
+    softShadows: false,
+    bloomLevels: 3,
+    sunShafts: false,
+    cloudOctaves: 3,
+    envSize: 64,
+    groundDetail: 0.25,
+    anisotropy: 4,
+    detailNormals: false,
+    particles: 0.6,
+  },
+};
+
+export const GFX_SETTING_KEY = 'tkr.gfx';
+
+function isTier(v: unknown): v is GfxTier {
+  return v === 'low' || v === 'medium' || v === 'high';
+}
+
+/** What the player (or a URL) asked for, if anything. */
+export function requestedTier(): GfxTier | null {
+  try {
+    const q = new URLSearchParams(location.search).get('gfx');
+    if (isTier(q)) return q;
+    const saved = localStorage.getItem(GFX_SETTING_KEY);
+    if (isTier(saved)) return saved;
+  } catch {
+    /* no location / storage (tests) */
+  }
+  return null;
+}
+
+/** What the graphics driver calls itself, lower-cased ('' when the browser will not say). */
+function gpuName(): string {
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    if (!gl) return '';
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return String(name ?? '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** A GPU's name → the tier it can carry, or null when the name says nothing useful. */
+export function tierForGpu(name: string): GfxTier | null {
+  if (!name) return null;
+  // Software rendering: everything costs CPU.
+  if (/swiftshader|llvmpipe|software|basic render/.test(name)) return 'low';
+  // Discrete cards and Apple silicon.
+  if (/nvidia|geforce|rtx|gtx|radeon rx|radeon pro|arc\b|apple m\d|apple gpu/.test(name)) return 'high';
+  // Integrated graphics on laptops and office desktops.
+  if (/intel|uhd|iris|hd graphics|radeon\(tm\) graphics|radeon graphics|vega/.test(name)) return 'medium';
+  // Phone GPUs by generation: recent flagships carry medium, the rest low.
+  if (/adreno \(tm\) (7|8)\d\d|adreno (7|8)\d\d|mali-g7[1-9]|mali-g[6-9]1\d|immortalis|apple a1[5-9]|xclipse/.test(name)) return 'medium';
+  if (/adreno|mali|powervr/.test(name)) return 'low';
+  return null;
+}
+
+/** The tier this device gets when nobody asked for one. */
+export function detectTier(): GfxTier {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const touchFirst = Boolean(window.matchMedia?.('(pointer: coarse)').matches) && !window.matchMedia?.('(any-pointer: fine)').matches;
+  const cores = nav.hardwareConcurrency ?? 8;
+  const memory = nav.deviceMemory ?? 8;
+  const byGpu = tierForGpu(gpuName());
+  if (touchFirst) {
+    // A phone or tablet never gets `high`: its screen is small and its battery is not.
+    if (byGpu === 'low' || cores <= 4 || memory <= 3) return 'low';
+    return 'medium';
+  }
+  if (byGpu) return byGpu;
+  // The driver will not say: go by the machine around it.
+  if (cores <= 2 || memory <= 2) return 'low';
+  if (cores <= 4 && memory <= 4) return 'medium';
+  return 'high';
+}
+
+let current: GfxQuality | null = null;
+
+/** The quality in force. Decided on first use; `setTier` replaces it (takes effect on the next race). */
+export function quality(): GfxQuality {
+  if (!current) current = TIERS[requestedTier() ?? detectTier()];
+  return current;
+}
+
+export function setTier(tier: GfxTier | 'auto'): GfxQuality {
+  try {
+    if (tier === 'auto') localStorage.removeItem(GFX_SETTING_KEY);
+    else localStorage.setItem(GFX_SETTING_KEY, tier);
+  } catch {
+    /* storage unavailable */
+  }
+  current = TIERS[tier === 'auto' ? detectTier() : tier];
+  return current;
+}
+
+export function qualityFor(tier: GfxTier): GfxQuality {
+  return TIERS[tier];
+}
