@@ -61,6 +61,8 @@ async function open(size, lang, extraStorage = {}) {
     (l, extra) => {
       try {
         localStorage.setItem('tkr.lang', l);
+        // The results screen would otherwise go on to the next race while this looks at it.
+        localStorage.setItem('tkr.autoNext', '0');
         localStorage.setItem('tkr.nudged', '1');
         for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, v);
       } catch {}

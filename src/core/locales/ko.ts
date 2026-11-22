@@ -631,6 +631,7 @@ export const ko: Record<StringKey, string> = {
   'settings.gfx.low': '낮음',
   'settings.gfx.medium': '보통',
   'settings.gfx.high': '높음',
+  'settings.autoNext': '다음 레이스 자동 시작',
   'settings.graphicsHint': '레이스가 끊기면 한 단계 내리세요. 서킷에는 다음 레이스부터 적용됩니다.',
   'legend.touch.stickAuto': '좌우로 밀어 조향, 아래로 당기면 브레이크. 가속은 자동입니다',
   'lobby.more': '더 보기',

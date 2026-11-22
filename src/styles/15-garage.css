@@ -188,7 +188,7 @@
 .garage-option-free {
   min-height: 18px;
   padding: 1px 7px;
-  font-size: 9px;
+  font-size: 11px;
 }
 .garage-option-lock .icon {
   width: 11px;
@@ -254,7 +254,7 @@
   /* All nine tabs on one line. */
   .garage-tab {
     padding: 0 7px;
-    font-size: 10.5px;
+    font-size: 11px;
     letter-spacing: 0;
   }
 }
@@ -332,7 +332,7 @@
 .cup-standings-head {
   display: flex;
   justify-content: space-between;
-  font: 700 10px/1 var(--body);
+  font: 700 11px/1 var(--body);
   letter-spacing: 0.1em;
   color: var(--ink-faint);
   margin-bottom: 6px;

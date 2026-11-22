@@ -8,7 +8,7 @@ import { entitlementsPending, getEntitlements, onEntitlementsChange, serverReach
 import { currentAccount } from '../verse8/server';
 import { isAnonymousAccount } from '../verse8/identity';
 import { normalizeNickname } from '../verse8/nickname';
-import { readAutoAccel, writeAutoAccel } from '../game/settingsStore';
+import { readAutoAccel, readAutoNext, writeAutoAccel, writeAutoNext } from '../game/settingsStore';
 import { requestedTier, type GfxTier } from '../gfx/quality';
 import { button, el, TextField } from './dom';
 import { buildControlsLegend } from './controlsLegend';
@@ -45,6 +45,7 @@ export class SettingsPanel {
   private readonly autoField: HTMLElement;
   private readonly autoButtons: HTMLButtonElement[] = [];
   private readonly gfxButtons: HTMLButtonElement[] = [];
+  private readonly nextButtons: HTMLButtonElement[] = [];
   private readonly unsubEntitlements: () => void;
   /** True once the player has touched the field, so a late arrival never overwrites their typing. */
   private nickEdited = false;
@@ -123,12 +124,29 @@ export class SettingsPanel {
     }
     el('span', 'settings-hint settings-pair-hint', t('settings.graphicsHint'), panel);
 
+    // A second row of switches: auto-advance here, and (touch only) auto-accelerate beside it.
+    const pair2 = el('div', 'settings-pair settings-pair-2', undefined, panel);
+    // The results screen goes on to the next race by itself unless this is off.
+    const nextField = el('div', 'settings-field', undefined, pair2);
+    el('span', 'settings-label', t('settings.autoNext'), nextField);
+    const nextSeg = el('div', 'segmented', undefined, nextField);
+    for (const on of [true, false]) {
+      const b = el('button', 'seg', t(on ? 'settings.on' : 'settings.off'), nextSeg);
+      b.type = 'button';
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        writeAutoNext(on);
+        this.syncNext();
+      });
+      this.nextButtons.push(b);
+    }
+
     this.buildSlider(panel, 'music', t('settings.music'));
     this.buildSlider(panel, 'sfx', t('settings.sfx'));
 
     // Auto-accelerate: on by default for whoever drives by touch, and theirs to turn off. Shown
     // only on a touch device (decided when the panel opens), where it does something.
-    this.autoField = el('div', 'settings-field settings-auto hidden', undefined, panel);
+    this.autoField = el('div', 'settings-field settings-auto hidden', undefined, pair2);
     el('span', 'settings-label', t('settings.autoAccel'), this.autoField);
     const autoSeg = el('div', 'segmented', undefined, this.autoField);
     for (const on of [true, false]) {
@@ -213,9 +231,15 @@ export class SettingsPanel {
     this.autoField.classList.toggle('hidden', !this.touchDevice());
     this.syncAuto();
     this.syncGraphics();
+    this.syncNext();
     this.rootNode.classList.remove('hidden');
     this.visible = true;
     if (!softKeyboardLikely()) this.nickInput.focus();
+  }
+
+  private syncNext(): void {
+    const on = readAutoNext();
+    this.nextButtons.forEach((b, i) => b.classList.toggle('selected', (i === 0) === on));
   }
 
   private syncGraphics(): void {

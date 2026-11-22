@@ -154,7 +154,7 @@
   min-width: 0;
 }
 .unlock-label {
-  font: 800 10px/1 var(--body);
+  font: 800 11px/1 var(--body);
   letter-spacing: 0.12em;
 }
 /* The name is never cut. A long one ("Spoke Glow wheel effect") takes a second line, split evenly,
@@ -186,7 +186,7 @@
 }
 .next-label,
 .tomorrow-label {
-  font: 700 10px/1 var(--body);
+  font: 700 11px/1 var(--body);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -270,7 +270,7 @@
 .attendance-gift {
   max-width: 100%;
   padding: 0 2px;
-  font: 700 10px/1.15 var(--body);
+  font: 700 11px/1.15 var(--body);
   color: var(--yellow);
   text-align: center;
   overflow-wrap: anywhere;
@@ -301,6 +301,21 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+/* Auto-advance: the primary button fills from the left over the countdown, with the seconds
+   left beside its label. A hard-edged fill, not a gradient: yellow up to the mark, white after. */
+.results-next-btn.auto,
+.results-next-btn.auto.focused,
+#ui.touch .results-next-btn.auto.focused {
+  background: linear-gradient(90deg, var(--yellow) calc(var(--auto, 0) * 100%), var(--ink) 0);
+  color: var(--on-yellow);
+}
+.results-next-btn .auto-count {
+  flex: none;
+  min-width: 1.3em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  opacity: 0.7;
+}
 .results-next-btn .btn-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -321,6 +336,73 @@
   }
   .results-foot > .actions {
     flex-wrap: wrap;
+  }
+}
+
+/* A short desktop window that is not phone-short: a portal's iframe at 907x510, a laptop with
+   the browser's toolbars open. The full layout is a hundred pixels too tall for it once a race
+   has opened four things, so the head and the cards come in a size and the kicker goes: the
+   whole screen fits, with every row of the table still there. */
+@media (min-height: 481px) and (max-height: 620px) {
+  .results-panel {
+    --pad-y: 10px;
+  }
+  .results-panel > .panel-kicker {
+    display: none;
+  }
+  .results-head {
+    margin: 0 0 6px;
+  }
+  .results-plate {
+    font-size: 40px;
+  }
+  .results-title {
+    font-size: 28px;
+  }
+  .results-sub {
+    margin-top: 2px;
+    font-size: 13px;
+  }
+  .results-rewards {
+    padding: 6px 12px;
+  }
+  .reward-label {
+    display: none;
+  }
+  .reward-amount {
+    font-size: 30px;
+  }
+  .unlock-card {
+    padding: 4px 10px 4px 4px;
+    gap: 8px;
+  }
+  .unlock-art {
+    width: 58px;
+    height: 36px;
+  }
+  .unlock-label {
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .unlock-name {
+    font-size: 15px;
+  }
+  .standing-row {
+    min-height: 0;
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+  .results-foot {
+    padding-top: 8px;
+    padding-bottom: 10px;
+  }
+}
+/* A window too narrow for five full-size buttons in a row gives the primary its label back by
+   taking padding from the others. */
+@media (min-width: 760px) and (max-width: 1000px) {
+  .results-foot > .actions .btn:not(.results-next-btn) {
+    padding: 0 16px;
+    letter-spacing: 0.06em;
   }
 }
 
@@ -374,16 +456,19 @@
     font-size: 28px;
   }
   .reward-xp-bar {
-    width: 48px;
+    width: 30px;
   }
   .reward-xp-n {
     font-size: 11px;
   }
+  /* At 11px the offer's wording is as wide as the column allows: the bar beside it gives way,
+     and the letters sit a little closer than on other buttons. */
   .btn.reward-double {
     min-height: 28px;
     margin-left: auto;
     padding: 0 10px;
-    font-size: 10px;
+    font-size: 11px;
+    letter-spacing: 0.03em;
     white-space: nowrap;
   }
   .btn.reward-double .btn-label {
@@ -420,7 +505,7 @@
     gap: 2px;
   }
   .unlock-label {
-    font-size: 8px;
+    font-size: 11px;
     white-space: nowrap;
   }
   .unlock-name {
@@ -453,7 +538,7 @@
     font-size: 11px;
   }
   .tomorrow-in {
-    font-size: 10px;
+    font-size: 11px;
   }
   .results-foot > .actions {
     padding-top: 6px;
@@ -465,7 +550,7 @@
     font-size: 14px;
   }
   .attendance-gift {
-    font-size: 9px;
+    font-size: 11px;
   }
   .attendance-tomorrow {
     padding: 3px 8px;

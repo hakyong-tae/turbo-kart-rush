@@ -40,6 +40,8 @@ async function openRace(page, size, { lang = 'en' } = {}) {
   await page.evaluateOnNewDocument((l) => {
     try {
       localStorage.setItem('tkr.lang', l);
+      // The results screen would otherwise go on to the next race while this looks at it.
+      localStorage.setItem('tkr.autoNext', '0');
       localStorage.setItem('tkr.nudged', '1');
     } catch {}
   }, lang);

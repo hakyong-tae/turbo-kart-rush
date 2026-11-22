@@ -48,7 +48,7 @@ import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
 import { tickPatternTime } from '../kart/patternShader';
 import { OrientationGate } from './OrientationGate';
-import { COACH_KEY, FIRST_RACE_KEY, TOMORROW_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume } from './settingsStore';
+import { COACH_KEY, FIRST_RACE_KEY, TOMORROW_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume, readAutoNext } from './settingsStore';
 import { PLATFORM } from '../core/platform';
 import { RaceCoach } from '../ui/RaceCoach';
 
@@ -304,6 +304,8 @@ interface RaceContext {
   itemsEnabled: boolean;
   /** The environment probe has been filled for this race. */
   envCaptured?: boolean;
+  /** The player steered, braked, drifted, used an item or pressed the throttle at least once. */
+  playerActed?: boolean;
 }
 
 
@@ -394,6 +396,8 @@ export class Game {
   private resolutionScale = 1;
   /** Seconds the lobby has been up (-1 once the racer sheet has been asked for). */
   private menuIdle = 0;
+  /** Races in a row the player finished without touching the controls. */
+  private idleRaces = 0;
   private splashUp = true;
   private elapsed = 0;
   private accumulator = 0;
@@ -1629,6 +1633,11 @@ export class Game {
     const r = this.race;
     if (!r) return;
     if (input.useItem) this.pendingUseItem = true;
+    // Did a person drive this race? A throttle held by the touch auto-accelerate is not one.
+    if (!r.playerActed && this.state === 'racing') {
+      const ownThrottle = input.throttle > 0.1 && !(this.touch.isEnabled && readAutoAccel());
+      if (ownThrottle || Math.abs(input.steer) > 0.1 || input.brake > 0.1 || input.drift || input.useItem) r.playerActed = true;
+    }
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
@@ -2276,6 +2285,23 @@ export class Game {
     }
     this.setState('results');
     this.playMusic('results');
+    this.maybeAutoNext(r, standings, cupView);
+  }
+
+  /**
+   * Lets the results screen start the next race by itself (it fills the primary button for a few
+   * seconds first). Most sessions used to end on this screen after two races, with nobody
+   * pressing anything. Not where going on would be wrong: a retirement, a cup's last race, the
+   * daily, an online race, a dev auto-drive. Not when the player has turned it off. And not for
+   * someone who has walked away: two races in a row finished without a single input stop it.
+   */
+  private maybeAutoNext(r: RaceContext, standings: readonly RaceStanding[], cupView: CupView | undefined): void {
+    this.idleRaces = r.playerActed ? 0 : this.idleRaces + 1;
+    const me = standings.find((s) => s.isPlayer);
+    const retired = !me || !isFinite(me.finishTime) || me.finishTime <= 0;
+    if (retired || r.online || this.dailyRun || cupView?.isFinal || r.playerAutoDriverBeforeFinish) return;
+    if (!readAutoNext() || this.idleRaces >= 2) return;
+    this.results.armAutoNext();
   }
 
   /** Takes the coach off the screen. It has had its race, finished or not: it is not shown again. */

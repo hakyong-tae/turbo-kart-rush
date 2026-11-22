@@ -643,6 +643,7 @@ export const en = {
   'settings.gfx.low': 'LOW',
   'settings.gfx.medium': 'MID',
   'settings.gfx.high': 'HIGH',
+  'settings.autoNext': 'AUTO NEXT RACE',
   'settings.graphicsHint': 'Lower it if races stutter. Circuits pick it up from the next race.',
   'legend.touch.stickAuto': 'Slide sideways to steer, pull down to brake. The kart accelerates by itself',
   'lobby.more': 'More',

@@ -25,6 +25,25 @@ const CONFETTI_COLORS = ['#ffd400', '#ffffff', '#b9bdc7', '#ffd400', '#3d4049', 
 /** How long the coin total takes to count up. */
 const COUNT_UP_MS = 900;
 
+/** Seconds the primary button takes to fill before it starts the next race by itself. */
+export const AUTO_NEXT_SECONDS = 8;
+/** How long the standings take to arrive: nothing counts down before they have. */
+const AUTO_SETTLE_MS = 2000;
+
+/**
+ * How long a reward block needs before the countdown may start under it: the coin count-up, each
+ * unlock card's entrance and a moment to read it, a level-up, tomorrow's check-in.
+ */
+function readingTime(view: RewardView): number {
+  if (view.state !== 'paid') return 1200;
+  const cards = view.opened?.length ?? 0;
+  let ms = COUNT_UP_MS + 600;
+  if (cards > 0) ms = Math.max(ms, 500 + cards * 180 + 600) + cards * 900;
+  if (view.xp && view.xp.levelUps > 0) ms += 1200;
+  if (view.tomorrow) ms += 1500;
+  return ms;
+}
+
 /**
  * What this race paid, as far as it is known. `pending` while the server is still counting,
  * `failed` when it never answered: the screen says which, because "no coins" and "not yet" look
@@ -148,6 +167,23 @@ export class ResultsScreen {
   private flow: ResultsFlow = 'single';
   private cupView: CupView | undefined;
   private nextTrack = '';
+  /**
+   * Auto-advance: once what the race did has been shown, the primary button fills over
+   * `AUTO_NEXT_SECONDS` and then starts the next race. Armed by the game per results screen
+   * (`armAutoNext`); anything the player does here other than pressing that button calls it off
+   * for good (`cancelAutoNext`), and so does the page going out of sight.
+   */
+  private autoTimer = 0;
+  /** No countdown before this moment (ms), and none while the reward is still being counted. */
+  private autoReadyAt = 0;
+  private autoHold = false;
+  /** When the fill started (0 = not yet). */
+  private autoStartedAt = 0;
+  private readonly autoCount: HTMLElement;
+  private readonly onAway = (): void => {
+    if (document.hidden) this.cancelAutoNext();
+  };
+  private readonly onBlur = (): void => this.cancelAutoNext();
 
   constructor(root: HTMLElement) {
     this.rootNode = el('div', 'screen results hidden', undefined, root);
@@ -187,6 +223,16 @@ export class ResultsScreen {
     this.buttons[Action.Lobby] = button(t('results.mainMenu'), 'ghost', () => this.activate(Action.Lobby));
     this.buttons[Action.Records] = button(t('lb.button'), 'ghost icon-only results-records', () => this.activate(Action.Records), 'trophy');
     actions.append(...this.buttons);
+    this.autoCount = el('span', 'auto-count');
+    // A press anywhere on the screen except the primary button means the player is doing
+    // something else here: the countdown is off. (Hovering is not a press.)
+    this.rootNode.addEventListener(
+      'pointerdown',
+      (ev) => {
+        if (!this.buttons[Action.Next].contains(ev.target as Node)) this.cancelAutoNext();
+      },
+      true,
+    );
     this.buttons.forEach((b, action) => {
       // Hover moves the cursor too, so mouse and keyboard agree on where it is.
       b.addEventListener('pointerenter', () => {
@@ -208,6 +254,9 @@ export class ResultsScreen {
    * cup ends here. Absent for a one-off race.
    */
   show(standings: readonly RaceStanding[], mode: RaceMode = 'solo', online = false, cup?: CupView): void {
+    this.cancelAutoNext();
+    this.autoReadyAt = Date.now() + AUTO_SETTLE_MS;
+    this.autoHold = false;
     this.flow = online ? 'online' : cup ? 'cup' : 'single';
     this.cupView = cup;
     this.applyFlow();
@@ -313,14 +362,73 @@ export class ResultsScreen {
     this.confetti.replaceChildren();
     this.stopCount();
     this.stopTomorrow();
+    this.cancelAutoNext();
     this.visible = false;
+  }
+
+  /**
+   * Lets this results screen go on to the next race by itself. The game calls it when that is
+   * wanted here (not after a retirement, a cup's last race, an online race, the daily, and not
+   * when the player has turned it off or looks to have walked away).
+   */
+  armAutoNext(): void {
+    if (!this.visible || this.autoTimer || this.flow === 'online') return;
+    this.autoStartedAt = 0;
+    document.addEventListener('visibilitychange', this.onAway);
+    window.addEventListener('blur', this.onBlur);
+    this.autoTimer = window.setInterval(() => this.tickAuto(), 100);
+  }
+
+  /** Calls the countdown off. It does not come back on this results screen. */
+  cancelAutoNext(): void {
+    if (!this.autoTimer) return;
+    window.clearInterval(this.autoTimer);
+    this.autoTimer = 0;
+    this.autoStartedAt = 0;
+    document.removeEventListener('visibilitychange', this.onAway);
+    window.removeEventListener('blur', this.onBlur);
+    const b = this.buttons[Action.Next];
+    b.classList.remove('auto');
+    b.style.removeProperty('--auto');
+    this.autoCount.remove();
+  }
+
+  /** Seconds until the next race starts by itself; null when no countdown is running. */
+  get autoNextLeft(): number | null {
+    if (!this.autoTimer || !this.autoStartedAt) return null;
+    return Math.max(0, AUTO_NEXT_SECONDS - (Date.now() - this.autoStartedAt) / 1000);
+  }
+
+  private tickAuto(): void {
+    if (!this.autoTimer) return;
+    if (document.hidden) {
+      this.cancelAutoNext();
+      return;
+    }
+    const now = Date.now();
+    if (this.autoHold || now < this.autoReadyAt) return;
+    const b = this.buttons[Action.Next];
+    if (!this.autoStartedAt) {
+      this.autoStartedAt = now;
+      b.classList.add('auto');
+    }
+    const left = AUTO_NEXT_SECONDS * 1000 - (now - this.autoStartedAt);
+    b.style.setProperty('--auto', String(Math.min(1, 1 - left / (AUTO_NEXT_SECONDS * 1000))));
+    this.autoCount.textContent = String(Math.max(0, Math.ceil(left / 1000)));
+    if (this.autoCount.parentElement !== b) b.appendChild(this.autoCount);
+    if (left <= 0) {
+      this.cancelAutoNext();
+      this.activate(Action.Next);
+    }
   }
 
   handleInput(input: InputState): void {
     if (!this.visible) return;
     if (input.menuLeft || input.menuUp) {
+      this.cancelAutoNext();
       if (this.setFocus(this.focusIndex - 1)) events.emit('ui:move', {});
     } else if (input.menuRight || input.menuDown) {
+      this.cancelAutoNext();
       if (this.setFocus(this.focusIndex + 1)) events.emit('ui:move', {});
     }
     if (input.confirm) this.activate(this.visibleActions()[this.focusIndex] ?? Action.Lobby);
@@ -330,6 +438,7 @@ export class ResultsScreen {
   dispose(): void {
     this.stopCount();
     this.stopTomorrow();
+    this.cancelAutoNext();
     this.rootNode.remove();
   }
 
@@ -343,6 +452,15 @@ export class ResultsScreen {
    * Fills the reward line. Called again when the server's answer lands after the screen opened.
    */
   showRewards(view: RewardView): void {
+    // The countdown waits for the reward: none while it is still being counted, and a block
+    // that has just been (re)drawn gets its time on screen first.
+    this.autoHold = view.state === 'pending';
+    this.autoReadyAt = Math.max(this.autoReadyAt, Date.now() + readingTime(view));
+    if (this.autoStartedAt) {
+      this.autoStartedAt = 0;
+      this.buttons[Action.Next].classList.remove('auto');
+      this.autoCount.remove();
+    }
     this.clearRewards();
     const row = el('div', `reward-row reward-${view.state}`, undefined, this.rewards);
     if (view.state !== 'paid') {
@@ -400,6 +518,7 @@ export class ResultsScreen {
   }
 
   private async double(b: HTMLButtonElement): Promise<void> {
+    this.cancelAutoNext();
     if (b.disabled) return;
     b.disabled = true;
     try {
@@ -534,9 +653,12 @@ export class ResultsScreen {
         ? t('results.nextOn', { name: this.nextTrack.toUpperCase() })
         : t('results.next');
     setButtonContent(this.buttons[Action.Next], label);
+    // The label was rebuilt: the seconds beside it go back in while a countdown is running.
+    if (this.autoStartedAt) this.buttons[Action.Next].appendChild(this.autoCount);
   }
 
   private activate(action: Action): void {
+    this.cancelAutoNext();
     events.emit(action === Action.Lobby ? 'ui:back' : 'ui:select', {});
     if (action === Action.Next) this.onNextRace?.();
     else if (action === Action.Again) this.onRaceAgain?.();

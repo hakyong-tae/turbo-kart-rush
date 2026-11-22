@@ -148,7 +148,7 @@
 .settings-pair {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 26px;
+  gap: 8px 20px;
   margin: 12px 0 0;
 }
 .settings-pair > .settings-field {
@@ -157,6 +157,9 @@
 .settings-pair-hint {
   display: block;
   margin: 6px 0 12px;
+}
+.settings-pair-2 {
+  margin: 0 0 12px;
 }
 .settings-label {
   font-family: var(--display);

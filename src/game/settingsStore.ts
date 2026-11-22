@@ -50,6 +50,25 @@ export function markControlsSeen(): void {
   }
 }
 
+/** Results screen: go on to the next race by itself. On unless the player turned it off in Settings. */
+export const AUTO_NEXT_KEY = 'tkr.autoNext';
+
+export function readAutoNext(): boolean {
+  try {
+    return localStorage.getItem(AUTO_NEXT_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function writeAutoNext(on: boolean): void {
+  try {
+    localStorage.setItem(AUTO_NEXT_KEY, on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
+
 /** Touch auto-accelerate. On unless the player turned it off in Settings. */
 export const AUTO_ACCEL_KEY = 'tkr.autoAccel';
 

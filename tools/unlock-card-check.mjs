@@ -39,6 +39,8 @@ await page.evaluateOnNewDocument(() => {
       sessionStorage.setItem('audit.init', '1');
     }
     localStorage.setItem('tkr.lang', 'en');
+    // The results screen would otherwise go on to the next race while this looks at it.
+    localStorage.setItem('tkr.autoNext', '0');
   } catch {}
 });
 page.on('pageerror', (e) => failures.push(`pageerror: ${e.message}`));

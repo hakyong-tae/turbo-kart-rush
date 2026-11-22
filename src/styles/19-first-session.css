@@ -314,7 +314,7 @@
 }
 .garage-option-rung {
   flex: 0 0 100%;
-  font: 700 10px/1.2 var(--body);
+  font: 700 11px/1.2 var(--body);
   letter-spacing: 0.02em;
   color: var(--yellow);
   word-break: keep-all;
@@ -334,6 +334,6 @@
   }
   .garage-autosave {
     margin-top: 2px;
-    font-size: 10px;
+    font-size: 11px;
   }
 }

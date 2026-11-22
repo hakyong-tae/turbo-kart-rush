@@ -100,7 +100,7 @@
   font-size: 13px;
 }
 .buy-group {
-  font: 700 10px/1.1 var(--body);
+  font: 700 11px/1.1 var(--body);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -314,7 +314,7 @@ div.reward-note {
   background: var(--yellow);
 }
 .profile-xp-n {
-  font: 700 10px/1 var(--body);
+  font: 700 11px/1 var(--body);
   letter-spacing: 0.04em;
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
@@ -496,7 +496,7 @@ div.reward-note {
   color: var(--ink-faint);
 }
 .attendance-day {
-  font: 700 10px/1 var(--body);
+  font: 700 11px/1 var(--body);
   letter-spacing: 0.06em;
   color: var(--ink-dim);
   white-space: nowrap;

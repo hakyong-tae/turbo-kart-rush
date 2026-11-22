@@ -70,6 +70,8 @@ await page.evaluateOnNewDocument((l) => {
       sessionStorage.setItem('audit.init', '1');
     }
     localStorage.setItem('tkr.lang', l);
+    // The results screen would otherwise go on to the next race while this looks at it.
+    localStorage.setItem('tkr.autoNext', '0');
   } catch {}
 }, LANG);
 const errors = [];
