@@ -1,6 +1,6 @@
 /**
- * The wordmark: "DRIFT DASH" in white italic, "GP" on a yellow number plate, a checker strip
- * underneath. Built from `GAME_TITLE` so a rename is one constant. The lobby and the loading
+ * The wordmark: "DRIFT" in white italic, "KART" on a yellow number plate, a checker strip
+ * underneath. Built from `GAME_TITLE` so a rename is one constant (plus index.html). The lobby and the loading
  * screen draw the same mark.
  */
 import { GAME_TITLE } from '../core/constants';

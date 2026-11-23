@@ -1,17 +1,17 @@
-// ONE store feature graphic (대표 이미지) for Drift Dash GP: exactly 1024×578.
+// ONE store feature graphic (대표 이미지) for Drift Kart: exactly 1024×578.
 //
 //   node tools/marketing/graphic.mjs [keyart.png]
 //
 // Background: a real race frame with the HUD hidden, written by shots.mjs to
 // marketing/onestore-kit/_work/keyart/ (pass one explicitly, or KEYART=<file>; default = the
-// highest-scored one; ZOOM / FOCUS / AT frame the action). Title: the game's own DRIFT DASH GP logo, cut out of the lobby with a
+// highest-scored one; ZOOM / FOCUS / AT frame the action). Title: the game's own DRIFT KART logo, cut out of the lobby with a
 // transparent background, plus a small Korean kicker and a one-line Korean tagline.
 // Needs the dev server on :4941 (for the logo).
 import { readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { KIT, WORK, launch, openGame, sleep } from './lib.mjs';
 
 const OUT = `${KIT}/graphic_1024x578.png`;
-const KICKER = '드리프트 대시 GP';
+const KICKER = '드리프트 카트';
 const TAGLINE = '드리프트 한 방으로 뒤집는 8인 카트 레이스';
 
 const keyDir = `${WORK}/keyart`;

@@ -1,4 +1,4 @@
-# Drift Dash GP — 원스토어 등록 에셋 / ONE store kit
+# Drift Kart — 원스토어 등록 에셋 / ONE store kit
 
 원스토어 등록 형식(대표 이미지 1장 + 원본 스크린샷)에 맞춘 세트. 스크린샷은 캡션·오버레이 없는 실제 게임 화면이고, 빌드 배지("build …")와 개발용 오버레이만 숨겼어요.
 Laid out for the ONE store listing: one feature graphic plus raw in-game screenshots (no captions or overlays; only the "build …" badge and dev overlays are hidden).

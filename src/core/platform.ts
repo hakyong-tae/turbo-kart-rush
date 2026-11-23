@@ -1,15 +1,19 @@
 /**
  * Build target (contract addition, CrazyGames relaunch).
  *
- * The same source ships to two places that disagree about what the game is called and what it may
- * sell. `vite build` is the Verse8 / ONE store edition: DRIFT DASH GP, with the VX garage pass,
- * rewarded ads and the gameserver. `vite build --mode crazygames` is the CrazyGames edition:
- * DRIFT KART, no purchase UI, no rewarded-ad buttons, and the account kept in the browser by the
- * in-page copy of server.js (verse8/localServer.ts).
+ * The same source ships to two places that disagree about what the game may sell. `vite build` is
+ * the Verse8 / ONE store edition, with the VX garage pass, rewarded ads and the gameserver.
+ * `vite build --mode crazygames` is the CrazyGames edition: no purchase UI, no rewarded-ad
+ * buttons, and the account kept in the browser by the in-page copy of server.js
+ * (verse8/localServer.ts).
+ *
+ * Both are called DRIFT KART. (Until 2026-11-23 the Verse8 / ONE store edition was DRIFT DASH GP;
+ * the owner settled on one name. Save keys, server collections and product ids never carried the
+ * name, so nothing a player has saved depends on it.)
  *
  * Everything target-specific asks this module, so a third target is one more row here rather than
  * a hunt through the UI. The mode is a compile-time constant, which lets the bundler drop the
- * other edition's branch (and its name) from the output.
+ * other edition's branch from the output.
  *
  * Design: docs/superpowers/specs/2026-11-20-drift-kart-crazygames-relaunch.md, section 4.8.
  * Pure: no DOM, no storage.
@@ -33,10 +37,12 @@ export interface Platform {
   hosted: boolean;
 }
 
+/** The game's name: one for every edition. index.html carries the same words (title, splash). */
+const NAME = { title: 'DRIFT KART', name: 'Drift Kart' } as const;
+
 const CRAZYGAMES: Platform = {
   target: 'crazygames',
-  title: 'DRIFT KART',
-  name: 'Drift Kart',
+  ...NAME,
   vx: false,
   rewardedAds: false,
   online: false,
@@ -45,8 +51,7 @@ const CRAZYGAMES: Platform = {
 
 const VERSE8: Platform = {
   target: 'verse8',
-  title: 'DRIFT DASH GP',
-  name: 'Drift Dash GP',
+  ...NAME,
   vx: true,
   rewardedAds: true,
   online: true,

@@ -1,4 +1,4 @@
-# Drift Dash GP — [Verse8] Application Form for ONE Store 답변 초안
+# Drift Kart — [Verse8] Application Form for ONE Store 답변 초안
 
 원스토어 입점 신청 폼(Verse8 Application Form for ONE Store)의 질문 순서대로 정리한 답변과, 각 항목이 게임 안에서 실제로 어떻게 구현돼 있는지의 근거. 폼에 붙일 때는 **KO -- EN** 두 줄을 그대로 복사한다.
 Answers for the ONE Store application form in question order, with the in-game evidence behind each. Paste both the KO and EN lines.
@@ -12,7 +12,7 @@ Answers for the ONE Store application form in question order, with the in-game e
 | 항목 | 답변 |
 |---|---|
 | 이메일 / Discord | 신청자 본인 계정 기입 (Verse8 계정과 동일 이메일 권장) |
-| 게임 제목 / Title | **Drift Dash GP** |
+| 게임 제목 / Title | **Drift Kart** (한글 표기: 드리프트 카트) |
 | Verse8 게임 링크 | Verse8 프로젝트 게시 후 URL 기입. 공개 여부: **Public** (라이선스 MIT, 에셋 0개 자체 생성 → 공개 가능) |
 | GitLab 경로 | `hy.tae90/my-basic-game-project` (브랜치 `develop`). **토큰(glpat-…)은 절대 기입하지 않는다.** |
 | 화면 방향 / Orientation | **가로 (Landscape) 전용** — 터치 기기를 세로로 들면 전체 화면 회전 안내(`.rotate-gate`)가 덮고 레이스는 자동 일시정지. 가로로 돌리면 바로 이어서 플레이. 가로 폰 레이아웃은 `max-height: 480px` 브레이크포인트로 최적화 |

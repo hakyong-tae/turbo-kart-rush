@@ -1,4 +1,4 @@
-/* Drift Dash GP stylesheet — split by concern. ORDER MATTERS: later files override earlier ones
+/* Drift Kart stylesheet — split by concern. ORDER MATTERS: later files override earlier ones
  (14-layout-overrides intentionally re-positions HUD pieces defined in 07-hud). Add new feature CSS
  as its own numbered file and import it here. */
 @import './01-base.css';

@@ -1,4 +1,4 @@
-// ONE store screenshots for Drift Dash GP: raw in-game screens, no captions or overlays.
+// ONE store screenshots for Drift Kart: raw in-game screens, no captions or overlays.
 //
 //   npx vite --port 4941 --strictPort &          # dev server (needed for ?auto=1)
 //   node tools/marketing/shots.mjs [desktop|phone]   # both when omitted

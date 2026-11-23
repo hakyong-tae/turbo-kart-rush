@@ -63,12 +63,12 @@ function buildId(): string {
 
 /**
  * Build targets (src/core/platform.ts). `vite build` is the Verse8 / ONE store edition and goes to
- * `dist/`. `vite build --mode crazygames` is the CrazyGames edition: another name, no purchase UI,
- * the account kept in the browser. It goes to `dist-crazygames/` so the two never overwrite each
- * other, and its page title and tab icon carry its own name.
+ * `dist/`. `vite build --mode crazygames` is the CrazyGames edition: no purchase UI, the account
+ * kept in the browser. It goes to `dist-crazygames/` so the two never overwrite each other. Both
+ * carry the same name, which index.html has as written (title, tab icon, splash).
  */
-const TARGETS: Record<string, { outDir: string; title: string; initial: string }> = {
-  crazygames: { outDir: 'dist-crazygames', title: 'Drift Kart', initial: 'K' },
+const TARGETS: Record<string, { outDir: string }> = {
+  crazygames: { outDir: 'dist-crazygames' },
 };
 
 /** Wording that belongs to the Verse8 edition: the VX pass, rewarded ads, the host itself. */
@@ -171,22 +171,16 @@ export default defineConfig(({ mode }) => {
           targetLocales(mode),
           serverWithoutComments(),
           {
-            name: 'target-brand',
-            // index.html is written for the default edition; an edition with its own name gets it
-            // here. So do its fonts: this edition asks no other host for anything, so the Google
-            // Fonts tags go and the copies in src/assets/fonts take their place. `pre`, so that
-            // Vite still bundles the stylesheet this adds.
+            name: 'target-page',
+            // index.html is written for the default edition; what another edition needs different
+            // in the page itself is done here. Its fonts: this edition asks no other host for a
+            // font, so the Google Fonts tags go and the copies in src/assets/fonts take their
+            // place. `pre`, so that Vite still bundles the stylesheet this adds. And the portal's
+            // SDK tag. (The name is the same in every edition and is not touched.)
             transformIndexHtml: {
               order: 'pre',
               handler: (html: string) => {
                 const out = html
-                  .replace(/<title>[^<]*<\/title>/, `<title>${target.title}</title>`)
-                  .replace(/(fill='%23ffd400'%3E)D(%3C\/text%3E)/, `$1${target.initial}$2`)
-                  // The splash carries the wordmark too: all but the last word, then the last on the plate.
-                  .replace(
-                    /(<span class="boot-word">)[^<]*(<\/span><span class="boot-plate">)[^<]*(<\/span>)/,
-                    `$1${target.title.toUpperCase().split(' ').slice(0, -1).join(' ')}$2${target.title.toUpperCase().split(' ').slice(-1)[0]}$3`,
-                  )
                   .replace(/\s*<link rel="preconnect"[^>]*>/g, '')
                   .replace(/<link\s+rel="stylesheet"\s+href="https:\/\/fonts\.googleapis\.com[^>]*>/, '<link rel="stylesheet" href="/src/styles/fonts-local.css" />')
                   // The portal's SDK, asked for from the first bytes of the page so that it downloads
@@ -197,11 +191,8 @@ export default defineConfig(({ mode }) => {
                   // null, or to the error. src/platform/crazygames.ts picks all of this up (and reads
                   // `data-failed` if the error came before it was listening).
                   .replace(/(<title>[^<]*<\/title>)/, withSdk ? `$1\n    ${CG_SDK_TAG}` : '$1');
-                if (withSdk !== out.includes(CG_SDK_URL)) throw new Error('target-brand: the SDK tag is not where it should be');
-                if (/fonts\.g(oogleapis|static)\.com/.test(out)) throw new Error('target-brand: index.html still points at Google Fonts');
-                if (!out.includes(`<span class="boot-plate">${target.title.toUpperCase().split(' ').slice(-1)[0]}</span>`)) {
-                  throw new Error('target-brand: the splash in index.html does not carry this edition\'s name');
-                }
+                if (withSdk !== out.includes(CG_SDK_URL)) throw new Error('target-page: the SDK tag is not where it should be');
+                if (/fonts\.g(oogleapis|static)\.com/.test(out)) throw new Error('target-page: index.html still points at Google Fonts');
                 return out;
               },
             },

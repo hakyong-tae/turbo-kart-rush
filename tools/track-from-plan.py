@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turns a real circuit's centreline into control points for a Drift Dash GP track.
+"""Turns a real circuit's centreline into control points for a Drift Kart track.
 
 A grand-prix circuit is four or five kilometres of road ten to fifteen metres wide; ours is about
 one kilometre of road seventeen metres wide. Scaled straight down, a real plan has corners tighter

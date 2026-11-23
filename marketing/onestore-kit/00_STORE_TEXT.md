@@ -1,4 +1,4 @@
-# Drift Dash GP — 원스토어 등록 문안 / ONE store listing copy
+# Drift Kart — 원스토어 등록 문안 / ONE store listing copy
 
 근거: 코드(`src/track/tracks`, `src/core/types.ts` 아이템, `src/core/cosmetics.ts`, `src/core/cups.ts`, `src/core/daily.ts`, `server.js`, `src/verse8/`)와 `docs/STORE.md`, `docs/ONESTORE-FORM.md`. 2026-10-21 기준.
 Sources: the code paths above plus `docs/STORE.md` and `docs/ONESTORE-FORM.md`, as of 2026-10-21.
@@ -8,7 +8,7 @@ Sources: the code paths above plus `docs/STORE.md` and `docs/ONESTORE-FORM.md`, 
 
 ## 제목 / Title
 
-드리프트 대시 GP / Drift Dash GP
+드리프트 카트 / Drift Kart
 
 ## 장르 · 태그 / Genre · Tags
 
@@ -55,6 +55,6 @@ An arcade 3D kart racer where drifting charges mini-turbos and every corner is a
 ## 크레딧 / Credits
 
 - 원작 / Original: [bridge-mind/turbo-kart-rush](https://github.com/bridge-mind/turbo-kart-rush), MIT License
-- Verse8 이식 · 확장 / Verse8 port and extensions: Drift Dash GP (차고 · 그랑프리 · 오늘의 도전 · 한국어화 · 터치 조작 · 리더보드 / garage, Grand Prix, Daily Challenge, Korean localisation, touch controls, leaderboards)
+- Verse8 이식 · 확장 / Verse8 port and extensions: Drift Kart (차고 · 그랑프리 · 오늘의 도전 · 한국어화 · 터치 조작 · 리더보드 / garage, Grand Prix, Daily Challenge, Korean localisation, touch controls, leaderboards)
 - 에셋 / Assets: 외부 에셋 파일 없음. 모델 · 텍스처 · 효과음 · 음악 전부 코드로 생성 / No external asset files; models, textures, sound effects and music are all generated in code
 - 엔진 / Engine: Three.js (MIT)

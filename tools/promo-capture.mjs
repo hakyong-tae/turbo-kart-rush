@@ -1,4 +1,4 @@
-// Marketing assets for Drift Dash GP (Verse8 / ONE store).
+// Marketing assets for Drift Kart (Verse8 / ONE store).
 //
 //   node tools/promo-capture.mjs [http://localhost:5178]      # needs `npm run dev` running
 //
@@ -179,9 +179,8 @@ async function captureThumbnail(browser) {
         .promo-tag small { display:block; font-size: 26px; color: rgba(255,255,255,.82); letter-spacing:.22em; margin-top:6px; }
       </style>
       <div class="logo">
-        <span class="logo-word logo-word-0" data-text="DRIFT">DRIFT</span>
-        <span class="logo-word logo-word-1" data-text="DASH">DASH</span>
-        <span class="logo-word logo-word-2" data-text="GP">GP</span>
+        <div class="logo-line"><span class="logo-word">DRIFT</span><span class="logo-gp plate yellow">KART</span></div>
+        <div class="logo-checker checker"></div>
       </div>
       <div class="promo-tag">온라인 카트 레이싱<small>ONLINE KART RACING · 8 RACERS · 6 TRACKS</small></div>`;
     ui.appendChild(wrap);

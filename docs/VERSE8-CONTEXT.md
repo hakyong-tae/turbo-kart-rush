@@ -1,4 +1,4 @@
-# Drift Dash GP (구 Turbo Kart Rush) — Verse8 컨텍스트 (V8 AI / CLI 에이전트용)
+# Drift Kart (구 Drift Dash GP, 원작 Turbo Kart Rush) — Verse8 컨텍스트 (V8 AI / CLI 에이전트용)
 
 이 문서는 Verse8 워크스페이스의 AI와 로컬 CLI 에이전트가 **먼저 읽어야 하는** 규칙이다. 구조 분석은 `NOTES.md`, 모듈 계약은 `CONTRACT.md`.
 
@@ -13,7 +13,7 @@
 4. `src/verse8/embed.ts`의 GAME_SIZE 핸드셰이크 제거 금지(iframe 뷰포트 0 방지).
 5. 루트 `server.js` = 서버 함수 배포물(빌드 없음). 컬렉션 `tkr_times`, 유저스테이트 키 `premium` / `premiumRaces` / `nickname` / `cos` / `grants` (`adsRemoved`는 폐기된 구 키, 읽기만 호환) + 진행 시스템 키 `coins` / `own` / `eco` / `race` / `award` / `xp` / `mis` / `streak`(15·16번). **광고권·구매 상태·코인은 서버만 진실** — 클라 `src/verse8/entitlements.ts`는 캐시.
 6. `src/core/**`는 프로즌 계약(추가만, 값 변경 금지). 튠 값은 `src/core/balance.ts`.
-8. **빌드 타깃은 둘이다** (`src/core/platform.ts`). `npm run build`가 이 문서가 다루는 Verse8·원스토어판(이름 DRIFT DASH GP, `dist/`)이고, `npm run build:crazygames`는 CrazyGames판(이름 DRIFT KART, `dist-crazygames/`)이다. CrazyGames판은 VX 결제·보상형 광고 버튼·온라인이 없고, Verse8 SDK 대신 `src/verse8/stubs/sdk.ts`가 들어가며, 계정은 브라우저 저장소의 `server.js`(localServer)가 맡는다. 게임 이름은 문자열로 적지 말고 `GAME_TITLE` / `PLATFORM.name` / 문구의 `{game}`을 쓴다. 타깃별로 달라야 하는 문구는 `'<키>@crazygames'` 항목을 하나 더 둔다.
+8. **빌드 타깃은 둘이다** (`src/core/platform.ts`). `npm run build`가 이 문서가 다루는 Verse8·원스토어판(`dist/`)이고, `npm run build:crazygames`는 CrazyGames판(`dist-crazygames/`)이다. **이름은 두 판 모두 DRIFT KART / 드리프트 카트**다(26-11-23 사용자 결정. 그 전까지 Verse8·원스토어판은 DRIFT DASH GP였다). 이름은 `src/core/platform.ts`와 `index.html`(제목·탭 아이콘·시작 스플래시) 두 곳에 적혀 있다. 저장 키(`tkr.*`)·서버 컬렉션·상품·광고 placement 이름에는 게임 이름이 없어서 그대로다. CrazyGames판은 VX 결제·보상형 광고 버튼·온라인이 없고, Verse8 SDK 대신 `src/verse8/stubs/sdk.ts`가 들어가며, 계정은 브라우저 저장소의 `server.js`(localServer)가 맡는다. 게임 이름은 문자열로 적지 말고 `GAME_TITLE` / `PLATFORM.name` / 문구의 `{game}`을 쓴다. 타깃별로 달라야 하는 문구는 `'<키>@crazygames'` 항목을 하나 더 둔다.
 9. **첫 세션 사다리**(2026-11-20): 유저스테이트 키 `lad`(레이스·완주·3위 안·1등·드리프트 부스트 횟수, 가입일). 새 계정은 서킷 4개로 시작해 완주마다 하나씩 열리고, 사다리 조건을 채우면 차고 항목이 무료로 열린다. **`lad`가 없으면서 다른 키가 하나라도 있거나 `tkr_times`에 기록이 있는 계정은 `lad.all = true`로 16개 전부 열린 채 시작한다.** 표는 `server.js`(`LADDER`, `TRACK_ORDER`, `START_TRACKS`, `INTRO_RACES`, `FIRST_DAY_MISSIONS`)와 `src/core/economy.ts` 두 곳이며 `serverEconomy.test.ts`가 맞춘다. `TRACK_ORDER`는 `TRACKS_BY_DIFFICULTY` 순서와 같아야 한다.
 7. 닉네임 규칙은 `src/verse8/nickname.ts`와 `server.js` 두 곳에 복제 — 함께 수정.
 

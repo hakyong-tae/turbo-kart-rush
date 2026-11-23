@@ -2,7 +2,7 @@
  *
  * NOT part of index.css. The default edition takes these faces from Google Fonts (index.html); an
  * edition that may not ask another host for anything (CrazyGames) has its build swap that link for
- * this file — see `target-brand` in vite.config.ts. The files are cut by tools/subset-fonts.py:
+ * this file — see `target-page` in vite.config.ts. The files are cut by tools/subset-fonts.py:
  * Anton whole, the two Korean faces down to the characters the game prints. A Hangul syllable
  * outside that set (a typed nickname) is drawn by the system face, one glyph at a time.
  * Same family names, weights and `swap` as the Google sheet, so nothing else changes. */

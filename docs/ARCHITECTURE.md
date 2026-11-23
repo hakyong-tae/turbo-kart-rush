@@ -1,4 +1,4 @@
-# Drift Dash GP — Architecture map (for iterating from here)
+# Drift Kart — Architecture map (for iterating from here)
 
 Read this before changing anything. `CONTRACT.md` is the frozen module contract (what may not
 change); this file says **where things live and where to make a given kind of change**.
