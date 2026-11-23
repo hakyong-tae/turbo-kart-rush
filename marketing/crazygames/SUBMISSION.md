@@ -102,8 +102,9 @@ The rest is in `src/platform/crazygames.ts`; the Verse8 build carries none of it
 - Events sent: `loadingStart` / `loadingStop` around start-up, `gameplayStart` when a race goes to
   its grid, when the player resumes from pause, and for each next race; `gameplayStop` at the
   results screen, on a pause the player asked for, and back in the menus. A pause caused by the
-  window losing focus is not reported (the documentation says not to). `happytime` on a first
-  place and on winning a cup.
+  window losing focus is not reported (the documentation says not to). `happytime` on winning a cup and on the
+  first race won in a visit (the documentation asks for it to be used sparingly; every win would
+  be most results screens).
 - Data: the player's record (one JSON string under `tkr.local.user`, a few kB; the limit is 1 MB)
   is written to the data module on every change. At start the copy that is further along (races
   run, then coins and XP) is used, so neither side overwrites the other's progress.

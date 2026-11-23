@@ -653,7 +653,7 @@ export class Game {
     if (!cup) return;
     const place = cupPlaceOf(cup.table);
     if (place > 0) void saveCupResult(cup.id, place);
-    if (place === 1) crazyHappytime();
+    if (place === 1) crazyHappytime('cup');
   }
 
   private buildResults(): ResultsScreen {
@@ -2185,8 +2185,8 @@ export class Game {
       events.on('race:finish', (e) => {
         if (this.race !== r || !e.isPlayer) return;
         this.onPlayerFinished(r);
-        // A win is the one thing the portal is told to celebrate (and a cup, in finishCup).
-        if (e.place === 1 && !e.retired && e.time > 0) crazyHappytime();
+        // The portal is told of a win, and passes on the first of a visit (and a cup, in finishCup).
+        if (e.place === 1 && !e.retired && e.time > 0) crazyHappytime('win');
         this.settleRace(r, e.place, Boolean(e.retired) || !(e.time > 0), e.time);
         if (!e.retired && e.time > 0) this.maybeSubmitTime(r, e.time);
       }),

@@ -21,7 +21,7 @@
  *   - `game.gameplayStart()` whenever play starts or resumes, `gameplayStop()` on every break
  *     (menu, results, pause) — but not because the page lost focus: the portal handles that.
  *     The first `gameplayStart` is where the portal stops measuring the initial download.
- *   - `game.happytime()` sparingly.
+ *   - `game.happytime()` sparingly: a cup won, and the first race won in a visit.
  *   - `game.settings.muteAudio` takes priority over the game's own sound setting.
  *   - `data` has localStorage's API, is preloaded by `init()`, saves with a debounce, holds 1 MB.
  *   - `user.systemInfo.device.type` and `.locale` instead of sniffing touch or the browser.
@@ -219,9 +219,28 @@ export function crazyGameplay(playing: boolean): void {
   flush();
 }
 
-/** A moment worth celebrating: a win, a cup. The portal throws confetti of its own. */
-export function crazyHappytime(): void {
+/** A race win has been celebrated in this visit. */
+let wonThisVisit = false;
+let lastHappyAt = -Infinity;
+/** Two celebrations closer together than this are one (a cup won by winning its last race). */
+const HAPPY_GAP_MS = 30_000;
+
+/**
+ * A moment worth celebrating. The portal throws confetti of its own over the game and asks that
+ * this be used sparingly, for significant moments. A good player wins most races, so "every win"
+ * would be most results screens. What is passed on: a cup won, every time (four races of work,
+ * and the end of something), and a race won, the first time in a visit. The game's own confetti
+ * and fanfare still mark every win.
+ */
+export function crazyHappytime(what: 'win' | 'cup'): void {
   if (!__CG_SDK__) return;
+  if (what === 'win') {
+    if (wonThisVisit) return;
+    wonThisVisit = true;
+  }
+  const now = Date.now();
+  if (now - lastHappyAt < HAPPY_GAP_MS) return;
+  lastHappyAt = now;
   call('happytime', (s) => s.game.happytime());
 }
 
@@ -394,4 +413,6 @@ export function _resetCrazyGamesForTests(): void {
   settled = null;
   replacedAfterTheFact = false;
   dataOff = reconciled = false;
+  wonThisVisit = false;
+  lastHappyAt = -Infinity;
 }

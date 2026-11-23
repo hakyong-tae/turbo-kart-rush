@@ -112,8 +112,39 @@ describe('the CrazyGames SDK wrapper, with an SDK behind it', () => {
     crazyGameplay(false);
     crazyGameplay(false);
     crazyGameplay(true);
-    crazyHappytime();
+    crazyHappytime('win');
     expect(calls.slice(2)).toEqual(['loadingStop', 'gameplayStart', 'gameplayStop', 'gameplayStart', 'happytime']);
+  });
+
+  it('celebrates sparingly: the first win of a visit, and every cup', async () => {
+    const { calls } = install();
+    startCrazyGames();
+    await ms(50);
+    const happy = (): number => calls.filter((c) => c === 'happytime').length;
+    crazyHappytime('win');
+    expect(happy()).toBe(1);
+    // More wins in the same visit are the game's own to celebrate.
+    await ms(120_000);
+    crazyHappytime('win');
+    await ms(120_000);
+    crazyHappytime('win');
+    expect(happy()).toBe(1);
+    // A cup is told every time.
+    crazyHappytime('cup');
+    expect(happy()).toBe(2);
+    await ms(600_000);
+    crazyHappytime('cup');
+    expect(happy()).toBe(3);
+  });
+
+  it('a cup won by a first win is one celebration, not two', async () => {
+    const { calls } = install();
+    startCrazyGames();
+    await ms(50);
+    crazyHappytime('win');
+    await ms(3000);
+    crazyHappytime('cup');
+    expect(calls.filter((c) => c === 'happytime')).toHaveLength(1);
   });
 
   it('tells a late SDK only where the game is now', async () => {
@@ -251,7 +282,7 @@ describe('the CrazyGames SDK wrapper, with an SDK behind it', () => {
     expect(settled).toBe(true);
     crazyLoading(false);
     crazyGameplay(true);
-    crazyHappytime();
+    crazyHappytime('cup');
     saveRecord(KEY, 'x');
     expect(calls.filter((c) => c !== 'init')).toEqual([]);
     expect(crazyMuted()).toBe(false);

@@ -12,7 +12,8 @@
 //
 // Scenarios:
 //   A. normal: loading and gameplay events in order; pause and resume; a pause caused by losing
-//      focus is not reported; the record is saved to the data module; a win calls happytime
+//      focus is not reported; the record is saved to the data module; the first win of the visit
+//      calls happytime (later wins do not: src/platform/crazygames.sdk.test.ts covers that)
 //   B. the account already has a record further along than this (empty) browser: it is taken,
 //      and the player is not sent into the first-visit race
 //   C. the portal says mute, mobile, Korean: audio is muted, touch controls are on, the UI is Korean
@@ -186,7 +187,7 @@ const only = (list, names) => list.filter((n) => names.includes(n));
   seen = await calls(page);
   const place = await page.evaluate(() => document.querySelector('.results-plate')?.textContent);
   check('A: the results screen sends gameplayStop', only(seen, ['gameplayStart', 'gameplayStop']).at(-1) === 'gameplayStop');
-  check('A: happytime is called for a win and only then', (place === '1') === seen.includes('happytime') && seen.filter((n) => n === 'happytime').length <= 1, `place ${place}, happytime x${seen.filter((n) => n === 'happytime').length}`);
+  check('A: happytime is called for the first win, and only for a win', (place === '1') === seen.includes('happytime') && seen.filter((n) => n === 'happytime').length <= 1, `place ${place}, happytime x${seen.filter((n) => n === 'happytime').length}`);
   const saved = await page.evaluate(() => ({ remote: window.__cg.data['tkr.local.user'] ?? null, local: localStorage.getItem('tkr.local.user') }));
   check('A: the record is saved to the data module, the same as the local copy', saved.remote !== null && saved.remote === saved.local, `${saved.remote?.length ?? 0} bytes`);
   await page.screenshot({ path: `${OUT}/A-results.png` });
