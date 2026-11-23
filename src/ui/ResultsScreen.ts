@@ -45,6 +45,23 @@ function readingTime(view: RewardView): number {
 }
 
 /**
+ * The layouts `fit` tries, in order, until the screen fits its window: whether the blocks about
+ * what comes next sit under the table, and how compact the rest is drawn.
+ */
+/** The table is never squeezed below this (about three rows) to make the panel fit. */
+const MIN_TABLE_PX = 90;
+const FITS: ReadonlyArray<readonly [aside: boolean, dense: number]> = [
+  [false, 0],
+  [true, 0],
+  [false, 1],
+  [true, 1],
+  [false, 2],
+  [true, 2],
+  [false, 3],
+  [true, 3],
+];
+
+/**
  * What this race paid, as far as it is known. `pending` while the server is still counting,
  * `failed` when it never answered: the screen says which, because "no coins" and "not yet" look
  * the same on an empty line.
@@ -146,6 +163,9 @@ export class ResultsScreen {
 
   private readonly rootNode: HTMLElement;
   private readonly panel: HTMLElement;
+  private readonly main: HTMLElement;
+  private readonly side: HTMLElement;
+  private readonly onResize = (): void => this.fit();
   private readonly plate: TextField;
   private readonly heading: TextField;
   private readonly subheading: TextField;
@@ -195,6 +215,8 @@ export class ResultsScreen {
     const body = el('div', 'results-body', undefined, this.panel);
     const main = el('div', 'results-main', undefined, body);
     const side = el('div', 'results-side', undefined, body);
+    this.main = main;
+    this.side = side;
     // Head: where you finished, on a number plate, with the verdict beside it and the winner's
     // kart at the far end.
     const head = el('div', 'results-head', undefined, main);
@@ -355,9 +377,70 @@ export class ResultsScreen {
     void this.panel.offsetWidth;
     this.panel.classList.add('panel-in');
     this.visible = true;
+    window.addEventListener('resize', this.onResize);
+    this.fit();
+    // Text set before its font has arrived is measured in the fallback face: measure again.
+    void document.fonts?.ready.then(() => this.fit());
+  }
+
+  /**
+   * Makes the whole screen fit its window, whatever the race dealt.
+   *
+   * A race can put a lot here at once: up to six unlock cards, a level-up, three missions and
+   * their bonus, tomorrow's check-in. The ordinary layout holds the usual hand; the full one is
+   * taller than a phone held sideways or a portal's small frame, and the panel then scrolled,
+   * with the buttons under the fold. So the panel is measured, and the first of these layouts
+   * that is not taller than its window is used (`FITS`; styles at the end of 20-results.css):
+   *
+   *   aside    the two blocks about what comes next (next unlock, tomorrow) sit under the table,
+   *            where a short table leaves room. Tried at every step, kept only where it helps.
+   *   dense 1  the unlock cards lose their caption and come in a size: picture and name
+   *   dense 2  the head and the reward line come in a size, the verdict's second line goes
+   *   dense 3  tomorrow's check-in is one line, the next unlock gives way
+   *
+   * Nothing the race did is dropped by any of them: every card, the coins, the level-up and each
+   * mission stay on screen, and no text goes under 11 px. Where it is the table that is too tall
+   * for the window, the table is what scrolls (as it always has on a desktop).
+   */
+  private fit(): void {
+    if (!this.visible) return;
+    const over = (): number => this.panel.scrollHeight - this.panel.clientHeight;
+    this.table.style.maxHeight = '';
+    this.table.style.overflowY = '';
+    let best: { aside: boolean; dense: number; over: number } | null = null;
+    for (const [aside, dense] of FITS) {
+      this.layOut(aside, dense);
+      const by = over();
+      if (by <= 1) return;
+      if (!best || by < best.over) best = { aside, dense, over: by };
+    }
+    // Nothing fits as it stands. Where the table is the tall column (two tables in a Grand
+    // Prix, a long table beside a short left column), folding the left column is no help: the
+    // least folded layout the table can make room for is used, and the table scrolls.
+    for (const [aside, dense] of FITS) {
+      this.layOut(aside, dense);
+      const room = this.table.clientHeight - over();
+      if (this.side.offsetHeight < this.main.offsetHeight || room < MIN_TABLE_PX) continue;
+      this.table.style.maxHeight = `${room}px`;
+      this.table.style.overflowY = 'auto';
+      // The left column may be too tall as well: then this layout is not the one.
+      if (over() <= 1) return;
+      this.table.style.maxHeight = '';
+      this.table.style.overflowY = '';
+    }
+    if (best) this.layOut(best.aside, best.dense);
+  }
+
+  private layOut(aside: boolean, dense: number): void {
+    if (dense > 0) this.panel.dataset.dense = String(dense);
+    else delete this.panel.dataset.dense;
+    this.panel.toggleAttribute('data-aside', aside);
+    const home = aside ? this.side : this.main;
+    if (this.nextUnlock.parentNode !== home) home.append(this.nextUnlock, this.tomorrow);
   }
 
   hide(): void {
+    window.removeEventListener('resize', this.onResize);
     this.rootNode.classList.add('hidden');
     this.confetti.replaceChildren();
     this.stopCount();
@@ -436,6 +519,7 @@ export class ResultsScreen {
   }
 
   dispose(): void {
+    window.removeEventListener('resize', this.onResize);
     this.stopCount();
     this.stopTomorrow();
     this.cancelAutoNext();
@@ -446,6 +530,7 @@ export class ResultsScreen {
   showRankBanner(text: string): void {
     this.rankBanner.set(text);
     this.rankBanner.node.classList.remove('hidden');
+    this.fit();
   }
 
   /**
@@ -465,6 +550,7 @@ export class ResultsScreen {
     const row = el('div', `reward-row reward-${view.state}`, undefined, this.rewards);
     if (view.state !== 'paid') {
       el('span', 'reward-note', view.state === 'pending' ? t('rewards.pending') : (view.why ?? t('rewards.failed')), row);
+      this.fit();
       return;
     }
     this.renderOpened(view.opened ?? []);
@@ -475,7 +561,14 @@ export class ResultsScreen {
     el('span', 'reward-label', t('rewards.race'), row);
     const amount = el('span', 'reward-amount', undefined, row);
     amount.appendChild(icon('coin'));
-    const number = el('span', 'reward-number', '+0', amount);
+    const number = el('span', 'reward-number', `+${formatCoins(coins)}`, amount);
+    // The number counts up from zero. It is given the width of where it ends now, so that the
+    // line is laid out once: measured at "+0", an offer that fitted beside it wrapped under it
+    // a second later, and a screen that had been made to fit no longer did.
+    // In ems, because the layouts `fit` tries draw the number at different sizes.
+    const size = parseFloat(getComputedStyle(number).fontSize) || 0;
+    if (size > 0) number.style.minWidth = `${(number.getBoundingClientRect().width / size).toFixed(3)}em`;
+    number.textContent = '+0';
     if (view.xp) {
       // Level plate, the bar toward the next one, and what this race put into it.
       const xp = el('span', 'reward-xp', undefined, row);
@@ -515,6 +608,7 @@ export class ResultsScreen {
     };
     this.countTimer = window.setInterval(tick, 40);
     tick();
+    this.fit();
   }
 
   private async double(b: HTMLButtonElement): Promise<void> {

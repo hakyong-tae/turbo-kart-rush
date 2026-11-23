@@ -347,6 +347,11 @@
   .results-panel {
     --pad-y: 10px;
   }
+  /* With the kicker gone and the padding down there is room for forty pixels more of table:
+     eight rows in Korean are 332px, twelve more than the default cap leaves at 510. */
+  .results-side .standings {
+    max-height: calc(100dvh - 150px);
+  }
   .results-panel > .panel-kicker {
     display: none;
   }
@@ -455,11 +460,28 @@
   .reward-amount {
     font-size: 28px;
   }
+  /* The level plate and the experience earned stay; the bar between them was thirty pixels of
+     nothing readable, and the offer beside it needs the width once the coins run to three
+     digits. */
   .reward-xp-bar {
-    width: 30px;
+    display: none;
   }
   .reward-xp-n {
     font-size: 11px;
+  }
+  /* A cup's running table: two columns of four rather than a box that scrolls. */
+  .results-side .cup-standings {
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    column-count: 2;
+    column-gap: 14px;
+  }
+  .results-side .cup-standings-head {
+    column-span: all;
+  }
+  .results-side .cup-standing {
+    break-inside: avoid;
   }
   /* At 11px the offer's wording is as wide as the column allows: the bar beside it gives way,
      and the letters sit a little closer than on other buttons. */
@@ -563,4 +585,175 @@
   .attendance-milestone {
     font-size: 11px;
   }
+}
+
+/* A small phone held sideways (667x375, 740x360): short and narrow at once. The two rules above
+   disagree there (one column for a narrow window, the whole screen at once for a short one), and
+   the short one is right: two columns, and the buttons stay in one row, which they do by giving
+   up padding and, for the records button, its word. A row of buttons that wraps costs the screen
+   a seventh of its height. */
+@media (max-height: 480px) and (max-width: 759px) {
+  .results-side {
+    margin-top: 0;
+  }
+  .results-foot > .actions {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .results-foot > .actions .btn {
+    padding: 0 9px;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+  }
+  .results-foot > .actions .results-records .btn-label {
+    display: none;
+  }
+  /* The offer takes the next line when the reward line is too narrow for it. */
+  .reward-row {
+    flex-wrap: wrap;
+  }
+  .btn.reward-double {
+    margin-left: 0;
+  }
+}
+
+/* The double-coins offer never sticks out of the reward line: where the line cannot hold its
+   wording it shortens (and at the sizes that matter there is room: the check measures it). */
+.btn.reward-double {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.btn.reward-double .btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Folding the screen to fit (ResultsScreen.fit): the panel is measured, and when what the race
+   dealt is taller than the window the first of these layouts that fits is used. They sit after
+   the size rules above and outrank them, so a step means the same at every window size. No step
+   takes a card, the coins, the level-up or a mission off the screen, and none goes under 11px. */
+
+/* aside: next unlock and tomorrow's check-in under the table (moved there by the script). */
+.results-panel[data-aside] .results-side .results-next,
+.results-panel[data-aside] .results-side .results-tomorrow {
+  margin-top: 6px;
+}
+.results-panel[data-aside] .results-side .standings {
+  /* The table gives its height to what now sits under it; `fit` caps it if it must. */
+  max-height: none;
+}
+
+/* dense 1: the cards without their caption, a size down: the picture and the name. */
+.results-panel[data-dense] .results-opened {
+  gap: 4px;
+}
+.results-panel[data-dense] .unlock-card {
+  flex-basis: 150px;
+  padding: 2px 8px 2px 2px;
+  gap: 7px;
+}
+.results-panel[data-dense] .unlock-art {
+  width: 40px;
+  height: 26px;
+}
+.results-panel[data-dense] .unlock-art .icon {
+  width: 16px;
+  height: 16px;
+}
+.results-panel[data-dense] .unlock-label {
+  display: none;
+}
+.results-panel[data-dense] .unlock-name {
+  font-size: 13px;
+}
+.results-panel[data-dense] .results-opened,
+.results-panel[data-dense] .results-next,
+.results-panel[data-dense] .results-tomorrow {
+  margin-top: 5px;
+}
+
+/* dense 2: the head and the reward line a size down; the verdict's second line goes. */
+.results-panel:is([data-dense='2'], [data-dense='3']) {
+  --pad-y: 8px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) > .panel-kicker,
+.results-panel:is([data-dense='2'], [data-dense='3']) .results-sub,
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-label,
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-balance {
+  display: none;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .results-head {
+  margin: 0 0 4px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .results-plate {
+  font-size: 26px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .results-title {
+  font-size: 20px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .results-winner {
+  width: 56px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .results-rewards {
+  padding: 3px 10px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-row {
+  gap: 4px 10px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-amount {
+  font-size: 24px;
+}
+/* The level plate and the experience earned stay; the bar between them gives its width up. */
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-xp-bar {
+  display: none;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-notes {
+  margin-top: 2px;
+  gap: 1px 12px;
+  line-height: 1.25;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .reward-note {
+  font-size: 11px;
+}
+.results-panel:is([data-dense='2'], [data-dense='3']) .standing-row {
+  min-height: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* dense 3: tomorrow's check-in on one line, without its picture and clock; the next unlock gives way.
+   Both are about a later race: they are the last to go and the only things that do. */
+.results-panel[data-dense='3'] .results-next {
+  display: none;
+}
+.results-panel[data-dense='3'] {
+  --pad-y: 6px;
+}
+/* The experience figure gives its place to the offer, which otherwise takes a line of its own
+   on a narrow phone; the level plate stays. */
+.results-panel[data-dense='3'] .reward-xp-n {
+  display: none;
+}
+.results-panel[data-dense='3'] .results-foot > .actions {
+  padding-top: 4px;
+}
+.results-panel[data-dense='3'] .results-foot > .actions .btn {
+  min-height: 34px;
+}
+.results-panel[data-dense='3'] .results-tomorrow {
+  padding: 3px 8px;
+}
+.results-panel[data-dense='3'] .tomorrow-art,
+.results-panel[data-dense='3'] .tomorrow-in {
+  display: none;
+}
+.results-panel[data-dense='3'] .tomorrow-text {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.results-panel[data-dense='3'] .tomorrow-what {
+  font-size: 11px;
 }
