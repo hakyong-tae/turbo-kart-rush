@@ -1,10 +1,12 @@
-// Build tag: a small badge (bottom-right, until the first tap or key press) naming the deployed source commit, so anyone can
-// tell at a glance whether a Verse8 build is the latest (Verse8 sessions can keep building an old copy).
-import { SOURCE_COMMIT, STAMPED_AT } from './buildInfo';
+// Build tag: a small badge (bottom-right, until the first tap or key press) saying when this build was made and from
+// which commit, so anyone can tell at a glance whether a Verse8 build is the latest (Verse8 sessions can keep building
+// an old copy). The text is worked out when the build is made (`buildTag` in vite.config.ts), not kept in a file that
+// has to be remembered: it is right in every build. An edition that has no use for it gets an empty tag and no badge.
 
 function show(): void {
+  if (!__BUILD_TAG__) return;
   const el = document.createElement('div');
-  el.textContent = `build ${STAMPED_AT ? STAMPED_AT + ' · ' : ''}${SOURCE_COMMIT}`;
+  el.textContent = __BUILD_TAG__;
   el.setAttribute('aria-hidden', 'true');
   Object.assign(el.style, {
     position: 'fixed', right: '6px', bottom: '6px', zIndex: '2147483000', pointerEvents: 'none',

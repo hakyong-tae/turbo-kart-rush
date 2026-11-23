@@ -1,5 +1,8 @@
 // Stamps src/buildInfo with the current source commit and time (KST) right before a Verse8 push; commit the
-// stamp with it. The game shows it as a small "build MM/DD HH:MM · <sha>" badge until the first tap or key press.
+// stamp with it. It is how a build made without a git checkout knows which commit it is: vite.config.ts (`buildTag`)
+// reads it for the small "build MM/DD HH:MM · <sha>" badge the game shows until the first tap or key press. A build
+// made from a checkout goes by its own HEAD, and names this commit after it (`· src <sha>`) when the checkout is
+// another repository's, as the Verse8 one is.
 // Usage: node tools/stamp-build.mjs
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';

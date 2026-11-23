@@ -40,6 +40,7 @@ git reset --hard origin/develop
 bun install
 bun run build
 ```
+- 화면 오른쪽 아래의 `build MM/DD HH:MM · …` 배지(첫 터치·키 입력 전까지)가 지금 떠 있는 빌드를 말해 준다. 글자는 빌드할 때 정해진다(`vite.config.ts`의 `buildTag`): 빌더에 git 체크아웃이 있으면 `<develop 커밋> · src <main 커밋>`, 없으면 `src <main 커밋>`. `src` 뒤의 커밋은 push 전에 `src/buildInfo.ts`에 찍은 것이고, 시각은 그 빌드가 만들어진 때(KST)다. 로비 왼쪽 아래의 `날짜-…-s<해시>`에서 `s<해시>`는 소스 내용의 해시라, 같은 소스를 로컬에서 빌드한 것과 같으면 같은 코드다.
 - 호스트 안에서만 검증 가능: 실 광고(SSV), 실 결제(`$onItemPurchased`), 실 랭킹, 핸드셰이크. 톱프레임(로컬)은 전부 mock.
 
 ## 6. 온라인 멀티 (스펙 B + C: 아이템 동기화)

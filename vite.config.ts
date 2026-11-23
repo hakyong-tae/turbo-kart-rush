@@ -19,6 +19,9 @@ function sourceHash(): string {
     for (const name of readdirSync(dir).sort()) {
       const full = join(dir, name);
       if (statSync(full).isDirectory()) walk(full);
+      // Not the deploy stamp: it changes with every Verse8 push, and the point of this hash is
+      // that the same code gives the same hash on both sides of one.
+      else if (full === join('src', 'buildInfo.ts')) continue;
       else if (/\.(ts|tsx|css|html|js)$/.test(name)) {
         h.update(name);
         h.update(readFileSync(full));
@@ -59,6 +62,57 @@ function buildId(): string {
   const d = new Date();
   const day = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   return `${day}-${parts.join('-')}`;
+}
+
+/**
+ * What the corner badge says (src/buildTag.ts): when this build was made and from which commit.
+ *
+ * It used to print two constants from src/buildInfo.ts, which only tools/stamp-build.mjs writes,
+ * right before a Verse8 push. Every other build (a local one, the CrazyGames edition, anything
+ * built from main after the last push) carried the last push's commit and time: a badge that was
+ * wrong more often than right. So the answer is worked out here, when the build is made:
+ *
+ *   - There is a git checkout: the commit is HEAD (with `+` when tracked files differ from it).
+ *     If the stamp names a commit this repository has never heard of, the tree is a deploy
+ *     overlay made from another repository's commit, and that one is named too: `· src <sha>`.
+ *     A stamp naming one of this repository's own commits is just old, and is left out.
+ *   - There is none (a builder that is handed the files only): the stamp is all there is, and it
+ *     is right there, because that builder builds exactly what was stamped and pushed.
+ *
+ * The time is this build's, in KST like the stamp's.
+ */
+function buildTag(): string {
+  const t = new Date(Date.now() + 9 * 3600 * 1000);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const when = `${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+  let stamp = '';
+  try {
+    stamp = /SOURCE_COMMIT = '([0-9a-f]{4,40})'/.exec(readFileSync('src/buildInfo.ts', 'utf8'))?.[1] ?? '';
+  } catch {
+    /* no stamp file */
+  }
+  const git = (args: string): string => execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  let head = '';
+  try {
+    head = git('rev-parse --short HEAD');
+  } catch {
+    return `build ${when} · ${stamp ? `src ${stamp}` : `s${sourceHash()}`}`;
+  }
+  let dirty = false;
+  let foreign = false;
+  try {
+    dirty = git('status --porcelain --untracked-files=no') !== '';
+    if (stamp && !head.startsWith(stamp) && !stamp.startsWith(head)) {
+      try {
+        git(`cat-file -e ${stamp}^{commit}`);
+      } catch {
+        foreign = true;
+      }
+    }
+  } catch {
+    /* a checkout that cannot be asked: HEAD alone */
+  }
+  return `build ${when} · ${head}${dirty ? '+' : ''}${foreign ? ` · src ${stamp}` : ''}`;
 }
 
 /**
@@ -147,6 +201,9 @@ export default defineConfig(({ mode }) => {
     base: './',
     define: {
       __BUILD_ID__: JSON.stringify(buildId()),
+      // The corner badge is for telling which build a Verse8 preview is showing. The CrazyGames
+      // edition has no use for it in front of players: an empty tag, and no badge is made.
+      __BUILD_TAG__: JSON.stringify(target ? '' : buildTag()),
       // A bare boolean the minifier can fold: code behind `if (!__VX__) return` leaves the bundle.
       __VX__: JSON.stringify(!target),
       // The CrazyGames edition carries the portal's SDK unless it is built with CG_SDK=0
