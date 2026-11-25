@@ -449,6 +449,18 @@ export class MainMenu {
     this.rootNode.remove();
   }
 
+  /** Puts the cursor (and the lobby's showcase) on a kart picked somewhere else. */
+  selectCharacter(characterId: string): void {
+    const i = this.characters.findIndex((c) => c.id === characterId);
+    if (i >= 0) this.setCharacter(i);
+  }
+
+  /** Lobby buttons the tour points at, in its order: the cup, the garage, the missions. */
+  tourTargets(): { cup: HTMLElement | null; garage: HTMLElement | null; missions: HTMLElement | null } {
+    const find = (cls: string): HTMLElement | null => this.lobbyButtons.find((b) => b.classList.contains(cls)) ?? null;
+    return { cup: this.cupGoalButton ?? null, garage: find('garage-toggle'), missions: this.missionsButton ?? null };
+  }
+
   /** Continue past character select after a lock was resolved (ad watched / purchase made). */
   proceedFromCharacter(): void {
     if (this.panel === 'characterSelect') this.goTo('trackSelect', true);

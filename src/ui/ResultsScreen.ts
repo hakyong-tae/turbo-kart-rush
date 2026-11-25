@@ -153,6 +153,15 @@ export interface CupTrophyView {
   opened: readonly string[];
 }
 
+/** One kart on the first results screen's "pick your kart" row. */
+export interface KartChoice {
+  id: string;
+  name: string;
+  /** Body colour, for the swatch shown while the kart's picture is not drawn yet. */
+  color: number;
+  thumb?: string;
+}
+
 /** Button order in the foot; `activate` and the focus ring both count in it. */
 const enum Action {
   Next,
@@ -169,6 +178,8 @@ export class ResultsScreen {
   onChangeTrack: (() => void) | null = null;
   onMainMenu: (() => void) | null = null;
   onRecords: (() => void) | null = null;
+  /** A kart picked on the "pick your kart" row: the next race is driven in it. */
+  onPickKart: ((characterId: string) => void) | null = null;
   /** Watch an ad to double this race's coins. Game owns the ad and calls `showRewards` again. */
   onDouble: (() => void | Promise<void>) | null = null;
 
@@ -191,6 +202,7 @@ export class ResultsScreen {
   private readonly cupBox: HTMLElement;
   private readonly rewards: HTMLElement;
   private readonly opened: HTMLElement;
+  private readonly kartPick: HTMLElement;
   private readonly nextUnlock: HTMLElement;
   private readonly tomorrow: HTMLElement;
   private countTimer = 0;
@@ -245,6 +257,8 @@ export class ResultsScreen {
     this.rewards = el('div', 'results-rewards', undefined, main);
     // What it opened, then the closest thing still to earn, then (once a day) tomorrow's check-in.
     this.opened = el('div', 'results-opened', undefined, main);
+    // After a new player's first race: the karts they can take into the next one.
+    this.kartPick = el('div', 'results-kart-pick hidden', undefined, main);
     this.nextUnlock = el('div', 'results-next', undefined, main);
     this.tomorrow = el('div', 'results-tomorrow', undefined, main);
     this.table = el('div', 'standings', undefined, side);
@@ -296,6 +310,56 @@ export class ResultsScreen {
   }
 
   /**
+   * The "pick your kart" row: a new player's first race was in the kart they were given; this
+   * offers the others they can drive, without leaving the screen or stopping the next race.
+   */
+  showKartPick(choices: readonly KartChoice[], current: string): void {
+    this.kartPick.replaceChildren();
+    this.kartPick.classList.toggle('hidden', choices.length < 2);
+    if (choices.length < 2) return;
+    el('div', 'results-kart-pick-title', t('results.pickKart'), this.kartPick);
+    const row = el('div', 'results-kart-pick-row', undefined, this.kartPick);
+    const cards: HTMLButtonElement[] = [];
+    for (const c of choices) {
+      const b = el('button', 'kart-pick-card', undefined, row);
+      b.type = 'button';
+      b.dataset.kart = c.id;
+      b.classList.toggle('selected', c.id === current);
+      b.setAttribute('aria-pressed', String(c.id === current));
+      if (c.thumb) {
+        const img = el('img', 'kart-pick-thumb', undefined, b);
+        img.src = c.thumb;
+        img.alt = '';
+      } else {
+        el('span', 'kart-pick-swatch', undefined, b).style.background = cssHex(c.color);
+      }
+      el('span', 'kart-pick-name', c.name, b);
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        events.emit('ui:select', {});
+        for (const other of cards) {
+          other.classList.toggle('selected', other === b);
+          other.setAttribute('aria-pressed', String(other === b));
+        }
+        this.onPickKart?.(c.id);
+      });
+      cards.push(b);
+    }
+    this.fit();
+  }
+
+  /** A kart's picture arrived after the row was drawn: it takes the swatch's place. */
+  setKartPickThumb(characterId: string, url: string): void {
+    const card = this.kartPick.querySelector<HTMLElement>(`.kart-pick-card[data-kart="${characterId}"]`);
+    const swatch = card?.querySelector('.kart-pick-swatch');
+    if (!card || !swatch) return;
+    const img = el('img', 'kart-pick-thumb');
+    img.src = url;
+    img.alt = '';
+    swatch.replaceWith(img);
+  }
+
+  /**
    * Grand Prix view for a finished race: the running table, which race this was, and whether the
    * cup ends here. Absent for a one-off race.
    */
@@ -306,6 +370,8 @@ export class ResultsScreen {
     this.flow = online ? 'online' : cup ? 'cup' : 'single';
     this.cupView = cup;
     this.cupInvite = '';
+    this.kartPick.replaceChildren();
+    this.kartPick.classList.add('hidden');
     this.buttons[Action.Next].classList.remove('cup-invite');
     this.buttons[Action.Next].title = '';
     this.applyFlow();

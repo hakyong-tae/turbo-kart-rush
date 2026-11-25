@@ -573,6 +573,12 @@ export const ko: Record<StringKey, string> = {
   'cos.badge.trophy': '트로피',
   // --- 첫 세션 (CrazyGames 재도전, 2026-11-20) -----------------------------------
   'coach.skip': '건너뛰기',
+  'tour.next': '다음',
+  'tour.done': '확인',
+  'tour.cup': '컵에서 우승하면 트로피를 받아요. 다음 목표는 이 버튼에 있어요.',
+  'tour.garage': '차고에서 카트 색과 부품을 꾸며요.',
+  'tour.missions': '매일 미션을 끝내면 코인을 받아요. 미션은 날마다 새로 나와요.',
+  'results.pickKart': '다음 레이스에 탈 카트를 골라요',
   'coach.tap': '터치',
   'coach.go.kb': '눌러서 가속하세요',
   'coach.go.touch': '화면을 터치하면 출발! 가속은 자동입니다',

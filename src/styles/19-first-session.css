@@ -358,3 +358,65 @@
     font-size: 11px;
   }
 }
+
+/* Lobby tour: a ring round one lobby button and a bubble beside it. The layer takes the taps
+   (any tap moves on), so nothing under it is pressed by mistake. */
+.lobby-tour {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: auto;
+}
+.lobby-tour.hidden {
+  display: none;
+}
+.lobby-tour-ring {
+  position: absolute;
+  border: 3px solid var(--yellow);
+  box-shadow: 0 0 0 9999px rgba(6, 8, 12, 0.35);
+  pointer-events: none;
+  animation: tour-pulse 1.2s ease-in-out infinite;
+}
+@keyframes tour-pulse {
+  50% {
+    border-color: var(--ink);
+  }
+}
+.lobby-tour-bubble {
+  position: absolute;
+  width: min(300px, 80vw);
+  padding: 12px 14px 10px;
+  background: var(--panel);
+  border-left: 4px solid var(--yellow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.lobby-tour-text {
+  margin: 0 0 10px;
+  font: 600 15px/1.35 var(--body);
+  color: var(--ink);
+}
+.lobby-tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lobby-tour-count {
+  margin-right: auto;
+  font: 700 12px/1 var(--body);
+  color: var(--ink-faint);
+}
+.lobby-tour-foot .btn {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+@media (max-height: 480px) {
+  .lobby-tour-bubble {
+    width: min(260px, 60vw);
+    padding: 8px 10px;
+  }
+  .lobby-tour-text {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+}

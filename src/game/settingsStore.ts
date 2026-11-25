@@ -95,6 +95,10 @@ export function writeAutoAccel(on: boolean): void {
 export const FIRST_RACE_KEY = 'tkr.firstRace';
 /** Set once the first-race coach has been shown (finished, skipped or driven past). */
 export const COACH_KEY = 'tkr.coach';
+/** Set once the first results screen has offered the "pick your kart" row. */
+export const KART_PICK_KEY = 'tkr.kartPick';
+/** Set once the lobby tour has been through (or skipped). */
+export const LOBBY_TOUR_KEY = 'tkr.lobbyTour';
 /** The UTC day on which the "tomorrow's check-in" window last opened by itself. */
 export const TOMORROW_KEY = 'tkr.tomorrow';
 

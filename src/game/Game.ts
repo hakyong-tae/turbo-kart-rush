@@ -39,7 +39,8 @@ import { RearView } from '../fx/RearView';
 import { EnvProbe } from '../gfx/EnvProbe';
 import { lookFor } from '../gfx/looks';
 import { initQuality, quality, setTier, stepDownForNextRace, type GfxTier } from '../gfx/quality';
-import { ensureKartThumbnails, setKartThumbnailsAllowed } from '../ui/kartThumbnails';
+import { ensureKartThumbnails, getKartThumbnail, setKartThumbnailsAllowed } from '../ui/kartThumbnails';
+import { LobbyTour } from '../ui/LobbyTour';
 import { dismissBootSplash } from '../ui/bootSplash';
 import { prefetchEngineSample } from '../audio/engineSample';
 import { crazyDevice, crazyGameplay, crazyHappytime, crazyLoading, crazyLocale, onCrazyMute, onCrazyReady } from '../platform/crazygames';
@@ -51,7 +52,7 @@ import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
 import { tickPatternTime } from '../kart/patternShader';
 import { OrientationGate } from './OrientationGate';
-import { COACH_KEY, FIRST_RACE_KEY, TOMORROW_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume, readAutoNext } from './settingsStore';
+import { COACH_KEY, FIRST_RACE_KEY, KART_PICK_KEY, LOBBY_TOUR_KEY, TOMORROW_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume, readAutoNext } from './settingsStore';
 import { PLATFORM } from '../core/platform';
 import { RaceCoach } from '../ui/RaceCoach';
 
@@ -411,6 +412,9 @@ export class Game {
   private racesSinceCup = 0;
   /** The cup the results screen's primary button is offering right now, if any. */
   private cupInvite: CupId | null = null;
+  /** A kart picked on the results screen for the next race, until that race starts. */
+  private kartChoice: string | null = null;
+  private readonly lobbyTour: LobbyTour;
   private splashUp = true;
   /** The player's own mute (M key), and the portal's, which outranks it. */
   private userMuted = false;
@@ -517,6 +521,8 @@ export class Game {
     this.missions = this.buildMissions();
     this.attendance = this.buildAttendance();
     this.unsubs.push(onEntitlementsChange(() => this.maybeOfferAttendance()));
+    this.lobbyTour = new LobbyTour(this.uiRoot);
+    this.lobbyTour.onDone = () => setFlag(LOBBY_TOUR_KEY);
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
     this.muteIndicator.appendChild(icon('mute'));
@@ -694,7 +700,7 @@ export class Game {
         const first = TRACKS.find((tr) => tr.id === getCup(invite).trackIds[0]);
         if (first) {
           this.startCup(invite, {
-            characterId: this.race.settings.characterId,
+            characterId: this.takeKartChoice(this.race.settings.characterId),
             trackId: first.id,
             difficulty: this.race.settings.difficulty,
             mode: 'solo',
@@ -706,6 +712,7 @@ export class Game {
         const next = this.nextTrackFor(this.race);
         void this.startRaceGated({
           ...this.race.settings,
+          characterId: this.takeKartChoice(this.race.settings.characterId),
           trackId: next.id,
           laps: next.laps > 0 ? next.laps : this.race.settings.laps,
         });
@@ -716,7 +723,7 @@ export class Game {
       if (this.race?.online) this.returnToRoom();
       else if (this.race) {
         this.dailyRun = null;
-        void this.startRaceGated(this.race.settings);
+        void this.startRaceGated({ ...this.race.settings, characterId: this.takeKartChoice(this.race.settings.characterId) });
       }
     };
     results.onRecords = () => {
@@ -734,7 +741,74 @@ export class Game {
       this.offerTomorrow();
     };
     results.onDouble = () => this.doubleReward();
+    results.onPickKart = (id) => {
+      this.kartChoice = id;
+      this.garageCharacterId = id;
+      this.mainMenu.selectCharacter(id);
+    };
     return results;
+  }
+
+  /** The kart for the race about to start: the one picked on the results screen, once. */
+  private takeKartChoice(fallback: string): string {
+    const id = this.kartChoice ?? fallback;
+    this.kartChoice = null;
+    return id;
+  }
+
+  /**
+   * A new player's first results: their first race was in the kart they were handed, so offer
+   * the others they can drive — the one they had, and the first free kart of each other weight
+   * class. Once per device.
+   */
+  private maybeOfferKartPick(r: RaceContext, finished: boolean): void {
+    if (!finished || hasFlag(KART_PICK_KEY) || r.online || this.cup || this.dailyRun || this.isUnrankedRun(r)) return;
+    const current = r.settings.characterId;
+    const all = CHARACTERS as readonly CharacterDef[];
+    const picks: CharacterDef[] = [];
+    const mine = all.find((c) => c.id === current);
+    if (mine) picks.push(mine);
+    for (const cls of ['light', 'medium', 'heavy'] as const) {
+      const c = all.find((k) => k.weightClass === cls && !isPremium(k.id) && !picks.includes(k));
+      if (c && !picks.some((p) => p.weightClass === cls)) picks.push(c);
+    }
+    setFlag(KART_PICK_KEY);
+    this.results.showKartPick(
+      picks.map((c) => ({ id: c.id, name: c.name, color: c.color, thumb: getKartThumbnail(c.id) })),
+      current,
+    );
+    // A first visitor never stood in the lobby, where the pictures are drawn: draw these three
+    // now, one a frame behind the results screen (the next race turns drawing off again).
+    const missing = picks.filter((c) => !getKartThumbnail(c.id));
+    if (missing.length > 0) {
+      setKartThumbnailsAllowed(true);
+      void ensureKartThumbnails(missing).then((map) => {
+        if (this.race !== r || this.state !== 'results') return;
+        for (const c of missing) {
+          const url = map.get(c.id);
+          if (url) this.results.setKartPickThumb(c.id, url);
+        }
+      });
+    }
+  }
+
+  /**
+   * The lobby tour (src/ui/LobbyTour.ts), once per device, for a player who has raced but has
+   * not stood in the lobby with nothing over it before. Not for accounts older than the unlock
+   * ladder: they know the lobby.
+   */
+  private maybeLobbyTour(): void {
+    if (this.lobbyTour.isActive || hasFlag(LOBBY_TOUR_KEY) || this.firstBoot || this.state !== 'title') return;
+    if (this.overlayOpen() || this.attendance.isVisible) return;
+    if (new URLSearchParams(location.search).has('auto')) return;
+    const ladder = getLadder();
+    if (!ladder || ladder.all || ladder.finishes < 1) return;
+    const at = this.mainMenu.tourTargets();
+    this.lobbyTour.start([
+      { target: at.cup, text: 'tour.cup' },
+      { target: at.garage, text: 'tour.garage' },
+      { target: at.missions, text: 'tour.missions' },
+    ]);
   }
 
   /** The player went another way from a cup offer: ask again a few races later, not next race. */
@@ -1861,6 +1935,8 @@ export class Game {
     const from = this.state;
     this.state = next;
     this.uiRoot.dataset.state = next;
+    // The tour points at lobby buttons: anywhere else it would point at nothing.
+    if (next !== 'title') this.lobbyTour?.hide();
     events.emit('game:stateChange', { from, to: next });
   }
 
@@ -1891,10 +1967,12 @@ export class Game {
     this.menuIdle += Math.min(seconds, 0.1);
     if (this.menuIdle < 1.2) return;
     this.menuIdle = -1;
+    this.maybeLobbyTour();
     void ensureKartThumbnails(CHARACTERS as readonly CharacterDef[]);
   }
 
   private onMenuPanel(panel: MenuPanel): void {
+    if (panel !== 'title') this.lobbyTour.hide();
     if (this.state === 'title' || this.state === 'characterSelect' || this.state === 'trackSelect') {
       this.setState(panel);
       this.backdrop.setFraming(framingFor(panel));
@@ -2360,6 +2438,7 @@ export class Game {
     this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
     this.results.setNextTrack(this.nextTrackFor(r).name);
     this.cupInvite = this.cupInviteFor(r, finished);
+    this.maybeOfferKartPick(r, finished);
     this.results.setCupInvite(this.cupInvite ? t(`cup.${this.cupInvite}`) : '');
     if (this.reward) this.results.showRewards(this.reward);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {

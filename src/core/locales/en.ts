@@ -585,6 +585,12 @@ export const en = {
   'cos.badge.trophy': 'Trophy',
   // --- first session (CrazyGames relaunch, 2026-11-20) -----------------------------------
   'coach.skip': 'SKIP',
+  'tour.next': 'NEXT',
+  'tour.done': 'GOT IT',
+  'tour.cup': 'Win cups for trophies. Your next goal is always on this button.',
+  'tour.garage': 'The garage: paint your kart and pick its parts.',
+  'tour.missions': 'Daily missions pay coins. New ones every day.',
+  'results.pickKart': 'PICK YOUR KART FOR THE NEXT RACE',
   'coach.tap': 'TAP',
   'coach.go.kb': 'Hold to accelerate',
   'coach.go.touch': 'Tap to start. The kart accelerates by itself',
