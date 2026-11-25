@@ -69,6 +69,67 @@
   letter-spacing: 0.08em;
 }
 
+/* The next cup to win: its name on the left, one small trophy per cup on the right, each in
+   the colour of its best finish. With an odd number of cells it has the first row to itself. */
+.lobby-grid.cup-wide > .cup-toggle {
+  grid-column: 1 / -1;
+}
+
+.lobby-grid .cup-toggle {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.lobby-grid .cup-toggle > .btn-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.cup-shelf {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+  /* A dark well of its own, so a gold trophy still reads on the yellow of a focused button. */
+  padding: 3px 5px;
+  background: rgba(10, 12, 18, 0.55);
+}
+
+.cup-shelf > .cup-shelf-slot {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.4;
+}
+
+.cup-shelf-slot.gold {
+  color: var(--gold);
+  fill: var(--gold);
+}
+
+.cup-shelf-slot.silver {
+  color: var(--silver);
+  fill: var(--silver);
+}
+
+.cup-shelf-slot.bronze {
+  color: var(--bronze);
+  fill: var(--bronze);
+}
+
+.cup-shelf-slot.empty {
+  color: var(--ink);
+  opacity: 0.55;
+}
+
+.cup-shelf-slot.locked {
+  color: var(--ink-faint);
+  opacity: 0.35;
+}
+
 .lobby .btn.start {
   min-height: clamp(58px, 9.5vh, 76px);
   font-size: clamp(24px, 2.6vw, 34px);

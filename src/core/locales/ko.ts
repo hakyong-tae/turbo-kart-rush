@@ -328,6 +328,16 @@ export const ko: Record<StringKey, string> = {
   'cup.won': '컵 우승',
   'cup.placed': '컵 {ord}',
   'cup.unlocked': '{cup} 해금',
+  'cup.goal': '트로피 도전 · {n}개 서킷',
+  'cup.goal.gold': '금 트로피 도전 · {n}개 서킷',
+  'cup.allGold': '모든 컵 우승',
+  'cup.trophy.gold': '금 트로피',
+  'cup.trophy.silver': '은 트로피',
+  'cup.trophy.bronze': '동 트로피',
+  'cup.trophy.none': '3위 안에 들면 트로피',
+  'cup.trophy.new': '새 트로피',
+  'cup.invite': '{cup} 시작',
+  'cup.invite.sub': '트로피를 걸고 달려요',
 
   // garage: chrome
   'lobby.garage': '차고',

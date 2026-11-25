@@ -138,3 +138,43 @@ export function cupPlaceOf(table: readonly CupEntry[]): number {
   const i = table.findIndex((e) => e.isPlayer);
   return i < 0 ? 0 : i + 1;
 }
+
+// --- trophies and the next goal -----------------------------------------------------
+
+/**
+ * A cup's trophy is its best placing read as a medal: first is gold, then silver, then bronze.
+ * Fourth or worse, or never finished, is no trophy. The shelf in the lobby and the ceremony at
+ * the end of a cup both read it from the same `CupProgress` the unlocks already use, so a trophy
+ * needs no record of its own.
+ */
+export type Trophy = 'gold' | 'silver' | 'bronze';
+
+export function trophyFor(place: number | undefined): Trophy | null {
+  if (place === 1) return 'gold';
+  if (place === 2) return 'silver';
+  if (place === 3) return 'bronze';
+  return null;
+}
+
+/** Gold trophies on the shelf, out of `CUPS.length`. */
+export function goldCount(progress: CupProgress): number {
+  return CUPS.filter((c) => progress[c.id] === 1).length;
+}
+
+/**
+ * The cup to point the player at next: the first one in display order that is open and not yet
+ * won outright. One with no trophy at all comes before one that only needs a better colour, so a
+ * bronze in the Rookie Cup does not hold the player there while the Pro Cup sits unraced.
+ * Null when every cup is gold.
+ */
+export function nextCupGoal(progress: CupProgress): CupId | null {
+  const open = CUPS.filter((c) => isCupUnlocked(c.id, progress) && progress[c.id] !== 1);
+  const fresh = open.find((c) => trophyFor(progress[c.id]) === null);
+  return (fresh ?? open[0])?.id ?? null;
+}
+
+/** Cups that `place` in cup `id` opens which were closed under `before`. */
+export function cupsOpenedBy(before: CupProgress, id: CupId, place: number): CupId[] {
+  const after = recordCupResult(before, id, place);
+  return CUPS.filter((c) => !isCupUnlocked(c.id, before) && isCupUnlocked(c.id, after)).map((c) => c.id);
+}

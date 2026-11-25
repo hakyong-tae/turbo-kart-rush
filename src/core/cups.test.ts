@@ -4,6 +4,10 @@ import {
   CUPS,
   addRaceToCup,
   cupPlaceOf,
+  cupsOpenedBy,
+  goldCount,
+  nextCupGoal,
+  trophyFor,
   isCupUnlocked,
   recordCupResult,
   type CupEntry,
@@ -118,5 +122,43 @@ describe('cup scoring', () => {
     expect(table[0].name).toBe('Renamed');
     expect(table[0].cos).toBe('b:00ff00');
     expect(table[0].characterId).toBe('zippy');
+  });
+});
+
+describe('trophies and the next goal', () => {
+  it('reads a placing as a medal', () => {
+    expect(trophyFor(1)).toBe('gold');
+    expect(trophyFor(2)).toBe('silver');
+    expect(trophyFor(3)).toBe('bronze');
+    expect(trophyFor(4)).toBeNull();
+    expect(trophyFor(undefined)).toBeNull();
+  });
+
+  it('points a new account at the Rookie Cup', () => {
+    expect(nextCupGoal({})).toBe('rookie');
+  });
+
+  it('moves on to an unraced open cup before asking for a better colour', () => {
+    // A bronze in Rookie opens Pro and Stunt; Pro has no trophy yet, so it comes first.
+    expect(nextCupGoal({ rookie: 3 })).toBe('pro');
+    // Every open cup has some trophy: the first one short of gold.
+    expect(nextCupGoal({ rookie: 3, pro: 2, stunt: 1, championship: 1, extreme: 1 })).toBe('rookie');
+  });
+
+  it('stays on a cup that is open but not podiumed', () => {
+    expect(nextCupGoal({ rookie: 5 })).toBe('rookie');
+  });
+
+  it('has nothing left when every cup is gold', () => {
+    const all: CupProgress = {};
+    for (const c of CUPS) all[c.id] = 1;
+    expect(nextCupGoal(all)).toBeNull();
+    expect(goldCount(all)).toBe(CUPS.length);
+  });
+
+  it('names the cups a finish opens', () => {
+    expect(cupsOpenedBy({}, 'rookie', 2).sort()).toEqual(['pro', 'stunt']);
+    expect(cupsOpenedBy({}, 'rookie', 4)).toEqual([]);
+    expect(cupsOpenedBy({ rookie: 3 }, 'rookie', 1)).toEqual([]);
   });
 });

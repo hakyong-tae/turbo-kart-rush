@@ -10,7 +10,7 @@ import { button, cssHex, el, TextField } from './dom';
 import { icon } from './icons';
 import { showToast } from './toast';
 import { getLang, setLang, t, t as tt, tOr, type Lang } from '../core/i18n';
-import { CUPS, isCupUnlocked, type CupId } from '../core/cups';
+import { CUPS, isCupUnlocked, nextCupGoal, trophyFor, type CupId } from '../core/cups';
 import {
   canRace,
   entitlementsPending,
@@ -38,6 +38,9 @@ import type { StringKey } from '../core/i18n';
 function buildStamp(): string {
   return typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
 }
+
+/** Circuits in a cup, for its one-line description. */
+const getCupTrackCount = (id: CupId): number => CUPS.find((c) => c.id === id)?.trackIds.length ?? 0;
 
 /** Cup labels are keyed by id at runtime; the locale test covers the same ground. */
 type LocaleKey = Parameters<typeof t>[0];
@@ -108,6 +111,8 @@ export class MainMenu {
   private readonly streakText: TextField;
   private missionsButton!: HTMLButtonElement;
   private attendanceButton!: HTMLButtonElement;
+  /** Lobby cell for the next cup to win, with the trophy shelf beside its name. */
+  private cupGoalButton!: HTMLButtonElement;
   /** Per stat, its five blocks in the detail strip under the racer grid. */
   private readonly statCells: HTMLElement[][] = [];
   private readonly unsubEntitlements: () => void;
@@ -186,6 +191,10 @@ export class MainMenu {
       this.goTo('characterSelect', true),
     );
     lobby.append(lobbyGrid, lobbyIcons);
+    // The next cup to win, first in the grid. Quick races alone only ever change the circuit; a
+    // cup is three or four of them for a trophy, which is something to come back for.
+    const gridStart = this.lobbyButtons.length;
+    this.cupGoalButton = lobbyEntry(t('cup.label'), 'lobby-btn cup-toggle', lobbyGrid, () => this.startCupGoal(), 'trophy');
     lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => this.onGarage?.(), 'wrench');
     this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
     if (online) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
@@ -208,7 +217,14 @@ export class MainMenu {
     iconEntry(t('lb.button'), t('lb.button'), 'records-toggle', () => this.onRecords?.(), 'trophy');
     iconEntry(t('lobby.settings'), t('lobby.settings'), 'settings-toggle', () => this.onSettings?.(), 'gear');
     this.lobbyRows.push([0]);
-    for (let i = 1; i < gridEnd; i += LOBBY_COLUMNS) {
+    // An odd number of cells: the cup takes the grid's first row to itself (13-lobby-gate.css).
+    let gridFrom = gridStart;
+    if ((gridEnd - gridStart) % LOBBY_COLUMNS !== 0) {
+      lobbyGrid.classList.add('cup-wide');
+      this.lobbyRows.push([gridStart]);
+      gridFrom += 1;
+    }
+    for (let i = gridFrom; i < gridEnd; i += LOBBY_COLUMNS) {
       const row: number[] = [];
       for (let k = i; k < Math.min(gridEnd, i + LOBBY_COLUMNS); k++) row.push(k);
       this.lobbyRows.push(row);
@@ -521,6 +537,40 @@ export class MainMenu {
     const done = missions ? missions.list.filter((m) => m.done).length : 0;
     setButtonContent(this.missionsButton, missions ? `${t('lobby.missions')} ${done}/${missions.list.length}` : t('lobby.missions'), 'target');
     this.attendanceButton.classList.toggle('attn', Boolean(streak) && !streak?.claimed);
+    this.refreshCupGoal();
+  }
+
+  /** The cup cell: the cup to win next by name, and one trophy per cup in its best colour. */
+  private refreshCupGoal(): void {
+    const b = this.cupGoalButton;
+    if (!b) return;
+    const progress = getCupProgress();
+    const goal = nextCupGoal(progress);
+    const name = goal ? tk(`cup.${goal}`) : t('cup.allGold');
+    setButtonContent(b, name, 'trophy');
+    b.title = goal ? `${name} · ${t(trophyFor(progress[goal]) ? 'cup.goal.gold' : 'cup.goal', { n: String(getCupTrackCount(goal)) })}` : name;
+    const shelf = el('span', 'cup-shelf', undefined, b);
+    shelf.setAttribute('aria-hidden', 'true');
+    for (const cup of CUPS) {
+      const tier = trophyFor(progress[cup.id]);
+      const open = isCupUnlocked(cup.id, progress);
+      shelf.appendChild(icon('trophy', `cup-shelf-slot ${tier ?? (open ? 'empty' : 'locked')}`));
+    }
+  }
+
+  /** Lobby shortcut into the next cup, with the kart on show and the last difficulty picked. */
+  private startCupGoal(): void {
+    const goal = nextCupGoal(getCupProgress());
+    if (!goal) {
+      this.goTo('characterSelect', true);
+      return;
+    }
+    const i = CUPS.findIndex((c) => c.id === goal);
+    if (i >= 0) this.cupIndex = i;
+    // A premium kart on show that cannot race right now: the cup is not the place to ask for it.
+    const shown = this.characters[this.charIndex];
+    if (!shown || !canRace(shown.id)) this.charIndex = 0;
+    this.startCup();
   }
 
   private refreshLocks(): void {

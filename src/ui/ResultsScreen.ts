@@ -10,7 +10,7 @@ import { events } from '../core/events';
 import { formatRaceTime } from '../core/math';
 import { localOrdinal, t } from '../core/i18n';
 import { unpackCosmetics } from '../core/cosmetics';
-import type { CupEntry } from '../core/cups';
+import type { CupEntry, Trophy } from '../core/cups';
 import { badgeElement } from './badges';
 import { CHARACTERS } from '../kart/roster';
 import { getLookThumbnail } from './kartThumbnails';
@@ -140,6 +140,17 @@ export interface CupView {
   raceIndex: number;
   raceCount: number;
   isFinal: boolean;
+  /** The cup's last race only: the trophy it earned and what that opened. */
+  trophy?: CupTrophyView;
+}
+
+export interface CupTrophyView {
+  /** Null: finished fourth or worse. */
+  tier: Trophy | null;
+  /** Better than anything this cup had given before. */
+  isNew: boolean;
+  /** Names of the cups this result opened, already in the player's language. */
+  opened: readonly string[];
 }
 
 /** Button order in the foot; `activate` and the focus ring both count in it. */
@@ -187,6 +198,8 @@ export class ResultsScreen {
   private flow: ResultsFlow = 'single';
   private cupView: CupView | undefined;
   private nextTrack = '';
+  /** A cup the primary button starts instead of the next circuit (its name), or ''. */
+  private cupInvite = '';
   /**
    * Auto-advance: once what the race did has been shown, the primary button fills over
    * `AUTO_NEXT_SECONDS` and then starts the next race. Armed by the game per results screen
@@ -272,6 +285,17 @@ export class ResultsScreen {
   }
 
   /**
+   * Points the primary button at a cup instead of the next circuit. Game decides when (after a
+   * few one-off races) and passes the cup's name; '' puts the button back on the next circuit.
+   */
+  setCupInvite(cupName: string): void {
+    this.cupInvite = this.flow === 'single' ? cupName : '';
+    this.buttons[Action.Next].classList.toggle('cup-invite', Boolean(this.cupInvite));
+    this.buttons[Action.Next].title = this.cupInvite ? t('cup.invite.sub') : '';
+    this.labelPrimary();
+  }
+
+  /**
    * Grand Prix view for a finished race: the running table, which race this was, and whether the
    * cup ends here. Absent for a one-off race.
    */
@@ -281,6 +305,9 @@ export class ResultsScreen {
     this.autoHold = false;
     this.flow = online ? 'online' : cup ? 'cup' : 'single';
     this.cupView = cup;
+    this.cupInvite = '';
+    this.buttons[Action.Next].classList.remove('cup-invite');
+    this.buttons[Action.Next].title = '';
     this.applyFlow();
     this.clearRewards();
     this.table.replaceChildren();
@@ -743,7 +770,9 @@ export class ResultsScreen {
       ? cup.isFinal
         ? t('cup.finish')
         : t('cup.next')
-      : this.nextTrack
+      : this.cupInvite
+        ? t('cup.invite', { cup: this.cupInvite })
+        : this.nextTrack
         ? t('results.nextOn', { name: this.nextTrack.toUpperCase() })
         : t('results.next');
     setButtonContent(this.buttons[Action.Next], label);
@@ -765,6 +794,7 @@ export class ResultsScreen {
     this.cupBox.replaceChildren();
     this.cupBox.classList.toggle('hidden', !cup);
     if (!cup) return;
+    if (cup.trophy) this.renderTrophy(cup.trophy);
     const head = el('div', 'cup-standings-head', undefined, this.cupBox);
     el('span', 'cup-standings-title', t('cup.standings'), head);
     el('span', 'cup-standings-round', t('cup.race', { i: String(cup.raceIndex + 1), n: String(cup.raceCount) }), head);
@@ -778,6 +808,16 @@ export class ResultsScreen {
       name.appendChild(document.createTextNode(e.name));
       el('span', 'cup-standing-points', t('cup.points', { n: String(e.points) }), row);
     }
+  }
+
+  /** The cup's last race: the trophy in its colour (or what one takes), and the cups it opened. */
+  private renderTrophy(view: CupTrophyView): void {
+    const box = el('div', `cup-trophy ${view.tier ?? 'none'}`, undefined, this.cupBox);
+    box.appendChild(icon('trophy', 'cup-trophy-icon'));
+    const text = el('div', 'cup-trophy-text', undefined, box);
+    const line = el('div', 'cup-trophy-name', view.tier ? t(`cup.trophy.${view.tier}`) : t('cup.trophy.none'), text);
+    if (view.tier && view.isNew) el('span', 'cup-trophy-new', t('cup.trophy.new'), line);
+    for (const name of view.opened) el('div', 'cup-trophy-opened', t('cup.unlocked', { cup: name }), text);
   }
 
   /** Shows the winner's kart when they were wearing something; hidden for a bare default look. */

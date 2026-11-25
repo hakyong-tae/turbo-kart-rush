@@ -368,6 +368,72 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The cup's last race: the trophy it earned, in its metal, above the final table. */
+.cup-trophy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: var(--panel-hi);
+  border-left: 4px solid var(--ink-faint);
+}
+.cup-trophy.gold {
+  border-left-color: var(--gold);
+}
+.cup-trophy.silver {
+  border-left-color: var(--silver);
+}
+.cup-trophy.bronze {
+  border-left-color: var(--bronze);
+}
+.cup-trophy-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  color: var(--ink-faint);
+}
+.cup-trophy.gold .cup-trophy-icon {
+  color: var(--gold);
+  fill: var(--gold);
+}
+.cup-trophy.silver .cup-trophy-icon {
+  color: var(--silver);
+  fill: var(--silver);
+}
+.cup-trophy.bronze .cup-trophy-icon {
+  color: var(--bronze);
+  fill: var(--bronze);
+}
+.cup-trophy-text {
+  min-width: 0;
+}
+.cup-trophy-name {
+  font: italic 700 16px/1.15 var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cup-trophy.none .cup-trophy-name {
+  font: 700 13px/1.2 var(--body);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-dim);
+}
+.cup-trophy-new {
+  margin-left: 8px;
+  padding: 1px 6px;
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font: 700 10px/1.4 var(--body);
+  letter-spacing: 0.1em;
+  vertical-align: middle;
+}
+.cup-trophy-opened {
+  margin-top: 2px;
+  font: 700 11px/1.2 var(--body);
+  color: var(--yellow);
+}
+
 /* Landscape phone: race standings plus a cup table is a lot of rows for 400 px of height. */
 @media (max-height: 480px) {
   .cup-standings {
@@ -379,6 +445,14 @@
   .cup-standing {
     padding: 2px 6px 2px 4px;
     font-size: 11px;
+  }
+  .cup-trophy {
+    margin-bottom: 4px;
+    padding: 4px 8px;
+  }
+  .cup-trophy-icon {
+    width: 22px;
+    height: 22px;
   }
 }
 

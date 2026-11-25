@@ -116,10 +116,11 @@ import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
 import { cosmeticOf, isUnlocked, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
-import { addRaceToCup, cupPlaceOf, getCup, type CupEntry, type CupId } from '../core/cups';
+import { addRaceToCup, cupPlaceOf, cupsOpenedBy, getCup, nextCupGoal, trophyFor, type CupEntry, type CupId } from '../core/cups';
 import { botName, localRacerName } from '../core/racerNames';
 import {
   getCosmetics,
+  getCupProgress,
   getEntitlements,
   getLadder,
   getOwned,
@@ -149,6 +150,11 @@ const MIN_LOADING_SECONDS = 0.8;
 /** Give up waiting for async shader compilation after this long and just go. */
 const MAX_COMPILE_WAIT_SECONDS = 8;
 const RESULTS_DELAY_SECONDS = 1.6;
+/**
+ * One-off races finished before the results screen offers the next cup instead of the next
+ * circuit. Quick races only ever change the circuit; a cup is a trophy to win.
+ */
+const CUP_INVITE_AFTER = 2;
 const MAX_STEPS_PER_FRAME = 8;
 const SUN_DISTANCE = 90;
 const EMPTY_KARTS: readonly IKart[] = [];
@@ -401,6 +407,10 @@ export class Game {
   private menuIdle = 0;
   /** Races in a row the player finished without touching the controls. */
   private idleRaces = 0;
+  /** One-off races finished since the last cup: after `CUP_INVITE_AFTER`, results offer one. */
+  private racesSinceCup = 0;
+  /** The cup the results screen's primary button is offering right now, if any. */
+  private cupInvite: CupId | null = null;
   private splashUp = true;
   /** The player's own mute (M key), and the portal's, which outranks it. */
   private userMuted = false;
@@ -615,13 +625,28 @@ export class Game {
     menu.onDaily = () => this.daily.show();
     menu.onMissions = () => this.missions.show();
     menu.onAttendance = () => this.attendance.show();
-    menu.onStartCup = (cupId, settings) => {
-      this.dailyRun = null;
-      this.cup = { id: cupId, index: 0, table: [], settings };
-      void this.startRaceGated(settings);
-    };
+    menu.onStartCup = (cupId, settings) => this.startCup(cupId, settings);
     menu.onOnline = () => this.onlinePanel.show();
     return menu;
+  }
+
+  private startCup(cupId: CupId, settings: RaceSettings): void {
+    this.dailyRun = null;
+    this.cupInvite = null;
+    this.racesSinceCup = 0;
+    this.cup = { id: cupId, index: 0, table: [], settings };
+    void this.startRaceGated(settings);
+  }
+
+  /**
+   * The cup a one-off race's results should offer instead of the next circuit: the next one to
+   * win, once a few races have gone by since the last cup. Never during the intro races (the
+   * first-session walk expects NEXT RACE there), the daily, online, or an unranked run.
+   */
+  private cupInviteFor(r: RaceContext, finished: boolean): CupId | null {
+    if (!finished || this.cup || this.dailyRun || r.online || r.settings.intro || this.isUnrankedRun(r)) return null;
+    if (this.racesSinceCup < CUP_INVITE_AFTER) return null;
+    return nextCupGoal(getCupProgress());
   }
 
   /** Starts the next leg on the cup's own track list, keeping kart, mode and difficulty. */
@@ -631,8 +656,10 @@ export class Game {
     const def = getCup(cup.id);
     cup.index += 1;
     if (cup.index >= def.trackIds.length) {
+      // To the lobby, where the trophy just won stands on the shelf beside the next cup.
       this.cup = null;
-      this.returnToMenu('trackSelect');
+      this.returnToMenu('title');
+      this.offerTomorrow();
       return;
     }
     const trackId = def.trackIds[cup.index];
@@ -659,9 +686,22 @@ export class Game {
   private buildResults(): ResultsScreen {
     const results = new ResultsScreen(this.uiRoot);
     results.onNextRace = () => {
+      const invite = this.cupInvite;
+      this.cupInvite = null;
       if (this.race?.online) this.returnToRoom();
       else if (this.cup) void this.advanceCup();
-      else if (this.race) {
+      else if (this.race && invite) {
+        const first = TRACKS.find((tr) => tr.id === getCup(invite).trackIds[0]);
+        if (first) {
+          this.startCup(invite, {
+            characterId: this.race.settings.characterId,
+            trackId: first.id,
+            difficulty: this.race.settings.difficulty,
+            mode: 'solo',
+            laps: first.laps > 0 ? first.laps : DEFAULT_LAPS,
+          });
+        }
+      } else if (this.race) {
         this.dailyRun = null;
         const next = this.nextTrackFor(this.race);
         void this.startRaceGated({
@@ -672,6 +712,7 @@ export class Game {
       }
     };
     results.onRaceAgain = () => {
+      this.declineCupInvite();
       if (this.race?.online) this.returnToRoom();
       else if (this.race) {
         this.dailyRun = null;
@@ -682,16 +723,24 @@ export class Game {
       if (this.race) this.leaderboard.show(this.race.trackDef.id, { submit: this.lastSubmit });
     };
     results.onChangeTrack = () => {
+      this.declineCupInvite();
       if (this.race?.online) this.returnToRoom();
       else this.returnToMenu('trackSelect');
     };
     results.onMainMenu = () => {
+      this.declineCupInvite();
       if (this.race?.online) void this.online?.leave();
       this.returnToMenu('title');
       this.offerTomorrow();
     };
     results.onDouble = () => this.doubleReward();
     return results;
+  }
+
+  /** The player went another way from a cup offer: ask again a few races later, not next race. */
+  private declineCupInvite(): void {
+    if (this.cupInvite) this.racesSinceCup = 0;
+    this.cupInvite = null;
   }
 
   private buildPauseMenu(): PauseMenu {
@@ -2287,11 +2336,31 @@ export class Game {
         raceCount: cupDef.trackIds.length,
         isFinal: this.cup.index >= cupDef.trackIds.length - 1,
       };
-      if (cupView.isFinal) this.finishCup();
+      if (cupView.isFinal) {
+        // Read before the save: what the cup had given before is what makes this trophy new.
+        const before = getCupProgress();
+        const place = cupPlaceOf(this.cup.table);
+        const tier = trophyFor(place);
+        const prior = trophyFor(before[this.cup.id]);
+        const rank = { gold: 1, silver: 2, bronze: 3 } as const;
+        cupView.trophy = {
+          tier,
+          isNew: Boolean(tier && (!prior || rank[tier] < rank[prior])),
+          opened: cupsOpenedBy(before, this.cup.id, place).map((id) => t(`cup.${id}`)),
+        };
+        this.finishCup();
+      }
     }
+    const meStanding = standings.find((s) => s.isPlayer);
+    const finished = Boolean(meStanding && isFinite(meStanding.finishTime) && meStanding.finishTime > 0);
+    // Intro races count toward the offer, though none of them makes it (see `cupInviteFor`): the
+    // first race after them is the one that points at the Rookie Cup.
+    if (!this.cup && !r.online && !this.dailyRun && finished) this.racesSinceCup += 1;
     if (r.heldFinish) this.settleRace(r, r.heldFinish.place, r.heldFinish.retired, r.heldFinish.seconds, standings);
     this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
     this.results.setNextTrack(this.nextTrackFor(r).name);
+    this.cupInvite = this.cupInviteFor(r, finished);
+    this.results.setCupInvite(this.cupInvite ? t(`cup.${this.cupInvite}`) : '');
     if (this.reward) this.results.showRewards(this.reward);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));

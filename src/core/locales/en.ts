@@ -340,6 +340,16 @@ export const en = {
   'cup.won': 'CUP WON',
   'cup.placed': '{ord} IN THE CUP',
   'cup.unlocked': '{cup} unlocked',
+  'cup.goal': 'Win a trophy · {n} races',
+  'cup.goal.gold': 'Go for gold · {n} races',
+  'cup.allGold': 'ALL CUPS WON',
+  'cup.trophy.gold': 'GOLD TROPHY',
+  'cup.trophy.silver': 'SILVER TROPHY',
+  'cup.trophy.bronze': 'BRONZE TROPHY',
+  'cup.trophy.none': 'Finish top 3 for a trophy',
+  'cup.trophy.new': 'NEW TROPHY',
+  'cup.invite': 'START {cup}',
+  'cup.invite.sub': 'Race for a trophy',
 
   // garage: chrome
   'lobby.garage': 'GARAGE',
