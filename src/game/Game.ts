@@ -1996,8 +1996,11 @@ export class Game {
         bot.state.racerName = botName(trackDef.id, id);
         karts.push(bot);
       }
+      // A one-off race keeps the field close around the player both ways; a cup does not bend
+      // the field that much, so its points still say who drove best.
+      const pack = !this.cup;
       for (let id = 1; id < karts.length; id++) {
-        aiDrivers.push(new AIDriver(karts[id], difficulty, id, Boolean(settings.intro)));
+        aiDrivers.push(new AIDriver(karts[id], difficulty, id, Boolean(settings.intro), pack));
       }
     }
 

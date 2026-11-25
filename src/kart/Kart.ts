@@ -139,6 +139,8 @@ export class Kart implements IKart {
   private readonly slipstream = new SlipstreamTracker();
   /** Adapter the assist modules (slipstream / magnet) drive the kart through. Allocated once. */
   private readonly assistHost: MagnetHost & SlipstreamHost;
+  /** Top-speed multiplier the AI sets for catch-up (`setPace`). */
+  private pace = 1;
   /** Model root; receives visual-only offsets. `object` always equals the physics pose. */
   private readonly visual: THREE.Group;
 
@@ -786,9 +788,14 @@ export class Kart implements IKart {
     return (out ?? new THREE.Vector3()).set(0, 0, -1).applyQuaternion(this.state.quaternion);
   }
 
+  /** See `IKart.setPace`. Clamped so a bad value cannot launch a kart off the circuit. */
+  setPace(factor: number): void {
+    this.pace = Number.isFinite(factor) ? Math.min(Math.max(factor, 0.5), 1.15) : 1;
+  }
+
   topSpeed(): number {
     const s = this.state;
-    let v = this.baseTopSpeed();
+    let v = this.baseTopSpeed() * this.pace;
     const protectedSpeed = s.isBoosting || s.isInvincible;
     if (s.surface === 'offroad' && !protectedSpeed) v *= B.status.offroadFactor;
     else if (s.surface === 'mud' && !protectedSpeed) v *= B.track.mudFactor;
