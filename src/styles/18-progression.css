@@ -650,3 +650,25 @@ div.reward-note {
     font-size: 14px;
   }
 }
+
+/* Red dots: something new behind a lobby button (src/ui/lobbyNews.ts). Top right of the
+   button, clear of its label, the same dot on a grid plate and on an icon button. */
+.lobby .lobby-btn.news {
+  position: relative;
+}
+.lobby .lobby-btn.news::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--panel);
+  pointer-events: none;
+}
+/* The cup cell's trophies make room for its dot. */
+.lobby .cup-toggle.news .cup-shelf {
+  margin-right: 12px;
+}

@@ -19,6 +19,7 @@ import {
   getEntitlements,
   getLadder,
   getMissions,
+  getOwned,
   getStreak,
   getXp,
   isPremium,
@@ -27,6 +28,8 @@ import {
   ownsKart,
 } from '../verse8/entitlements';
 import { finishesToOpen, formatCoins, levelInfo } from '../core/economy';
+import { dayKey } from '../core/daily';
+import { cupIsNews, dailyIsNews, garageIsNews, markDailySeen, markGarageSeen } from './lobbyNews';
 import { setButtonContent } from './dom';
 import { ensureKartThumbnails, getKartThumbnail, onKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
@@ -113,6 +116,8 @@ export class MainMenu {
   private attendanceButton!: HTMLButtonElement;
   /** Lobby cell for the next cup to win, with the trophy shelf beside its name. */
   private cupGoalButton!: HTMLButtonElement;
+  private garageButton!: HTMLButtonElement;
+  private dailyButton!: HTMLButtonElement;
   /** Per stat, its five blocks in the detail strip under the racer grid. */
   private readonly statCells: HTMLElement[][] = [];
   private readonly unsubEntitlements: () => void;
@@ -195,7 +200,11 @@ export class MainMenu {
     // cup is three or four of them for a trophy, which is something to come back for.
     const gridStart = this.lobbyButtons.length;
     this.cupGoalButton = lobbyEntry(t('cup.label'), 'lobby-btn cup-toggle', lobbyGrid, () => this.startCupGoal(), 'trophy');
-    lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => this.onGarage?.(), 'wrench');
+    this.garageButton = lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => {
+      markGarageSeen(getOwned());
+      this.refreshNews();
+      this.onGarage?.();
+    }, 'wrench');
     this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
     if (online) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
     const gridEnd = this.lobbyButtons.length;
@@ -213,7 +222,11 @@ export class MainMenu {
       return b;
     };
     this.attendanceButton = iconEntry(t('lobby.checkin'), t('att.title'), 'attendance-toggle', () => this.onAttendance?.(), 'calendar');
-    iconEntry(t('lobby.daily.short'), t('lobby.daily'), 'daily-toggle', () => this.onDaily?.(), 'stopwatch');
+    this.dailyButton = iconEntry(t('lobby.daily.short'), t('lobby.daily'), 'daily-toggle', () => {
+      markDailySeen(dayKey());
+      this.refreshNews();
+      this.onDaily?.();
+    }, 'stopwatch');
     iconEntry(t('lb.button'), t('lb.button'), 'records-toggle', () => this.onRecords?.(), 'trophy');
     iconEntry(t('lobby.settings'), t('lobby.settings'), 'settings-toggle', () => this.onSettings?.(), 'gear');
     this.lobbyRows.push([0]);
@@ -433,6 +446,8 @@ export class MainMenu {
 
   show(panel: MenuPanel = 'title'): void {
     this.rootNode.classList.remove('hidden');
+    // A new day, or a look won in the race just run, may have something new behind a button.
+    this.refreshNews();
     this.visible = true;
     this.goTo(panel, false);
     this.onHighlight?.(this.highlightedCharacter.id);
@@ -550,6 +565,15 @@ export class MainMenu {
     setButtonContent(this.missionsButton, missions ? `${t('lobby.missions')} ${done}/${missions.list.length}` : t('lobby.missions'), 'target');
     this.attendanceButton.classList.toggle('attn', Boolean(streak) && !streak?.claimed);
     this.refreshCupGoal();
+    this.refreshNews();
+  }
+
+  /** Red dots: the lobby buttons with something new behind them (src/ui/lobbyNews.ts). */
+  private refreshNews(): void {
+    const progress = getCupProgress();
+    this.cupGoalButton?.classList.toggle('news', cupIsNews(nextCupGoal(progress), progress));
+    this.garageButton?.classList.toggle('news', garageIsNews(getOwned()));
+    this.dailyButton?.classList.toggle('news', dailyIsNews(dayKey()));
   }
 
   /** The cup cell: the cup to win next by name, and one trophy per cup in its best colour. */

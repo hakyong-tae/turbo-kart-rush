@@ -420,3 +420,11 @@
     margin-bottom: 6px;
   }
 }
+
+/* The check-in's dot says the same thing as the lobby's red dots (18-progression.css), so it
+   wears the same colour. */
+.lobby-icons .attendance-toggle.attn::after {
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--panel);
+  clip-path: none;
+}
