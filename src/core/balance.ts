@@ -164,6 +164,11 @@ export interface Balance {
      * the point, and a field that bends around the player makes them mean less.
      */
     packRubber: Record<Difficulty, RubberBand>;
+    /**
+     * Multiplier on every bot's band when the player drives by touch. A thumb on glass is the
+     * hardest way to play this game; the field gives a phone player a little of that back.
+     */
+    touchPace: number;
     /** PD steering gains. */
     kP: number;
     kD: number;
@@ -366,6 +371,7 @@ export function createDefaultBalance(): Balance {
         startThrottleBeforeGo: 0.4,
         rubber: { base: 0.7, amp: 0.09, scale: 50, min: 0.6, max: 0.79 },
       },
+      touchPace: 0.97,
       packRubber: {
         easy: { base: 0.87, amp: 0.12, scale: 80, min: 0.72, max: 1.0 },
         normal: { base: 0.95, amp: 0.11, scale: 70, min: 0.82, max: 1.05 },

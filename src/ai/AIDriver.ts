@@ -95,6 +95,8 @@ export class AIDriver implements IAIDriver {
   /** The band this driver runs on: the profile's own, or the tighter one-off-race band. */
   private rubber: RubberBand;
   private readonly pack: boolean;
+  /** Scales the band: below 1 for a player on a touch screen (`BALANCE.ai.touchPace`). */
+  private readonly paceScale: number;
   private readonly input: InputState = createEmptyInput();
   private readonly rng: () => number;
 
@@ -135,13 +137,15 @@ export class AIDriver implements IAIDriver {
    * `easy` wherever behaviour branches on the difficulty, with the slower, tightly banded profile.
    * `pack`: a one-off offline race, banded around the player with `BALANCE.ai.packRubber` so the
    * field stays close both ways. Cups, the online field and the intro keep their own band.
+   * `paceScale`: multiplies the band (and so the speed it allows), 1 by default.
    */
-  constructor(kart: IKart, difficulty: Difficulty, personalitySeed: number, intro = false, pack = false) {
+  constructor(kart: IKart, difficulty: Difficulty, personalitySeed: number, intro = false, pack = false, paceScale = 1) {
     installListeners();
     this.kart = kart;
     this.difficulty = intro ? 'easy' : difficulty;
     this.profile = intro ? B.ai.intro : B.ai.profiles[difficulty];
     this.pack = pack && !intro;
+    this.paceScale = paceScale > 0 ? paceScale : 1;
     this.rubber = this.pack ? B.ai.packRubber[difficulty] : this.profile.rubber;
     this.rng = seededRandom(personalitySeed);
     const r = this.rng;
@@ -422,7 +426,7 @@ export class AIDriver implements IAIDriver {
     // rubber-banding against the player
     let gap = 0;
     if (playerKart && playerKart !== this.kart) gap = (playerKart.state.raceProgress - s.raceProgress) * len;
-    const factor = this.speedFactor(gap) * (1 + this.skillJitter);
+    const factor = this.speedFactor(gap) * (1 + this.skillJitter) * this.paceScale;
     // Above 1 the band lifts the kart's ceiling instead of capping its throttle.
     this.kart.setPace?.(Math.max(1, factor));
     const targetSpeed = Math.min(1, factor) * top;
