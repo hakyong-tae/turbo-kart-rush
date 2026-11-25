@@ -302,6 +302,7 @@ export const en = {
 
   // daily challenge
   'lobby.daily': 'DAILY CHALLENGE',
+  'lobby.daily.short': 'DAILY',
   'daily.title': 'DAILY CHALLENGE',
   'daily.laps': '{n} laps',
   'daily.rule.clean': 'Standard run',

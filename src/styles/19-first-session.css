@@ -243,7 +243,8 @@
 }
 
 /* ----------------------------------------------------------------------------
-   Lobby: RACE, then garage and missions, then a row of four icon buttons.
+   Lobby: RACE, then garage and missions, then a row of four small buttons, each a picture
+   with its name under it. (They were pictures alone, and nobody could tell what they did.)
    --------------------------------------------------------------------------- */
 .lobby-icons {
   display: grid;
@@ -251,18 +252,27 @@
   gap: 6px;
 }
 .lobby-icons .lobby-btn.lobby-icon {
-  min-height: 42px;
-  padding: 0;
+  flex-direction: column;
   justify-content: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 2px;
 }
 .lobby-icons .lobby-icon .btn-label {
-  display: none;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.05em;
 }
 .lobby-icons .lobby-icon .icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
-/* Today's check-in is still to claim: a yellow dot on the flame. */
+/* The keyboard cursor is the yellow fill; its chevron has no room beside a stacked picture. */
+.lobby-icons .lobby-icon.focused::before {
+  display: none;
+}
+/* Today's check-in is still to claim: a yellow dot on its button. */
 .lobby-icons .attendance-toggle.attn {
   position: relative;
 }
@@ -329,8 +339,19 @@
   text-align: right;
 }
 @media (max-height: 480px) {
+  /* Six pixels taller than the row of bare icons was: the name's line, at the least it may be. */
   .lobby-icons .lobby-btn.lobby-icon {
-    min-height: 34px;
+    gap: 3px;
+    min-height: 40px;
+    padding: 4px 2px;
+  }
+  .lobby-icons .lobby-icon .btn-label {
+    font-size: 11px;
+    letter-spacing: 0.03em;
+  }
+  .lobby-icons .lobby-icon .icon {
+    width: 16px;
+    height: 16px;
   }
   .garage-autosave {
     margin-top: 2px;

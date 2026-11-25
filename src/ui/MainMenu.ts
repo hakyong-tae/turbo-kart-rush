@@ -190,16 +190,23 @@ export class MainMenu {
     this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
     if (online) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
     const gridEnd = this.lobbyButtons.length;
-    // The icon row: its buttons keep their labels for assistive tech and as tooltips.
-    const iconEntry = (label: string, cls: string, action: () => void, iconName: IconName): HTMLButtonElement => {
-      const b = lobbyEntry(label, `lobby-btn lobby-icon icon-only ${cls}`, lobbyIcons, action, iconName);
-      b.title = label;
+    // The small row: a picture with its name under it. A picture alone did not say what the
+    // button did (QA took the calendar for the check-in, which was then the flame), and the
+    // tooltip that named it comes late on a desktop and never on a touch screen. Four share one
+    // row of the lobby, so the name on the button is short; the full name is the tooltip and
+    // what assistive tech reads. The check-in is the calendar; the daily challenge, one timed
+    // run a day, is the stopwatch (the flag is a new circuit, the target is missions, and the
+    // flame stays where it counts the check-in streak, beside the coins).
+    const iconEntry = (name: string, full: string, cls: string, action: () => void, iconName: IconName): HTMLButtonElement => {
+      const b = lobbyEntry(name, `lobby-btn lobby-icon ${cls}`, lobbyIcons, action, iconName);
+      b.title = full;
+      b.setAttribute('aria-label', full);
       return b;
     };
-    this.attendanceButton = iconEntry(t('lobby.checkin'), 'attendance-toggle', () => this.onAttendance?.(), 'flame');
-    iconEntry(t('lobby.daily'), 'daily-toggle', () => this.onDaily?.(), 'calendar');
-    iconEntry(t('lb.button'), 'records-toggle', () => this.onRecords?.(), 'trophy');
-    iconEntry(t('lobby.settings'), 'settings-toggle', () => this.onSettings?.(), 'gear');
+    this.attendanceButton = iconEntry(t('lobby.checkin'), t('att.title'), 'attendance-toggle', () => this.onAttendance?.(), 'calendar');
+    iconEntry(t('lobby.daily.short'), t('lobby.daily'), 'daily-toggle', () => this.onDaily?.(), 'stopwatch');
+    iconEntry(t('lb.button'), t('lb.button'), 'records-toggle', () => this.onRecords?.(), 'trophy');
+    iconEntry(t('lobby.settings'), t('lobby.settings'), 'settings-toggle', () => this.onSettings?.(), 'gear');
     this.lobbyRows.push([0]);
     for (let i = 1; i < gridEnd; i += LOBBY_COLUMNS) {
       const row: number[] = [];

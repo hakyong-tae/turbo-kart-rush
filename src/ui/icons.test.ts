@@ -20,7 +20,7 @@ describe('icons', () => {
     const need = [
       'trophy', 'wrench', 'gear', 'flag', 'calendar', 'users', 'lock', 'chevron-left', 'chevron-right',
       'spray', 'ad', 'cart', 'sound', 'mute', 'pause', 'play', 'rotate-phone', 'star', 'check', 'close',
-      'coin', 'flame', 'target',
+      'coin', 'flame', 'target', 'stopwatch',
     ];
     for (const n of need) expect(ICON_NAMES).toContain(n);
   });

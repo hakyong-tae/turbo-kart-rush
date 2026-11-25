@@ -290,6 +290,7 @@ export const ko: Record<StringKey, string> = {
 
   // daily challenge
   'lobby.daily': '오늘의 도전',
+  'lobby.daily.short': '도전',
   'daily.title': '오늘의 도전',
   'daily.laps': '{n}바퀴',
   'daily.rule.clean': '기본 주행',

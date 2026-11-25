@@ -24,6 +24,8 @@ const SHAPES = {
   flag: ['M5 21V4', 'M5 4h14l-3 4.5 3 4.5H5'],
   globe: [['c', 12, 12, 9], 'M3 12h18', 'M12 3c3.2 3.4 3.2 14.6 0 18', 'M12 3c-3.2 3.4-3.2 14.6 0 18'],
   calendar: ['M4 6h16v14H4z', 'M4 10.5h16', 'M8 3v5M16 3v5'],
+  // One timed run against the clock: the daily challenge.
+  stopwatch: [['c', 12, 13.5, 7.5], 'M10 3h4', 'M12 3v3', 'M12 13.5V9.5', 'M18.4 7.1l1.3-1.3'],
   users: [['c', 9, 8, 3], 'M3 20v-1a6 6 0 0 1 12 0v1', 'M16 5.2a3 3 0 0 1 0 5.6', 'M21 20v-1a6 6 0 0 0-3.5-5.4'],
   lock: ['M6 11h12v9H6z', 'M8.5 11V8a3.5 3.5 0 0 1 7 0v3'],
   'chevron-left': ['M15 5l-7 7 7 7'],
