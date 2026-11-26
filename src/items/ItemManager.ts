@@ -230,6 +230,8 @@ export class ItemManager implements IItemManager {
   private records: KartRecord[] = [];
   private time = 0;
   private lastLightningTime = -1000;
+  /** When the last lightning came out of a box (`BALANCE.items.lightningRollCooldown`). */
+  private lastLightningRollTime = -1000;
   private raceMode: RaceMode = 'solo';
   /** Intro races: AI karts roll from `GENTLE_AI_ITEMS` instead of the place table. */
   private gentleAi = false;
@@ -313,6 +315,7 @@ export class ItemManager implements IItemManager {
       rec.prevT = s.trackT;
     }
     this.lastLightningTime = -1000;
+    this.lastLightningRollTime = -1000;
     this.time = 0;
     this.resetDebugCounts();
   }
@@ -651,7 +654,8 @@ export class ItemManager implements IItemManager {
 
   private rollItem(place: number): ItemType {
     const row = B.itemTable[clamp(Math.round(place), 1, B.itemTable.length) - 1];
-    const allowLightning = this.time - this.lastLightningTime > B.items.lightningCooldown;
+    const allowLightning =
+      this.time - this.lastLightningTime > B.items.lightningCooldown && this.time - this.lastLightningRollTime > B.items.lightningRollCooldown;
     let total = 0;
     for (const key in row) {
       const item = key as ItemType;
@@ -666,7 +670,10 @@ export class ItemManager implements IItemManager {
       if (item === 'lightning' && !allowLightning) continue;
       if (item === 'blue_shell' && place <= 1) continue;
       r -= row[item] ?? 0;
-      if (r <= 0) return item;
+      if (r <= 0) {
+        if (item === 'lightning') this.lastLightningRollTime = this.time;
+        return item;
+      }
     }
     return 'banana';
   }

@@ -120,8 +120,14 @@ export interface Balance {
     bananaLife: number;
     bombFuse: number;
     explosionRadius: number;
-    /** Seconds before another lightning can be rolled. */
+    /** Seconds after a lightning strikes before another can be rolled. */
     lightningCooldown: number;
+    /**
+     * Seconds after a lightning is rolled (still held, not yet used) before anyone can roll
+     * another. Without it two or three karts at the back could each pull one out of the boxes
+     * in the same few seconds and strike the field over and over.
+     */
+    lightningRollCooldown: number;
     /** Overdrive: min seconds between bursts, and how long the unlimited-use window lasts after the first press. */
     overdriveMinSpacing: number;
     overdriveDuration: number;
@@ -278,6 +284,7 @@ export function createDefaultBalance(): Balance {
       bombFuse: 2.5,
       explosionRadius: 4,
       lightningCooldown: 20,
+      lightningRollCooldown: 10,
       overdriveMinSpacing: 0.25,
       overdriveDuration: 7.5,
       ownerGrace: 0.35,
