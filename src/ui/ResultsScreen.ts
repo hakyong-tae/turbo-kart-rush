@@ -212,6 +212,8 @@ export class ResultsScreen {
   private nextTrack = '';
   /** A cup the primary button starts instead of the next circuit (its name), or ''. */
   private cupInvite = '';
+  /** A new player's very first finish: the primary goes to the lobby, the rewards are big. */
+  private firstFinish = false;
   /**
    * Auto-advance: once what the race did has been shown, the primary button fills over
    * `AUTO_NEXT_SECONDS` and then starts the next race. Armed by the game per results screen
@@ -299,6 +301,18 @@ export class ResultsScreen {
   }
 
   /**
+   * A new player's very first finish: what it paid is drawn large, and the primary button goes
+   * to the lobby (where the tour and the cup are) instead of on to the next circuit.
+   */
+  setFirstFinish(): void {
+    if (this.flow !== 'single') return;
+    this.firstFinish = true;
+    this.panel.classList.add('first-finish');
+    this.applyFlow();
+    this.fit();
+  }
+
+  /**
    * Points the primary button at a cup instead of the next circuit. Game decides when (after a
    * few one-off races) and passes the cup's name; '' puts the button back on the next circuit.
    */
@@ -370,6 +384,8 @@ export class ResultsScreen {
     this.flow = online ? 'online' : cup ? 'cup' : 'single';
     this.cupView = cup;
     this.cupInvite = '';
+    this.firstFinish = false;
+    this.panel.classList.remove('first-finish');
     this.kartPick.replaceChildren();
     this.kartPick.classList.add('hidden');
     this.buttons[Action.Next].classList.remove('cup-invite');
@@ -801,6 +817,8 @@ export class ResultsScreen {
   private visibleActions(): Action[] {
     if (this.flow === 'online') return [Action.Again, Action.Change, Action.Lobby];
     if (this.flow === 'cup') return [Action.Next, Action.Change, Action.Lobby, Action.Records];
+    // The first finish: the primary already goes to the lobby.
+    if (this.firstFinish) return [Action.Next, Action.Again, Action.Change, Action.Records];
     return [Action.Next, Action.Again, Action.Change, Action.Lobby, Action.Records];
   }
 
@@ -836,7 +854,9 @@ export class ResultsScreen {
       ? cup.isFinal
         ? t('cup.finish')
         : t('cup.next')
-      : this.cupInvite
+      : this.firstFinish
+        ? t('results.toLobby')
+        : this.cupInvite
         ? t('cup.invite', { cup: this.cupInvite })
         : this.nextTrack
         ? t('results.nextOn', { name: this.nextTrack.toUpperCase() })

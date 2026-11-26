@@ -14,10 +14,13 @@ export interface TourStop {
   /** The button the bubble points at. A stop whose button is missing or hidden is skipped. */
   target: HTMLElement | null;
   text: StringKey;
+  /** The last stop may carry an action: its button does it (and ends the tour). */
+  action?: { label: string; run: () => void };
 }
 
 export class LobbyTour {
-  onDone: (() => void) | null = null;
+  /** `acted`: the tour ended on its last stop's action rather than by skipping or tapping on. */
+  onDone: ((acted: boolean) => void) | null = null;
 
   private readonly root: HTMLElement;
   private readonly bubble: HTMLElement;
@@ -40,7 +43,7 @@ export class LobbyTour {
     this.count = el('span', 'lobby-tour-count', '', foot);
     this.skipBtn = button(t('coach.skip'), 'ghost lobby-tour-skip', () => this.finish());
     foot.appendChild(this.skipBtn);
-    this.nextBtn = button(t('tour.next'), 'primary lobby-tour-next', () => this.advance());
+    this.nextBtn = button(t('tour.next'), 'primary lobby-tour-next', () => this.advance(true));
     foot.appendChild(this.nextBtn);
     // A tap anywhere else on the screen moves on too: the tour is a pointer, not a gate.
     this.root.addEventListener('click', (ev) => {
@@ -55,7 +58,7 @@ export class LobbyTour {
   start(stops: readonly TourStop[]): void {
     this.stops = stops.filter((s) => s.target && s.target.offsetParent !== null);
     if (this.stops.length === 0) {
-      this.onDone?.();
+      this.onDone?.(false);
       return;
     }
     this.at = 0;
@@ -73,11 +76,15 @@ export class LobbyTour {
     window.removeEventListener('resize', this.onResize);
   }
 
-  private advance(): void {
+  /** `pressed`: the stop's own button, not a tap beside it (only that runs a stop's action). */
+  private advance(pressed = false): void {
     if (!this.active) return;
     events.emit('ui:select', {});
     if (this.at + 1 >= this.stops.length) {
-      this.finish();
+      const action = pressed ? this.stops[this.at].action : undefined;
+      this.hide();
+      this.onDone?.(Boolean(action));
+      action?.run();
       return;
     }
     this.at += 1;
@@ -86,7 +93,7 @@ export class LobbyTour {
 
   private finish(): void {
     this.hide();
-    this.onDone?.();
+    this.onDone?.(false);
   }
 
   private show(): void {
@@ -95,8 +102,10 @@ export class LobbyTour {
     this.count.textContent = `${this.at + 1} / ${this.stops.length}`;
     // Labels are read here, not when built: the language may have changed since.
     setButtonContent(this.skipBtn, t('coach.skip'));
-    setButtonContent(this.nextBtn, this.at + 1 >= this.stops.length ? t('tour.done') : t('tour.next'));
-    this.skipBtn.hidden = this.at + 1 >= this.stops.length;
+    const last = this.at + 1 >= this.stops.length;
+    setButtonContent(this.nextBtn, last ? (stop.action?.label ?? t('tour.done')) : t('tour.next'));
+    // The last stop: SKIP stays when its button starts something ("not now"), goes when it only closes.
+    this.skipBtn.hidden = last && !stop.action;
     this.place();
   }
 
