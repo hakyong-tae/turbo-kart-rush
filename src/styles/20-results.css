@@ -922,20 +922,25 @@
   }
 }
 
-/* A new player's first finish, once its rewards are seen: everything but the way to the lobby
-   (and the kart row, which picks the kart shown there) goes dark and stops answering. */
-.results.lobby-only .results-head,
-.results.lobby-only .results-rank,
-.results.lobby-only .results-rewards,
-.results.lobby-only .results-opened,
-.results.lobby-only .results-next,
-.results.lobby-only .results-tomorrow,
-.results.lobby-only .results-side,
-.results.lobby-only .panel-kicker,
-.results.lobby-only .results-foot .btn:not(.results-next-btn) {
-  filter: brightness(0.32);
-  pointer-events: none;
-  transition: filter 0.35s ease;
+/* A new player's first finish, once its rewards are seen: the whole screen goes under a dark
+   layer with one hole cut in it, over TO THE LOBBY (ResultsScreen.placeSpotlight), and a hand
+   taps the button over and over. The layer takes every press outside the hole. */
+.results-spotlight {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(6, 7, 10, 0.72);
+  pointer-events: auto;
+  animation: spotlight-in 0.35s ease both;
+}
+.results-spotlight.hidden,
+.spotlight-hand.hidden {
+  display: none;
+}
+@keyframes spotlight-in {
+  from {
+    opacity: 0;
+  }
 }
 .results.lobby-only .results-next-btn {
   animation: lobby-pulse 1.3s ease-in-out infinite;
@@ -943,5 +948,68 @@
 @keyframes lobby-pulse {
   50% {
     box-shadow: 0 0 0 4px var(--yellow);
+  }
+}
+/* The hand: its fingertip is the element's origin, at the point it presses. */
+.spotlight-hand {
+  position: absolute;
+  z-index: 41;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.spotlight-finger {
+  position: absolute;
+  left: -15px;
+  top: -2px;
+  width: 44px;
+  height: 53px;
+  fill: #fff;
+  stroke: #15161a;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+  transform-origin: 15px 2px;
+  animation: hand-tap 1.4s ease-in-out infinite;
+}
+@keyframes hand-tap {
+  0%,
+  100% {
+    transform: translate(16px, 22px) rotate(-8deg);
+  }
+  45% {
+    transform: translate(0, 0) rotate(-8deg) scale(1);
+  }
+  55% {
+    transform: translate(0, 2px) rotate(-8deg) scale(0.9);
+  }
+  70% {
+    transform: translate(0, 0) rotate(-8deg) scale(1);
+  }
+}
+.spotlight-ripple {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--yellow);
+  border-radius: 50%;
+  opacity: 0;
+  animation: tap-ripple 1.4s ease-out infinite;
+}
+@keyframes tap-ripple {
+  0%,
+  50% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  55% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
   }
 }
