@@ -63,3 +63,17 @@ describe('one-off race band', () => {
     expect(factor(BALANCE.ai.packRubber.easy, 1000)).toBeLessThanOrEqual(1);
   });
 });
+
+describe('intro band', () => {
+  const factor = (r: { base: number; amp: number; scale: number; min: number; max: number }, gap: number) =>
+    Math.min(r.max, Math.max(r.min, r.base + r.amp * Math.tanh(gap / r.scale)));
+  const r = BALANCE.ai.intro.rubber;
+
+  it('waits for a new player who is behind', () => {
+    expect(factor(r, -100)).toBeLessThan(0.7);
+  });
+
+  it('chases a new player who is clear, close to full speed', () => {
+    expect(factor(r, 150)).toBeGreaterThan(0.95);
+  });
+});

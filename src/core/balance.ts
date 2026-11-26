@@ -364,7 +364,10 @@ export function createDefaultBalance(): Balance {
         easeThrottle: 0.55,
         usesMushrooms: false,
         startThrottleBeforeGo: 0.4,
-        rubber: { base: 0.7, amp: 0.09, scale: 50, min: 0.6, max: 0.79 },
+        // Capped at 0.79 the field could never close on a new player who drove well: they won
+        // the first three races by half a lap and learnt that the bots were not racing. The
+        // field still waits for a player who is struggling, but chases one who is clear.
+        rubber: { base: 0.8, amp: 0.2, scale: 70, min: 0.6, max: 0.98 },
       },
       packRubber: {
         easy: { base: 0.87, amp: 0.12, scale: 80, min: 0.72, max: 1.0 },
