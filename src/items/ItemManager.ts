@@ -209,8 +209,13 @@ let nextHazardId = 1;
  * What an AI kart may roll in an intro race: a boost for itself, or a banana left on the road.
  * Nothing that seeks, flies at or strikes another kart — a new player's first three races should
  * not be decided by a shell they never saw. Weighted by repetition.
+ *
+ * No triple boost: the intro field does not use boosts on sight (`usesMushrooms: false`, one
+ * every 12 s held), so a triple sat orbiting a bot for half a minute. With the field kept close
+ * round the player, every kart in view seemed to be carrying three canisters the moment the
+ * player picked one up.
  */
-const GENTLE_AI_ITEMS: readonly ItemType[] = ['nitro', 'nitro', 'nitro', 'triple_nitro', 'banana'];
+const GENTLE_AI_ITEMS: readonly ItemType[] = ['nitro', 'nitro', 'nitro', 'banana', 'banana'];
 
 export class ItemManager implements IItemManager {
   readonly object = new THREE.Group();
