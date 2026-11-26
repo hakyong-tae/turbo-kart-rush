@@ -815,3 +815,20 @@
     height: 28px;
   }
 }
+
+/* A new player's very first finish: what it paid and what it opened are the headline, drawn
+   larger, and the coins land with a pop. Dense layouts (small windows) keep their own sizes
+   from the rules above, which come later in specificity only where data-dense is set. */
+.results-panel.first-finish:not([data-dense]) .reward-amount {
+  font-size: clamp(44px, 5.6vw, 64px);
+}
+.results-panel.first-finish .results-rewards {
+  animation: unlock-in 0.5s var(--ease-pop) both;
+}
+.results-panel.first-finish:not([data-dense]) .unlock-art {
+  width: 96px;
+  height: 60px;
+}
+.results-panel.first-finish:not([data-dense]) .unlock-name {
+  font-size: 23px;
+}

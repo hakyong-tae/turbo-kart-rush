@@ -471,9 +471,14 @@ export class MainMenu {
   }
 
   /** Lobby buttons the tour points at, in its order: the cup, the garage, the missions. */
-  tourTargets(): { cup: HTMLElement | null; garage: HTMLElement | null; missions: HTMLElement | null } {
+  tourTargets(): { cup: HTMLElement | null; garage: HTMLElement | null; missions: HTMLElement | null; daily: HTMLElement | null } {
     const find = (cls: string): HTMLElement | null => this.lobbyButtons.find((b) => b.classList.contains(cls)) ?? null;
-    return { cup: this.cupGoalButton ?? null, garage: find('garage-toggle'), missions: this.missionsButton ?? null };
+    return { cup: this.cupGoalButton ?? null, garage: find('garage-toggle'), missions: this.missionsButton ?? null, daily: find('daily-toggle') };
+  }
+
+  /** The tour's last button: the cup cell's own action. */
+  startCupGoalFromTour(): void {
+    this.startCupGoal();
   }
 
   /** Continue past character select after a lock was resolved (ad watched / purchase made). */
