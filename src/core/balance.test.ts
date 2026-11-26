@@ -39,3 +39,27 @@ describe('balance', () => {
     expect(BALANCE.kart.accelBase).toBe(9);
   });
 });
+
+describe('one-off race band', () => {
+  const factor = (r: { base: number; amp: number; scale: number; min: number; max: number }, gap: number) =>
+    Math.min(r.max, Math.max(r.min, r.base + r.amp * Math.tanh(gap / r.scale)));
+
+  it('pulls harder both ways than the cup band of the same difficulty', () => {
+    for (const d of ['easy', 'normal', 'hard'] as const) {
+      const pack = BALANCE.ai.packRubber[d];
+      const cup = BALANCE.ai.profiles[d].rubber;
+      // Player 150 m clear: the one-off field closes faster than the cup field.
+      expect(factor(pack, 150), d).toBeGreaterThan(factor(cup, 150));
+      // Player 150 m behind: the one-off field waits more.
+      expect(factor(pack, -150), d).toBeLessThan(factor(cup, -150));
+    }
+  });
+
+  it('lets normal and hard bots past their own top speed only to chase a player who is clear', () => {
+    expect(factor(BALANCE.ai.packRubber.normal, 0)).toBeLessThan(1);
+    expect(factor(BALANCE.ai.packRubber.normal, 200)).toBeGreaterThan(1);
+    expect(factor(BALANCE.ai.packRubber.hard, 200)).toBeGreaterThan(1);
+    // Easy never runs faster than its karts can.
+    expect(factor(BALANCE.ai.packRubber.easy, 1000)).toBeLessThanOrEqual(1);
+  });
+});

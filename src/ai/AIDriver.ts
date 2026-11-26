@@ -19,7 +19,7 @@ import type {
   TrackSample,
 } from '../core/types';
 import { createEmptyInput } from '../core/types';
-import { BALANCE, type DifficultyProfile } from '../core/balance';
+import { BALANCE, type DifficultyProfile, type RubberBand } from '../core/balance';
 import { events } from '../core/events';
 import { clamp, damp, seededRandom, trackDelta, wrap01 } from '../core/math';
 
@@ -92,6 +92,11 @@ export class AIDriver implements IAIDriver {
 
   private difficulty: Difficulty;
   private profile: DifficultyProfile;
+  /** The band this driver runs on: the profile's own, or the tighter one-off-race band. */
+  private rubber: RubberBand;
+  private readonly pack: boolean;
+  /** Scales the band: below 1 for a player on a touch screen (`BALANCE.ai.touchPace`). */
+  private readonly paceScale: number;
   private readonly input: InputState = createEmptyInput();
   private readonly rng: () => number;
 
@@ -130,12 +135,18 @@ export class AIDriver implements IAIDriver {
   /**
    * `intro`: drive the intro profile (a new account's first races). The driver then behaves as
    * `easy` wherever behaviour branches on the difficulty, with the slower, tightly banded profile.
+   * `pack`: a one-off offline race, banded around the player with `BALANCE.ai.packRubber` so the
+   * field stays close both ways. Cups, the online field and the intro keep their own band.
+   * `paceScale`: multiplies the band (and so the speed it allows), 1 by default.
    */
-  constructor(kart: IKart, difficulty: Difficulty, personalitySeed: number, intro = false) {
+  constructor(kart: IKart, difficulty: Difficulty, personalitySeed: number, intro = false, pack = false, paceScale = 1) {
     installListeners();
     this.kart = kart;
     this.difficulty = intro ? 'easy' : difficulty;
     this.profile = intro ? B.ai.intro : B.ai.profiles[difficulty];
+    this.pack = pack && !intro;
+    this.paceScale = paceScale > 0 ? paceScale : 1;
+    this.rubber = this.pack ? B.ai.packRubber[difficulty] : this.profile.rubber;
     this.rng = seededRandom(personalitySeed);
     const r = this.rng;
     this.baseOffset = (r() * 2 - 1) * 0.45;
@@ -152,6 +163,7 @@ export class AIDriver implements IAIDriver {
   setDifficulty(d: Difficulty): void {
     this.difficulty = d;
     this.profile = B.ai.profiles[d];
+    this.rubber = this.pack ? B.ai.packRubber[d] : this.profile.rubber;
   }
 
   // -------------------------------------------------------------------------
@@ -414,8 +426,10 @@ export class AIDriver implements IAIDriver {
     // rubber-banding against the player
     let gap = 0;
     if (playerKart && playerKart !== this.kart) gap = (playerKart.state.raceProgress - s.raceProgress) * len;
-    const factor = this.speedFactor(gap) * (1 + this.skillJitter);
-    const targetSpeed = factor * top;
+    const factor = this.speedFactor(gap) * (1 + this.skillJitter) * this.paceScale;
+    // Above 1 the band lifts the kart's ceiling instead of capping its throttle.
+    this.kart.setPace?.(Math.max(1, factor));
+    const targetSpeed = Math.min(1, factor) * top;
     if (!s.isBoosting && speed > targetSpeed) {
       throttle = Math.min(throttle, clamp(1 - (speed - targetSpeed) / (0.05 * top), 0, 1));
     }
@@ -540,7 +554,7 @@ export class AIDriver implements IAIDriver {
   // -------------------------------------------------------------------------
 
   private speedFactor(gap: number): number {
-    const r = this.profile.rubber;
+    const r = this.rubber;
     return clamp(r.base + r.amp * Math.tanh(gap / r.scale), r.min, r.max);
   }
 

@@ -546,6 +546,12 @@ export interface IKart {
    * simulation applies at once is drawn as a slide over a few frames.
    */
   absorbCorrection?(dx: number, dy: number, dz: number): void;
+  /**
+   * Contract addition (close racing): a multiplier on this kart's top speed, 1 by default. The AI
+   * raises it above 1 to close a gap to the player it could not close at the kart's own top
+   * speed. Not part of `save()`: only offline bots use it, and nothing replays them.
+   */
+  setPace?(factor: number): void;
 
   setInput(input: InputState): void;
   /** Advance physics by dt (fixed step). Handles ground, walls, drift, boost, hop, kart-kart bumps. */

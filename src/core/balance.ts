@@ -28,7 +28,21 @@ export interface DifficultyProfile {
   /** Seconds before GO the AI floors it (rocket-start timing). */
   startThrottleBeforeGo: number;
   /** Rubber-band: topSpeed factor = clamp(base + amp * tanh(gapMetres / scale), min, max). */
-  rubber: { base: number; amp: number; scale: number; min: number; max: number };
+  rubber: RubberBand;
+}
+
+/**
+ * Rubber-band: speed factor = clamp(base + amp * tanh(gapMetres / scale), min, max), where the
+ * gap is how far the player is ahead of this bot. Below 1 it caps the bot's throttle; above 1 it
+ * lifts the bot's top speed (`IKart.setPace`), which is the only way a bot behind a player who
+ * drives cleanly can ever close the gap.
+ */
+export interface RubberBand {
+  base: number;
+  amp: number;
+  scale: number;
+  min: number;
+  max: number;
 }
 
 export type ItemWeightRow = Partial<Record<ItemType, number>>;
@@ -144,6 +158,17 @@ export interface Balance {
      * and banded hard around the player, so finishing the race is usually worth a podium.
      */
     intro: DifficultyProfile;
+    /**
+     * One-off races: the field banded tighter around the player than in a cup, both ways, so the
+     * last lap is usually a fight. Cups keep each profile's own `rubber`: there the points are
+     * the point, and a field that bends around the player makes them mean less.
+     */
+    packRubber: Record<Difficulty, RubberBand>;
+    /**
+     * Multiplier on every bot's band when the player drives by touch. A thumb on glass is the
+     * hardest way to play this game; the field gives a phone player a little of that back.
+     */
+    touchPace: number;
     /** PD steering gains. */
     kP: number;
     kD: number;
@@ -345,6 +370,12 @@ export function createDefaultBalance(): Balance {
         usesMushrooms: false,
         startThrottleBeforeGo: 0.4,
         rubber: { base: 0.7, amp: 0.09, scale: 50, min: 0.6, max: 0.79 },
+      },
+      touchPace: 0.97,
+      packRubber: {
+        easy: { base: 0.87, amp: 0.12, scale: 80, min: 0.72, max: 1.0 },
+        normal: { base: 0.95, amp: 0.11, scale: 70, min: 0.82, max: 1.05 },
+        hard: { base: 0.99, amp: 0.07, scale: 90, min: 0.93, max: 1.06 },
       },
       kP: 2.2,
       kD: 0.15,

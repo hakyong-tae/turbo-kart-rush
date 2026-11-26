@@ -32,6 +32,8 @@ import { ItemManager } from '../items/ItemManager';
 import { ALL_ITEM_TYPES } from '../core/types';
 import { buildItemIcon, buildItemMesh } from '../items/itemVisuals';
 import { AIDriver } from '../ai/AIDriver';
+import { BALANCE } from '../core/balance';
+import { assistSteer, TOUCH_ASSIST_STRENGTH } from '../kart/assists/steerAssist';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
 import { PostFX } from '../fx/PostFX';
@@ -1798,7 +1800,8 @@ export class Game {
       const p = this.playerInput;
       p.throttle = input.throttle;
       p.brake = input.brake;
-      p.steer = input.steer;
+      // A touch stick gets the steering assist (src/kart/assists/steerAssist.ts); keys and pads do not.
+      p.steer = this.touch.isEnabled ? assistSteer(player, track, input.steer, TOUCH_ASSIST_STRENGTH) : input.steer;
       p.drift = input.drift;
       p.useItem = useItem;
       p.useItemHeld = input.useItemHeld;
@@ -2123,8 +2126,13 @@ export class Game {
         bot.state.racerName = botName(trackDef.id, id);
         karts.push(bot);
       }
+      // A one-off race keeps the field close around the player both ways; a cup does not bend
+      // the field that much, so its points still say who drove best.
+      const pack = !this.cup;
+      // Driving by touch is harder than by keys: the field eases off a little for it.
+      const pace = this.touch.isEnabled ? BALANCE.ai.touchPace : 1;
       for (let id = 1; id < karts.length; id++) {
-        aiDrivers.push(new AIDriver(karts[id], difficulty, id, Boolean(settings.intro)));
+        aiDrivers.push(new AIDriver(karts[id], difficulty, id, Boolean(settings.intro), pack, pace));
       }
     }
 
