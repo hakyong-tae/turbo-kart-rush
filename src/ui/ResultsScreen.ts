@@ -189,7 +189,10 @@ export class ResultsScreen {
   private readonly panel: HTMLElement;
   private readonly main: HTMLElement;
   private readonly side: HTMLElement;
-  private readonly onResize = (): void => this.fit();
+  private readonly onResize = (): void => {
+    this.fit();
+    this.placeSpotlight();
+  };
   private readonly plate: TextField;
   private readonly heading: TextField;
   private readonly subheading: TextField;
@@ -228,8 +231,13 @@ export class ResultsScreen {
   private autoHold = false;
   /** The countdown waits while the unlock popups are up in front of the screen. */
   private popupHold = false;
-  /** Everything but the primary button (and the kart row) is dimmed and off: see `lockToLobby`. */
+  /** Everything but the primary button is under a dark layer and off: see `lockToLobby`. */
   private lockedToLobby = false;
+  /** The dark layer with a hole over the primary button, and the hand tapping it. */
+  private readonly spotlight: HTMLElement;
+  private readonly spotHand: HTMLElement;
+  /** Frame loop that keeps the hole on the button while the panel settles or the window changes. */
+  private spotFrame = 0;
   /** When the fill started (0 = not yet). */
   private autoStartedAt = 0;
   private readonly autoCount: HTMLElement;
@@ -281,6 +289,19 @@ export class ResultsScreen {
     this.buttons[Action.Records] = button(t('lb.button'), 'ghost icon-only results-records', () => this.activate(Action.Records), 'trophy');
     actions.append(...this.buttons);
     this.autoCount = el('span', 'auto-count');
+    // First finish only (`lockToLobby`): a dark layer over the whole screen with one hole cut in
+    // it, over the way to the lobby, and a hand showing where to press. The layer takes every
+    // press outside the hole; inside it, the press reaches the button.
+    this.spotlight = el('div', 'results-spotlight hidden', undefined, this.rootNode);
+    this.spotlight.setAttribute('aria-hidden', 'true');
+    this.spotHand = el('div', 'spotlight-hand', undefined, this.rootNode);
+    this.spotHand.classList.add('hidden');
+    this.spotHand.setAttribute('aria-hidden', 'true');
+    el('span', 'spotlight-ripple', undefined, this.spotHand);
+    this.spotHand.insertAdjacentHTML(
+      'beforeend',
+      '<svg viewBox="0 0 40 48" class="spotlight-finger"><path d="M15 4a4 4 0 0 1 8 0v15l2.2-.6a4 4 0 0 1 4.9 2.8l.3 1.2 1.4-.4a4 4 0 0 1 4.9 2.8l1.6 6.2c1.3 5-.6 10.3-4.8 13.3L31 46H14l-8.3-9.5a4.4 4.4 0 0 1 .5-6.3 4.4 4.4 0 0 1 5.9.3L15 33V4z"/></svg>',
+    );
     // A press anywhere on the screen except the primary button means the player is doing
     // something else here: the countdown is off. (Hovering is not a press.)
     this.rootNode.addEventListener(
@@ -338,6 +359,36 @@ export class ResultsScreen {
       b.disabled = i !== Action.Next;
     });
     this.setFocus(0);
+    this.spotlight.classList.remove('hidden');
+    this.spotHand.classList.remove('hidden');
+    // The panel is still settling when this runs (its entrance, the rewards' count-up, a late
+    // font): the hole follows the button every frame for as long as it is up.
+    const follow = (): void => {
+      if (!this.lockedToLobby) return;
+      this.placeSpotlight();
+      this.spotFrame = requestAnimationFrame(follow);
+    };
+    cancelAnimationFrame(this.spotFrame);
+    follow();
+  }
+
+  /** Cuts the hole over the primary button and puts the hand on it. */
+  private placeSpotlight(): void {
+    if (!this.lockedToLobby) return;
+    const host = this.rootNode.getBoundingClientRect();
+    const b = this.buttons[Action.Next].getBoundingClientRect();
+    const pad = 6;
+    const x1 = Math.max(0, b.left - host.left - pad);
+    const y1 = Math.max(0, b.top - host.top - pad);
+    const x2 = Math.min(host.width, b.right - host.left + pad);
+    const y2 = Math.min(host.height, b.bottom - host.top + pad);
+    // One polygon: the whole screen, then the button's box the other way round; evenodd leaves
+    // the box out, of the drawing and of the hit area both.
+    this.spotlight.style.clipPath =
+      `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` + `${x1}px ${y1}px, ${x2}px ${y1}px, ${x2}px ${y2}px, ${x1}px ${y2}px, ${x1}px ${y1}px)`;
+    // The fingertip rests a little right of the middle of the button, the hand hanging below it.
+    this.spotHand.style.left = `${x1 + (x2 - x1) * 0.62}px`;
+    this.spotHand.style.top = `${y1 + (y2 - y1) * 0.3}px`;
   }
 
   /**
@@ -417,6 +468,9 @@ export class ResultsScreen {
     this.lockedToLobby = false;
     this.popupHold = false;
     this.rootNode.classList.remove('lobby-only');
+    cancelAnimationFrame(this.spotFrame);
+    this.spotlight.classList.add('hidden');
+    this.spotHand.classList.add('hidden');
     for (const b of this.buttons) b.disabled = false;
     this.kartPick.replaceChildren();
     this.kartPick.classList.add('hidden');
@@ -587,6 +641,8 @@ export class ResultsScreen {
     this.stopCount();
     this.stopTomorrow();
     this.cancelAutoNext();
+    this.lockedToLobby = false;
+    cancelAnimationFrame(this.spotFrame);
     this.visible = false;
   }
 
@@ -664,6 +720,7 @@ export class ResultsScreen {
   }
 
   dispose(): void {
+    cancelAnimationFrame(this.spotFrame);
     window.removeEventListener('resize', this.onResize);
     this.stopCount();
     this.stopTomorrow();
