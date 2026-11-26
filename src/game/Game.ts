@@ -121,6 +121,7 @@ import type { OnlineRaceConfig, RaceStanding } from '../core/types';
 import { cosmeticOf, isUnlocked, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
 import { addRaceToCup, cupPlaceOf, cupsOpenedBy, getCup, nextCupGoal, parseCupRun, trophyFor, type CupEntry, type CupId } from '../core/cups';
 import { CupResumeSheet } from '../ui/CupResumeSheet';
+import { UnlockPopup, type UnlockPopupCard } from '../ui/UnlockPopup';
 import { botName, localRacerName } from '../core/racerNames';
 import {
   getCosmetics,
@@ -254,9 +255,10 @@ function rewardViewOf(award: RaceAward | null, characterId: string): RewardView 
   const opened: UnlockCard[] = [];
   for (const id of award.newTracks ?? []) {
     const def = TRACKS.find((tr) => tr.id === id);
-    if (def) opened.push({ kind: 'track', name: def.name, image: trackThumbCopy(def) });
+    if (def) opened.push({ kind: 'track', name: def.name, image: trackThumbCopy(def), ref: def.id });
   }
-  for (const token of award.unlocked ?? []) opened.push({ kind: 'item', name: tokenFullName(token), image: tokenPicture(token, characterId) });
+  for (const token of award.unlocked ?? [])
+    opened.push({ kind: 'item', name: tokenFullName(token), image: tokenPicture(token, characterId), ref: token });
   view.opened = opened;
   view.nextUnlock = nextUnlockOf(award.ladder ?? getLadder());
   // The day's second race is where tomorrow is mentioned: one race in, they are staying a while.
@@ -306,6 +308,8 @@ interface RaceContext {
   localKartId: number;
   /** The player's finish has been sent for settlement (once per race). */
   settled?: boolean;
+  /** What this finish opened has been put up in front of the results (or there was nothing). */
+  unlocksShown?: boolean;
   /** What the local player did this race, for the missions. */
   stats?: RaceStatsTracker;
   /**
@@ -422,6 +426,8 @@ export class Game {
   private readonly lobbyTour: LobbyTour;
   /** "Carry on with the cup?" in the lobby, for a cup left between races. */
   private cupSheet: CupResumeSheet;
+  /** What a race opened, one popup at a time in front of the results (src/ui/UnlockPopup.ts). */
+  private readonly unlockPopup: UnlockPopup;
   private splashUp = true;
   /** The player's own mute (M key), and the portal's, which outranks it. */
   private userMuted = false;
@@ -535,6 +541,7 @@ export class Game {
       if (!acted) this.maybeOfferAttendance();
     };
     this.cupSheet = this.buildCupSheet();
+    this.unlockPopup = this.buildUnlockPopup();
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
     this.muteIndicator.appendChild(icon('mute'));
@@ -607,6 +614,7 @@ export class Game {
     this.touch.dispose();
     this.lockSheet.dispose();
     this.cupSheet.dispose();
+    this.unlockPopup.dispose();
     this.leaderboard.dispose();
     this.settings.dispose();
     this.garage.dispose();
@@ -1179,6 +1187,7 @@ export class Game {
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
       this.cupSheet.isVisible ||
+      this.unlockPopup.isVisible ||
       this.onlinePanel.isVisible
     );
   }
@@ -1350,9 +1359,10 @@ export class Game {
           showToast(t(r?.reason === 'short' ? 'buy.notEnough' : 'buy.failed'), 'error');
           return;
         }
-        showToast(t('v8.lock.kartBought', { name: def.name }), 'info');
         this.lockSheet.hide();
         this.mainMenu.proceedFromCharacter();
+        // A new racer: on the turntable, in its own colours, before anything else.
+        this.unlockPopup.show([{ kind: 'racer', name: def.name, characterId: def.id }], { characterId: def.id, cosmetics: {} });
       },
       onBuy: () => {
         const result = buyPremium();
@@ -1512,7 +1522,57 @@ export class Game {
 
   private showReward(view: RewardView): void {
     this.reward = view;
-    if (this.state === 'results') this.results.showRewards(view);
+    if (this.state === 'results') {
+      this.results.showRewards(view);
+      this.maybeShowUnlocks(view);
+    }
+  }
+
+  private buildUnlockPopup(): UnlockPopup {
+    const popup = new UnlockPopup(this.uiRoot);
+    popup.onGarage = () => {
+      const r = this.race;
+      const characterId = r?.settings.characterId ?? this.garageCharacterId;
+      // A new player's first finish: the lobby, where the tour starts with the garage itself.
+      // Anyone else: straight into the garage.
+      const tour = this.firstFinish;
+      this.returnToMenu('title');
+      if (!tour) this.garage.show(characterId);
+    };
+    popup.onDone = (toGarage) => {
+      if (toGarage || this.state !== 'results') return;
+      this.results.setAutoHeld(false);
+      if (this.firstFinish) this.results.lockToLobby();
+    };
+    return popup;
+  }
+
+  /**
+   * Once a finish has been paid: everything it opened, one popup at a time in front of the
+   * results. The race's first answer only (a doubled reward re-sends the view).
+   */
+  private maybeShowUnlocks(view: RewardView): void {
+    const r = this.race;
+    if (!r || r.unlocksShown || this.state !== 'results' || view.state === 'pending') return;
+    r.unlocksShown = true;
+    const cards: UnlockPopupCard[] = [];
+    if (view.state === 'paid') {
+      for (const card of view.opened ?? []) {
+        if (card.kind === 'track') {
+          const def = TRACKS.find((tr) => tr.id === card.ref);
+          // Its own copy of the map: the results card keeps the one it has.
+          cards.push({ kind: 'track', name: card.name, image: def ? trackThumbCopy(def) : undefined });
+        } else {
+          cards.push({ kind: 'item', name: card.name, token: card.ref });
+        }
+      }
+    }
+    if (cards.length === 0) {
+      if (this.firstFinish) this.results.lockToLobby();
+      return;
+    }
+    this.results.setAutoHeld(true);
+    this.unlockPopup.show(cards, { characterId: r.settings.characterId, cosmetics: getCosmetics() });
   }
 
   private maybeSubmitTime(r: RaceContext, seconds: number): void {
@@ -1668,6 +1728,7 @@ export class Game {
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
       this.cupSheet.isVisible ||
+      this.unlockPopup.isVisible ||
       this.onlinePanel.isVisible
     ) {
       if (this.settings.isVisible) this.settings.handleInput(input);
@@ -1680,7 +1741,8 @@ export class Game {
         if (input.back) this.lockSheet.hide();
       } else if (this.cupSheet.isVisible) {
         // Nothing to cancel to: the sheet's two buttons are the two answers.
-      } else this.onlinePanel.handleInput(input);
+      } else if (this.unlockPopup.isVisible) this.unlockPopup.handleInput(input);
+      else this.onlinePanel.handleInput(input);
       input = createEmptyInput();
     }
     switch (this.state) {
@@ -1716,7 +1778,8 @@ export class Game {
         this.render(dt);
         return;
       case 'results':
-        this.results.handleInput(input);
+        if (this.unlockPopup.isVisible) this.unlockPopup.handleInput(input);
+        else this.results.handleInput(input);
         if (this.race && this.state === 'results') {
           // Keep the world alive behind the results panel.
           this.simulate(dt, input);
@@ -2098,6 +2161,7 @@ export class Game {
    * chain the next ordinary race into an abandoned cup, or file its time on the daily board.
    */
   private returnToMenu(panel: MenuPanel): void {
+    this.unlockPopup.hide();
     this.cup = null;
     this.firstFinish = false;
     this.dailyRun = null;
@@ -2566,7 +2630,10 @@ export class Game {
     if (this.firstFinish) this.results.setFirstFinish();
     this.maybeOfferKartPick(r, finished);
     this.results.setCupInvite(this.cupInvite ? t(`cup.${this.cupInvite}`) : '');
-    if (this.reward) this.results.showRewards(this.reward);
+    if (this.reward) {
+      this.results.showRewards(this.reward);
+      this.maybeShowUnlocks(this.reward);
+    }
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
     }
