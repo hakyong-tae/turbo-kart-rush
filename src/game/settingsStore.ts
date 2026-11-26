@@ -99,6 +99,26 @@ export const COACH_KEY = 'tkr.coach';
 export const KART_PICK_KEY = 'tkr.kartPick';
 /** Set once the lobby tour has been through (or skipped). */
 export const LOBBY_TOUR_KEY = 'tkr.lobbyTour';
+/** A cup left between races (src/core/cups.ts `CupRun`), so the lobby can offer to carry on. */
+export const CUP_RUN_KEY = 'tkr.cupRun';
+
+export function readCupRunRaw(): string | null {
+  try {
+    return localStorage.getItem(CUP_RUN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeCupRunRaw(value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(CUP_RUN_KEY);
+    else localStorage.setItem(CUP_RUN_KEY, value);
+  } catch {
+    /* private mode: the cup is just not kept */
+  }
+}
+
 /** The UTC day on which the "tomorrow's check-in" window last opened by itself. */
 export const TOMORROW_KEY = 'tkr.tomorrow';
 

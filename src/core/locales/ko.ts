@@ -338,6 +338,10 @@ export const ko: Record<StringKey, string> = {
   'cup.trophy.new': '새 트로피',
   'cup.invite': '{cup} 시작',
   'cup.invite.sub': '트로피를 걸고 달려요',
+  'cup.resume.title': '{cup}을 이어서 할까요?',
+  'cup.resume.body': '{n}개 레이스 중 {i}번째 레이스부터 이어져요. 지금까지 {pts}점이에요.',
+  'cup.resume.go': '이어하기',
+  'cup.resume.drop': '처음부터 다시',
 
   // garage: chrome
   'lobby.garage': '차고',

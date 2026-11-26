@@ -7,6 +7,7 @@ import {
   cupsOpenedBy,
   goldCount,
   nextCupGoal,
+  parseCupRun,
   trophyFor,
   isCupUnlocked,
   recordCupResult,
@@ -160,5 +161,30 @@ describe('trophies and the next goal', () => {
     expect(cupsOpenedBy({}, 'rookie', 2).sort()).toEqual(['pro', 'stunt']);
     expect(cupsOpenedBy({}, 'rookie', 4)).toEqual([]);
     expect(cupsOpenedBy({ rookie: 3 }, 'rookie', 1)).toEqual([]);
+  });
+});
+
+describe('a cup left part-way', () => {
+  const run = {
+    id: 'rookie',
+    done: 1,
+    table: [{ kartId: 0, name: 'You', points: 15, places: [1], isPlayer: true }],
+    characterId: 'zippy',
+    difficulty: 'normal',
+  };
+
+  it('reads a stored run back', () => {
+    const back = parseCupRun(JSON.stringify(run));
+    expect(back?.id).toBe('rookie');
+    expect(back?.done).toBe(1);
+    expect(back?.table[0].points).toBe(15);
+  });
+
+  it('refuses a damaged run, an unknown cup, or one with every race already run', () => {
+    expect(parseCupRun(null)).toBeNull();
+    expect(parseCupRun('{nope')).toBeNull();
+    expect(parseCupRun(JSON.stringify({ ...run, id: 'mystery' }))).toBeNull();
+    expect(parseCupRun(JSON.stringify({ ...run, done: 3 }))).toBeNull();
+    expect(parseCupRun(JSON.stringify({ ...run, difficulty: 'insane' }))).toBeNull();
   });
 });

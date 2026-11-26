@@ -52,7 +52,7 @@ import { isTeamMode } from '../core/teams';
 import { TeamMarkers } from './TeamMarkers';
 import { tickPatternTime } from '../kart/patternShader';
 import { OrientationGate } from './OrientationGate';
-import { COACH_KEY, FIRST_RACE_KEY, KART_PICK_KEY, LOBBY_TOUR_KEY, TOMORROW_KEY, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume, readAutoNext } from './settingsStore';
+import { COACH_KEY, FIRST_RACE_KEY, KART_PICK_KEY, LOBBY_TOUR_KEY, TOMORROW_KEY, readCupRunRaw, writeCupRunRaw, VOLUME_KEY_MUSIC, VOLUME_KEY_SFX, hasFlag, readAutoAccel, readVolume, setFlag, writeVolume, readAutoNext } from './settingsStore';
 import { PLATFORM } from '../core/platform';
 import { RaceCoach } from '../ui/RaceCoach';
 
@@ -117,7 +117,8 @@ import { PHASE, type Snapshot, type StandingMsg } from '../net/protocol';
 import { assignSlotCharacters } from '../net/roster';
 import type { OnlineRaceConfig, RaceStanding } from '../core/types';
 import { cosmeticOf, isUnlocked, sanitize, unpackCosmetics, type KartCosmetics } from '../core/cosmetics';
-import { addRaceToCup, cupPlaceOf, cupsOpenedBy, getCup, nextCupGoal, trophyFor, type CupEntry, type CupId } from '../core/cups';
+import { addRaceToCup, cupPlaceOf, cupsOpenedBy, getCup, nextCupGoal, parseCupRun, trophyFor, type CupEntry, type CupId } from '../core/cups';
+import { CupResumeSheet } from '../ui/CupResumeSheet';
 import { botName, localRacerName } from '../core/racerNames';
 import {
   getCosmetics,
@@ -415,6 +416,8 @@ export class Game {
   /** A kart picked on the results screen for the next race, until that race starts. */
   private kartChoice: string | null = null;
   private readonly lobbyTour: LobbyTour;
+  /** "Carry on with the cup?" in the lobby, for a cup left between races. */
+  private cupSheet: CupResumeSheet;
   private splashUp = true;
   /** The player's own mute (M key), and the portal's, which outranks it. */
   private userMuted = false;
@@ -523,6 +526,7 @@ export class Game {
     this.unsubs.push(onEntitlementsChange(() => this.maybeOfferAttendance()));
     this.lobbyTour = new LobbyTour(this.uiRoot);
     this.lobbyTour.onDone = () => setFlag(LOBBY_TOUR_KEY);
+    this.cupSheet = this.buildCupSheet();
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
     this.muteIndicator.appendChild(icon('mute'));
@@ -594,6 +598,7 @@ export class Game {
     this.input.attachTouch(null);
     this.touch.dispose();
     this.lockSheet.dispose();
+    this.cupSheet.dispose();
     this.leaderboard.dispose();
     this.settings.dispose();
     this.garage.dispose();
@@ -641,6 +646,65 @@ export class Game {
     this.cupInvite = null;
     this.racesSinceCup = 0;
     this.cup = { id: cupId, index: 0, table: [], settings };
+    this.saveCupRun(0);
+    void this.startRaceGated(settings);
+  }
+
+  /**
+   * Keeps the cup in progress on the device: `done` races finished, the table so far. Leaving
+   * for the lobby between races (or closing the tab) then costs nothing; the lobby offers to
+   * carry on (`maybeOfferCupResume`).
+   */
+  private saveCupRun(done: number): void {
+    const cup = this.cup;
+    if (!cup) return;
+    writeCupRunRaw(
+      JSON.stringify({ id: cup.id, done, table: cup.table, characterId: cup.settings.characterId, difficulty: cup.settings.difficulty }),
+    );
+  }
+
+  private buildCupSheet(): CupResumeSheet {
+    const sheet = new CupResumeSheet(this.uiRoot);
+    sheet.onContinue = () => this.resumeCup();
+    sheet.onDrop = () => {
+      writeCupRunRaw(null);
+      this.maybeOfferAttendance();
+    };
+    return sheet;
+  }
+
+  /** In the lobby with a cup left between races: ask whether to carry on with it. */
+  private maybeOfferCupResume(): void {
+    if (this.state !== 'title' || this.firstBoot || this.cupSheet.isVisible || this.overlayOpen() || this.attendance.isVisible) return;
+    if (new URLSearchParams(location.search).has('auto')) return;
+    const run = parseCupRun(readCupRunRaw());
+    if (!run) return;
+    const def = getCup(run.id);
+    const me = run.table.find((e) => e.isPlayer);
+    this.cupSheet.show(t(`cup.${run.id}`), run.done + 1, def.trackIds.length, me?.points ?? 0);
+  }
+
+  /** Runs the stored cup's next race, with the table it had. */
+  private resumeCup(): void {
+    const run = parseCupRun(readCupRunRaw());
+    if (!run) return;
+    const trackId = getCup(run.id).trackIds[run.done];
+    const track = TRACKS.find((tr) => tr.id === trackId);
+    if (!track) {
+      writeCupRunRaw(null);
+      return;
+    }
+    const settings: RaceSettings = {
+      characterId: run.characterId,
+      trackId,
+      difficulty: run.difficulty,
+      mode: 'solo',
+      laps: track.laps > 0 ? track.laps : DEFAULT_LAPS,
+    };
+    this.dailyRun = null;
+    this.cupInvite = null;
+    this.racesSinceCup = 0;
+    this.cup = { id: run.id, index: run.done, table: run.table, settings };
     void this.startRaceGated(settings);
   }
 
@@ -1075,6 +1139,7 @@ export class Game {
       this.missions.isVisible ||
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
+      this.cupSheet.isVisible ||
       this.onlinePanel.isVisible
     );
   }
@@ -1472,6 +1537,9 @@ export class Game {
     this.leaderboard.dispose();
     this.settings.dispose();
     this.lockSheet = new LockSheet(this.uiRoot);
+    const cupSheetWasOpen = this.cupSheet.isVisible;
+    this.cupSheet.dispose();
+    this.cupSheet = this.buildCupSheet();
     this.leaderboard = this.buildLeaderboard();
     this.settings = this.buildSettings();
     if (settingsWasOpen) this.settings.show();
@@ -1503,6 +1571,7 @@ export class Game {
     this.uiRoot.appendChild(this.touch.rootElement);
     this.muteLabel.textContent = t('mute');
     if (wasMenu) this.mainMenu.show(panel);
+    if (cupSheetWasOpen) this.maybeOfferCupResume();
   }
 
   // ------------------------------------------------------------- main loop
@@ -1559,6 +1628,7 @@ export class Game {
       this.attendance.isVisible ||
       this.leaderboard.isVisible ||
       this.lockSheet.isVisible ||
+      this.cupSheet.isVisible ||
       this.onlinePanel.isVisible
     ) {
       if (this.settings.isVisible) this.settings.handleInput(input);
@@ -1569,6 +1639,8 @@ export class Game {
       else if (this.leaderboard.isVisible) this.leaderboard.handleInput(input);
       else if (this.lockSheet.isVisible) {
         if (input.back) this.lockSheet.hide();
+      } else if (this.cupSheet.isVisible) {
+        // Nothing to cancel to: the sheet's two buttons are the two answers.
       } else this.onlinePanel.handleInput(input);
       input = createEmptyInput();
     }
@@ -1952,6 +2024,7 @@ export class Game {
     this.mainMenu.show(panel);
     this.setState(panel);
     this.playMusic('menu');
+    if (panel === 'title') this.maybeOfferCupResume();
     this.maybeOfferAttendance();
     setKartThumbnailsAllowed(true);
     this.menuIdle = 0;
@@ -2021,7 +2094,9 @@ export class Game {
     // the same call from the same count when the race is opened below.
     const kind: RaceKind = settings.online ? 'online' : this.cup ? 'cup' : this.dailyRun ? 'daily' : 'race';
     const unranked = this.isUnrankedRun(null);
-    const intro = kind === 'race' && !unranked && nextRaceIsIntro();
+    // A new account's first cup is one of its first races too: same gentle field. (The server
+    // only counts plain races as intro races; for it this stays an ordinary cup race.)
+    const intro = (kind === 'race' || kind === 'cup') && !unranked && nextRaceIsIntro();
     this.pendingSettings = { ...settings, trackId: trackDef.id, intro };
     this.lastSubmit = null;
     this.reward = null;
@@ -2427,6 +2502,9 @@ export class Game {
           opened: cupsOpenedBy(before, this.cup.id, place).map((id) => t(`cup.${id}`)),
         };
         this.finishCup();
+        writeCupRunRaw(null);
+      } else {
+        this.saveCupRun(this.cup.index + 1);
       }
     }
     const meStanding = standings.find((s) => s.isPlayer);
