@@ -1812,6 +1812,10 @@ export class Game {
     const from = this.state;
     this.state = next;
     this.uiRoot.dataset.state = next;
+    // Past the player's finish the field drives on behind the results: its sound steps back.
+    // Anything else (a new race, the menus) puts it back where it was.
+    const lowered = next === 'finished' || next === 'results';
+    this.safe(() => this.audio.setRaceSoundLowered?.(lowered));
     events.emit('game:stateChange', { from, to: next });
   }
 

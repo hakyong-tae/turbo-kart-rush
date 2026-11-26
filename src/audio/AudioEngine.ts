@@ -19,6 +19,8 @@ import { MusicPlayer, Sequencer, buildStarJingle, warmMusic } from './music';
 const MUSIC_BUS_DB = -6;
 const ENGINES_BUS_GAIN = 0.85;
 const UI_BUS_GAIN = 0.5;
+/** Race engines and effects after the player's finish, behind the results (`setRaceSoundLowered`). */
+const RACE_LOWERED_DB = -12;
 const STAR_DUCK_DB = -8;
 const LIGHTNING_DUCK_DB = -10;
 const LIGHTNING_DUCK_SECONDS = 1.0;
@@ -44,6 +46,8 @@ export class AudioEngine implements IAudioEngine {
   private sfxBus: GainNode | null = null;
   private enginesBus: GainNode | null = null;
   private enginesMuted = false;
+  /** Race sound turned down behind the results (`setRaceSoundLowered`). */
+  private raceLowered = false;
   private enginesClip: WaveShaperNode | null = null;
   private uiBus: GainNode | null = null;
 
@@ -183,14 +187,14 @@ export class AudioEngine implements IAudioEngine {
     };
     const musicDuck = bus(1, master);
     const musicBus = bus(dbToGain(MUSIC_BUS_DB) * this.musicVolume, musicDuck);
-    const sfxBus = bus(this.sfxVolume, master);
+    const sfxBus = bus(this.sfxVolume * this.raceDuck(), master);
     // Eight engine loops sum on this bus; a tanh stage keeps the sum from ever
     // hard-clipping regardless of how many karts crowd the camera.
     const enginesClip = ctx.createWaveShaper();
     enginesClip.curve = softClipCurve(1.6, 2048);
     enginesClip.oversample = 'none';
     enginesClip.connect(master);
-    const enginesBus = bus(this.enginesMuted ? 0 : ENGINES_BUS_GAIN * this.sfxVolume, enginesClip);
+    const enginesBus = bus(this.enginesMuted ? 0 : ENGINES_BUS_GAIN * this.sfxVolume * this.raceDuck(), enginesClip);
     const uiBus = bus(UI_BUS_GAIN * this.sfxVolume, master);
 
     this.master = master;
@@ -439,7 +443,7 @@ export class AudioEngine implements IAudioEngine {
     this.sfxVolume = clamp01(v);
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.sfxBus?.gain.setTargetAtTime(this.sfxVolume, now, 0.05);
+    this.sfxBus?.gain.setTargetAtTime(this.sfxVolume * this.raceDuck(), now, 0.05);
     this.applyEnginesGain(0.05);
     this.uiBus?.gain.setTargetAtTime(UI_BUS_GAIN * this.sfxVolume, now, 0.05);
   }
@@ -455,9 +459,27 @@ export class AudioEngine implements IAudioEngine {
     this.applyEnginesGain(0.02);
   }
 
+  /**
+   * After the player's finish the race carries on behind the results; its engines and effects
+   * drop by `RACE_LOWERED_DB` so the results screen is not shouted over. A slow ramp, so it
+   * reads as the race moving away rather than a switch.
+   */
+  setRaceSoundLowered(lowered: boolean): void {
+    if (this.raceLowered === lowered) return;
+    this.raceLowered = lowered;
+    if (!this.ctx) return;
+    const ramp = lowered ? 0.35 : 0.1;
+    this.sfxBus?.gain.setTargetAtTime(this.sfxVolume * this.raceDuck(), this.ctx.currentTime, ramp);
+    this.applyEnginesGain(ramp);
+  }
+
+  private raceDuck(): number {
+    return this.raceLowered ? dbToGain(RACE_LOWERED_DB) : 1;
+  }
+
   private applyEnginesGain(ramp: number): void {
     if (!this.ctx) return;
-    const target = this.enginesMuted ? 0 : ENGINES_BUS_GAIN * this.sfxVolume;
+    const target = this.enginesMuted ? 0 : ENGINES_BUS_GAIN * this.sfxVolume * this.raceDuck();
     this.enginesBus?.gain.setTargetAtTime(target, this.ctx.currentTime, ramp);
   }
 
