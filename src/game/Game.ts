@@ -415,6 +415,8 @@ export class Game {
   private cupInvite: CupId | null = null;
   /** A kart picked on the results screen for the next race, until that race starts. */
   private kartChoice: string | null = null;
+  /** The results screen on show is a new player's very first finish (see `setFirstFinish`). */
+  private firstFinish = false;
   private readonly lobbyTour: LobbyTour;
   /** "Carry on with the cup?" in the lobby, for a cup left between races. */
   private cupSheet: CupResumeSheet;
@@ -525,7 +527,11 @@ export class Game {
     this.attendance = this.buildAttendance();
     this.unsubs.push(onEntitlementsChange(() => this.maybeOfferAttendance()));
     this.lobbyTour = new LobbyTour(this.uiRoot);
-    this.lobbyTour.onDone = () => setFlag(LOBBY_TOUR_KEY);
+    this.lobbyTour.onDone = (acted) => {
+      setFlag(LOBBY_TOUR_KEY);
+      // Skipped or tapped through: the lobby is the player's again, check-in and all.
+      if (!acted) this.maybeOfferAttendance();
+    };
     this.cupSheet = this.buildCupSheet();
     this.onlinePanel = this.buildOnlinePanel();
     this.muteIndicator = el('div', 'mute-indicator', undefined, this.uiRoot);
@@ -758,6 +764,12 @@ export class Game {
     results.onNextRace = () => {
       const invite = this.cupInvite;
       this.cupInvite = null;
+      // The very first finish goes to the lobby: the tour there ends on the Rookie Cup.
+      if (this.firstFinish) {
+        this.firstFinish = false;
+        this.returnToMenu('title');
+        return;
+      }
       if (this.race?.online) this.returnToRoom();
       else if (this.cup) void this.advanceCup();
       else if (this.race && invite) {
@@ -825,8 +837,17 @@ export class Game {
    * the others they can drive — the one they had, and the first free kart of each other weight
    * class. Once per device.
    */
+  /** A new player's very first finish on this device (the same moment the kart row is offered). */
+  private isFirstFinish(r: RaceContext, finished: boolean): boolean {
+    if (!finished || hasFlag(KART_PICK_KEY) || r.online || this.cup || this.dailyRun || this.isUnrankedRun(r)) return false;
+    // A new account only: one older than the unlock ladder, or with races behind it on another
+    // device, has been here before. (This finish may or may not be counted yet.)
+    const ladder = getLadder();
+    return Boolean(ladder && !ladder.all && ladder.finishes <= 1);
+  }
+
   private maybeOfferKartPick(r: RaceContext, finished: boolean): void {
-    if (!finished || hasFlag(KART_PICK_KEY) || r.online || this.cup || this.dailyRun || this.isUnrankedRun(r)) return;
+    if (!this.isFirstFinish(r, finished)) return;
     const current = r.settings.characterId;
     const all = CHARACTERS as readonly CharacterDef[];
     const picks: CharacterDef[] = [];
@@ -856,6 +877,14 @@ export class Game {
     }
   }
 
+  /** The lobby tour is still to come for this player: nothing else opens over the lobby first. */
+  private tourDue(): boolean {
+    if (hasFlag(LOBBY_TOUR_KEY) || !hasFlag(KART_PICK_KEY) || new URLSearchParams(location.search).has('auto')) return false;
+    // The first-finish screen was shown on this device; the tour follows it.
+    const ladder = getLadder();
+    return Boolean(ladder && !ladder.all);
+  }
+
   /**
    * The lobby tour (src/ui/LobbyTour.ts), once per device, for a player who has raced but has
    * not stood in the lobby with nothing over it before. Not for accounts older than the unlock
@@ -864,14 +893,20 @@ export class Game {
   private maybeLobbyTour(): void {
     if (this.lobbyTour.isActive || hasFlag(LOBBY_TOUR_KEY) || this.firstBoot || this.state !== 'title') return;
     if (this.overlayOpen() || this.attendance.isVisible) return;
-    if (new URLSearchParams(location.search).has('auto')) return;
-    const ladder = getLadder();
-    if (!ladder || ladder.all || ladder.finishes < 1) return;
+    if (!this.tourDue()) return;
     const at = this.mainMenu.tourTargets();
+    // What the lobby holds first, then the cup last, with its button starting it: the tour is
+    // there to send a new player into a cup.
+    const goal = nextCupGoal(getCupProgress());
     this.lobbyTour.start([
-      { target: at.cup, text: 'tour.cup' },
       { target: at.garage, text: 'tour.garage' },
       { target: at.missions, text: 'tour.missions' },
+      { target: at.daily, text: 'tour.daily' },
+      {
+        target: at.cup,
+        text: 'tour.cup',
+        action: goal ? { label: t('cup.invite', { cup: t(`cup.${goal}`) }), run: () => this.mainMenu.startCupGoalFromTour() } : undefined,
+      },
     ]);
   }
 
@@ -1122,6 +1157,8 @@ export class Game {
    */
   private maybeOfferAttendance(): void {
     if (this.attendanceOffered || this.firstBoot || this.state !== 'title') return;
+    // The tour goes first; the check-in waits for the lobby after it.
+    if (this.lobbyTour?.isActive || this.tourDue()) return;
     const streak = getStreak();
     if (!streak || streak.claimed) return;
     if (new URLSearchParams(location.search).has('auto')) return;
@@ -2059,6 +2096,7 @@ export class Game {
    */
   private returnToMenu(panel: MenuPanel): void {
     this.cup = null;
+    this.firstFinish = false;
     this.dailyRun = null;
     this.disposeRace();
     this.showMenu(panel);
@@ -2516,6 +2554,8 @@ export class Game {
     this.results.show(standings, r.settings.mode ?? 'solo', Boolean(r.online), cupView);
     this.results.setNextTrack(this.nextTrackFor(r).name);
     this.cupInvite = this.cupInviteFor(r, finished);
+    this.firstFinish = this.isFirstFinish(r, finished);
+    if (this.firstFinish) this.results.setFirstFinish();
     this.maybeOfferKartPick(r, finished);
     this.results.setCupInvite(this.cupInvite ? t(`cup.${this.cupInvite}`) : '');
     if (this.reward) this.results.showRewards(this.reward);
@@ -2538,7 +2578,8 @@ export class Game {
     this.idleRaces = r.playerActed ? 0 : this.idleRaces + 1;
     const me = standings.find((s) => s.isPlayer);
     const retired = !me || !isFinite(me.finishTime) || me.finishTime <= 0;
-    if (retired || r.online || this.dailyRun || cupView?.isFinal || r.playerAutoDriverBeforeFinish) return;
+    // The very first finish waits for the player: it leads to the lobby, not on by itself.
+    if (retired || r.online || this.dailyRun || cupView?.isFinal || r.playerAutoDriverBeforeFinish || this.firstFinish) return;
     if (!readAutoNext() || this.idleRaces >= 2) return;
     this.results.armAutoNext();
   }
