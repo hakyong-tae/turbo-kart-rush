@@ -95,6 +95,26 @@ export function writeAutoAccel(on: boolean): void {
 export const FIRST_RACE_KEY = 'tkr.firstRace';
 /** Set once the first-race coach has been shown (finished, skipped or driven past). */
 export const COACH_KEY = 'tkr.coach';
+/** A cup left between races (src/core/cups.ts `CupRun`), so the lobby can offer to carry on. */
+export const CUP_RUN_KEY = 'tkr.cupRun';
+
+export function readCupRunRaw(): string | null {
+  try {
+    return localStorage.getItem(CUP_RUN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeCupRunRaw(value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(CUP_RUN_KEY);
+    else localStorage.setItem(CUP_RUN_KEY, value);
+  } catch {
+    /* private mode: the cup is just not kept */
+  }
+}
+
 /** The UTC day on which the "tomorrow's check-in" window last opened by itself. */
 export const TOMORROW_KEY = 'tkr.tomorrow';
 

@@ -28,7 +28,9 @@ export interface CupDef {
  * Order is display order. Root server.js keeps the same id list (`CUPS`).
  */
 export const CUPS: readonly CupDef[] = [
-  { id: 'rookie', trackIds: ['sunny_circuit', 'coral_coast', 'dune_drift'] },
+  // Sunny Circuit is a new player's very first race, so the Rookie Cup opens somewhere new and
+  // comes back to it in the middle.
+  { id: 'rookie', trackIds: ['coral_coast', 'sunny_circuit', 'dune_drift'] },
   { id: 'pro', trackIds: ['frostbite_falls', 'neon_nexus', 'magma_ridge'], requires: 'rookie' },
   {
     id: 'championship',
@@ -177,4 +179,40 @@ export function nextCupGoal(progress: CupProgress): CupId | null {
 export function cupsOpenedBy(before: CupProgress, id: CupId, place: number): CupId[] {
   const after = recordCupResult(before, id, place);
   return CUPS.filter((c) => !isCupUnlocked(c.id, before) && isCupUnlocked(c.id, after)).map((c) => c.id);
+}
+
+// --- a cup left part-way --------------------------------------------------------------
+
+/**
+ * A cup the player stepped out of: which cup, how many of its races are done, the table so far
+ * and the settings it runs on. Kept on the device so leaving for the lobby (or closing the tab)
+ * between races does not throw the cup away.
+ */
+export interface CupRun {
+  id: CupId;
+  /** Races finished; the next one to run is `trackIds[done]`. */
+  done: number;
+  table: CupEntry[];
+  characterId: string;
+  difficulty: 'easy' | 'normal' | 'hard';
+}
+
+/** Reads a stored run back, or null when it is missing, damaged, or names a cup that is over. */
+export function parseCupRun(raw: string | null): CupRun | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<CupRun>;
+    const cup = CUPS.find((c) => c.id === v.id);
+    if (!cup || typeof v.done !== 'number' || !Number.isInteger(v.done)) return null;
+    if (v.done < 0 || v.done >= cup.trackIds.length) return null;
+    if (!Array.isArray(v.table) || typeof v.characterId !== 'string') return null;
+    if (v.difficulty !== 'easy' && v.difficulty !== 'normal' && v.difficulty !== 'hard') return null;
+    const table = v.table.filter(
+      (e): e is CupEntry =>
+        Boolean(e) && typeof e.kartId === 'number' && typeof e.name === 'string' && typeof e.points === 'number' && Array.isArray(e.places),
+    );
+    return { id: cup.id, done: v.done, table: sortCup(table), characterId: v.characterId, difficulty: v.difficulty };
+  } catch {
+    return null;
+  }
 }

@@ -350,6 +350,10 @@ export const en = {
   'cup.trophy.new': 'NEW TROPHY',
   'cup.invite': 'START {cup}',
   'cup.invite.sub': 'Race for a trophy',
+  'cup.resume.title': 'Carry on with the {cup}?',
+  'cup.resume.body': 'You stopped between races. It goes on from race {i} of {n}, with your {pts} points so far.',
+  'cup.resume.go': 'CONTINUE',
+  'cup.resume.drop': 'START OVER',
 
   // garage: chrome
   'lobby.garage': 'GARAGE',
