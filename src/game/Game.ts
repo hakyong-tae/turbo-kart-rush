@@ -2113,6 +2113,10 @@ export class Game {
     this.uiRoot.dataset.state = next;
     // The tour points at lobby buttons: anywhere else it would point at nothing.
     if (next !== 'title') this.lobbyTour?.hide();
+    // Past the player's finish the field drives on behind the results: its sound steps back.
+    // Anything else (a new race, the menus) puts it back where it was.
+    const lowered = next === 'finished' || next === 'results';
+    this.safe(() => this.audio.setRaceSoundLowered?.(lowered));
     events.emit('game:stateChange', { from, to: next });
   }
 

@@ -661,6 +661,12 @@ export interface IAudioEngine {
    * oscillators, so a paused simulation does not stop them on its own.
    */
   setEnginesMuted(muted: boolean): void;
+  /**
+   * Contract addition (after the finish): turns the race's own sound — engines, item and crowd
+   * effects — down while the field drives on behind the results. Menu clicks and music keep
+   * their level.
+   */
+  setRaceSoundLowered?(lowered: boolean): void;
   dispose(): void;
 }
 
