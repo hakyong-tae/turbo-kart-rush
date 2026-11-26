@@ -2622,14 +2622,13 @@ export class Game {
     if (this.firstFinish) this.results.setFirstFinish();
     this.maybeOfferKartPick(r, finished);
     this.results.setCupInvite(this.cupInvite ? t(`cup.${this.cupInvite}`) : '');
-    if (this.reward) {
-      this.results.showRewards(this.reward);
-      this.maybeShowUnlocks(this.reward);
-    }
+    if (this.reward) this.results.showRewards(this.reward);
     if (this.lastSubmit?.updated && this.lastSubmit.rank) {
       this.results.showRankBanner(t('lb.newRank', { rank: this.lastSubmit.rank }));
     }
     this.setState('results');
+    // After the state is 'results': a reward that came in during the finish is put up now.
+    if (this.reward) this.maybeShowUnlocks(this.reward);
     this.playMusic('results');
     this.maybeAutoNext(r, standings, cupView);
   }
