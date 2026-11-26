@@ -1,8 +1,9 @@
 /**
  * Red dots on the lobby: a button with something new behind it says so until it is opened.
  *
- *   - garage: an item the account owns that the garage has not shown since it arrived (the
- *     unlock ladder, the check-in and the cups all hand out looks);
+ *   - garage: an item the account owns that the player has not tapped in the garage since it
+ *     arrived (the unlock ladder, the check-in and level-ups all hand out looks). The garage
+ *     dots the item and its tab; tapping the item clears it, and the lobby dot goes with the last;
  *   - daily challenge: today's has not been opened yet;
  *   - cup cell: the cup it names is open and has never been raced.
  *
@@ -58,6 +59,25 @@ export function garageIsNews(owned: Iterable<string>): boolean {
 
 export function markGarageSeen(owned: Iterable<string>): void {
   write(SEEN_GARAGE_KEY, JSON.stringify([...owned]));
+}
+
+/** An owned garage entry the player has not tapped yet. */
+export function garageTokenIsNew(token: string, owned: ReadonlySet<string>): boolean {
+  return owned.has(token) && !seenGarage().includes(token);
+}
+
+export function markGarageTokenSeen(token: string): void {
+  const seen = seenGarage();
+  if (!seen.includes(token)) write(SEEN_GARAGE_KEY, JSON.stringify([...seen, token]));
+}
+
+/**
+ * The first time the dots run for an account older than the unlock ladder, everything it owns
+ * is counted as seen: a returning player's whole collection is not news.
+ */
+export function ensureGarageBaseline(owned: Iterable<string>, legacy: boolean): void {
+  if (!legacy || read(SEEN_GARAGE_KEY) !== null) return;
+  markGarageSeen(owned);
 }
 
 export function dailyIsNews(day: string): boolean {
