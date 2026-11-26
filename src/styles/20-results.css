@@ -832,3 +832,116 @@
 .results-panel.first-finish:not([data-dense]) .unlock-name {
   font-size: 23px;
 }
+
+/* What a race opened, one at a time in front of the results (src/ui/UnlockPopup.ts): the map
+   of a new circuit, or the kart turning on the garage turntable in what it has just earned. */
+.unlock-popup {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(8, 9, 12, 0.72);
+  pointer-events: auto;
+}
+.unlock-popup.hidden {
+  display: none;
+}
+.unlock-popup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(460px, 92vw);
+  max-height: 94vh;
+  padding: 16px 18px 16px;
+  animation: unlock-in 0.4s var(--ease-pop) both;
+}
+.unlock-popup-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.unlock-popup-count {
+  font: 700 12px/1 var(--body);
+  color: var(--ink-faint);
+}
+.unlock-popup-stage {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  max-height: 48vh;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 70%, #232838 0%, var(--asphalt) 70%);
+}
+.unlock-popup-stage > .unlock-popup-canvas,
+.unlock-popup-stage > .unlock-popup-map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.unlock-popup-stage > canvas[hidden] {
+  display: none;
+}
+.unlock-popup-name {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.05;
+}
+.unlock-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.unlock-popup-ok {
+  min-width: 120px;
+}
+@media (max-height: 480px) {
+  .unlock-popup-panel {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: min(620px, 94vw);
+    padding: 10px 12px;
+    gap: 6px 12px;
+  }
+  .unlock-popup-head {
+    flex-basis: 100%;
+  }
+  .unlock-popup-stage {
+    flex: 1 1 55%;
+    max-height: 62vh;
+  }
+  .unlock-popup-name {
+    flex: 1 1 35%;
+    align-self: center;
+    font-size: 22px;
+  }
+  .unlock-popup-actions {
+    flex-basis: 100%;
+  }
+}
+
+/* A new player's first finish, once its rewards are seen: everything but the way to the lobby
+   (and the kart row, which picks the kart shown there) goes dark and stops answering. */
+.results.lobby-only .results-head,
+.results.lobby-only .results-rank,
+.results.lobby-only .results-rewards,
+.results.lobby-only .results-opened,
+.results.lobby-only .results-next,
+.results.lobby-only .results-tomorrow,
+.results.lobby-only .results-side,
+.results.lobby-only .panel-kicker,
+.results.lobby-only .results-foot .btn:not(.results-next-btn) {
+  filter: brightness(0.32);
+  pointer-events: none;
+  transition: filter 0.35s ease;
+}
+.results.lobby-only .results-next-btn {
+  animation: lobby-pulse 1.3s ease-in-out infinite;
+}
+@keyframes lobby-pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--yellow);
+  }
+}

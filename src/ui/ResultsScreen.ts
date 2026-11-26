@@ -104,6 +104,8 @@ export interface RewardView {
 export interface UnlockCard {
   kind: 'track' | 'item';
   name: string;
+  /** The circuit's id, or the garage entry's packed token: what the unlock popup needs. */
+  ref?: string;
   /** A circuit thumbnail (canvas) or a kart wearing the entry (image URL). */
   image?: HTMLCanvasElement | string;
 }
@@ -224,6 +226,10 @@ export class ResultsScreen {
   /** No countdown before this moment (ms), and none while the reward is still being counted. */
   private autoReadyAt = 0;
   private autoHold = false;
+  /** The countdown waits while the unlock popups are up in front of the screen. */
+  private popupHold = false;
+  /** Everything but the primary button (and the kart row) is dimmed and off: see `lockToLobby`. */
+  private lockedToLobby = false;
   /** When the fill started (0 = not yet). */
   private autoStartedAt = 0;
   private readonly autoCount: HTMLElement;
@@ -312,6 +318,28 @@ export class ResultsScreen {
     this.fit();
   }
 
+  /** Holds the countdown while the unlock popups are up; let go, it starts after a short read. */
+  setAutoHeld(on: boolean): void {
+    this.popupHold = on;
+    if (!on) this.autoReadyAt = Math.max(this.autoReadyAt, Date.now() + 1500);
+  }
+
+  /**
+   * After a new player's first finish has shown what it opened: everything but the primary
+   * button (TO THE LOBBY) and the kart row goes dark and stops answering, so the way on is the
+   * lobby, where the tour is.
+   */
+  lockToLobby(): void {
+    if (!this.visible || !this.firstFinish) return;
+    this.lockedToLobby = true;
+    this.cancelAutoNext();
+    this.rootNode.classList.add('lobby-only');
+    this.buttons.forEach((b, i) => {
+      b.disabled = i !== Action.Next;
+    });
+    this.setFocus(0);
+  }
+
   /**
    * Points the primary button at a cup instead of the next circuit. Game decides when (after a
    * few one-off races) and passes the cup's name; '' puts the button back on the next circuit.
@@ -386,6 +414,10 @@ export class ResultsScreen {
     this.cupInvite = '';
     this.firstFinish = false;
     this.panel.classList.remove('first-finish');
+    this.lockedToLobby = false;
+    this.popupHold = false;
+    this.rootNode.classList.remove('lobby-only');
+    for (const b of this.buttons) b.disabled = false;
     this.kartPick.replaceChildren();
     this.kartPick.classList.add('hidden');
     this.buttons[Action.Next].classList.remove('cup-invite');
@@ -598,7 +630,7 @@ export class ResultsScreen {
       return;
     }
     const now = Date.now();
-    if (this.autoHold || now < this.autoReadyAt) return;
+    if (this.autoHold || this.popupHold || now < this.autoReadyAt) return;
     const b = this.buttons[Action.Next];
     if (!this.autoStartedAt) {
       this.autoStartedAt = now;
@@ -616,6 +648,10 @@ export class ResultsScreen {
 
   handleInput(input: InputState): void {
     if (!this.visible) return;
+    if (this.lockedToLobby) {
+      if (input.confirm || input.back) this.activate(Action.Next);
+      return;
+    }
     if (input.menuLeft || input.menuUp) {
       this.cancelAutoNext();
       if (this.setFocus(this.focusIndex - 1)) events.emit('ui:move', {});
