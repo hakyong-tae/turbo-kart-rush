@@ -58,6 +58,7 @@ import { GaragePreview } from './garage/GaragePreview';
 import { PurchaseSheet, type PurchaseItem } from './garage/PurchaseSheet';
 import { earnChip, earnCondition, ladderCondition } from './progression/text';
 import { showToast } from './toast';
+import { garageTokenIsNew, markGarageTokenSeen } from './lobbyNews';
 
 /** Everything the paid tier owns, lifted off a stored look so a save can carry it through. */
 function paidPartOf(cos: KartCosmetics): KartCosmetics {
@@ -111,6 +112,8 @@ export class GaragePanel {
   onUnlock: (() => void) | null = null;
   /** Fired after a successful save, so the title-screen showcase can repaint. */
   onSaved: (() => void) | null = null;
+  /** An item's red dot was cleared: the lobby's garage dot may go with it. */
+  onSeen: (() => void) | null = null;
 
   private readonly rootNode: HTMLElement;
   private readonly tabsBar: HTMLElement;
@@ -354,8 +357,26 @@ export class GaragePanel {
     if (this.sheet.isVisible) this.refreshSheet();
   }
 
+  /** A red dot on each tab that holds an item still to be tapped. */
+  private refreshTabNews(): void {
+    const owned = getOwned();
+    for (const tab of TABS) {
+      const b = this.tabButtons.get(tab.id);
+      if (!b || !tab.list || !tab.field) continue;
+      const field = tab.field;
+      b.classList.toggle(
+        'news',
+        tab.list.some((entry) => {
+          const token = cosmeticToken(field, entry.id);
+          return Boolean(token && garageTokenIsNew(token, owned));
+        }),
+      );
+    }
+  }
+
   private setTab(id: TabId): void {
     this.tab = id;
+    this.refreshTabNews();
     for (const [tabId, b] of this.tabButtons) b.classList.toggle('selected', tabId === id);
     this.rows.textContent = '';
     if (id !== 'flame') this.preview.setBoostHold(false);
@@ -435,6 +456,8 @@ export class GaragePanel {
       el('span', 'garage-option-name', tk(`cos.${group}.${entry.id}`), b);
       const token = cosmeticToken(field, entry.id) ?? '';
       if (locked) this.lockChip(b, priceOf(token), entry.earn ? earnChip(token) : null);
+      // New in the collection and not tapped yet: a red dot until it is.
+      if (!locked && token && garageTokenIsNew(token, owned)) b.classList.add('news');
       // A rung of the first-session ladder: free for doing something, so the card says what and
       // how far along it is. Once the account has it (earned, bought or by the pass) it says so.
       const rung = ladderStepOf(token);
@@ -445,6 +468,12 @@ export class GaragePanel {
         el('span', `garage-option-rung${locked ? '' : ' have'}`, locked ? `${ladderCondition(rung)} · ${at}/${rung.at}` : t('ladder.have'), b);
       }
       b.addEventListener('click', () => {
+        if (b.classList.contains('news')) {
+          b.classList.remove('news');
+          markGarageTokenSeen(token);
+          this.refreshTabNews();
+          this.onSeen?.();
+        }
         // Locked or not, it goes on the kart: see the note at the top of the file.
         if (entry.id === first) delete this.draft[field];
         else (this.draft as Record<string, unknown>)[field] = entry.id;

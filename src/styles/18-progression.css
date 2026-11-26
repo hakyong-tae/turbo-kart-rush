@@ -672,3 +672,23 @@ div.reward-note {
 .lobby .cup-toggle.news .cup-shelf {
   margin-right: 12px;
 }
+
+/* The same red dot inside the garage: on an item the player has not tapped since it arrived,
+   and on the tab that holds one. */
+.garage-option.news,
+.garage-tab.news {
+  position: relative;
+}
+.garage-option.news::after,
+.garage-tab.news::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--panel);
+  pointer-events: none;
+}

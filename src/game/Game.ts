@@ -1292,6 +1292,7 @@ export class Game {
     // The showcase kart on the title screen is the same kart the garage just painted. Wired here
     // rather than next to the menu, because the menu is built before `this.garage` exists.
     garage.onSaved = () => this.safe(() => this.backdrop.applyCosmetics(getCosmetics()));
+    garage.onSeen = () => this.mainMenu.refreshNews();
     garage.onUnlock = () => {
       const result = buyPremium();
       if (result === 'unregistered') showToast(t('v8.lock.unregistered'), 'error');

@@ -29,7 +29,7 @@ import {
 } from '../verse8/entitlements';
 import { finishesToOpen, formatCoins, levelInfo } from '../core/economy';
 import { dayKey } from '../core/daily';
-import { cupIsNews, dailyIsNews, garageIsNews, markDailySeen, markGarageSeen } from './lobbyNews';
+import { cupIsNews, dailyIsNews, ensureGarageBaseline, garageIsNews, markDailySeen } from './lobbyNews';
 import { setButtonContent } from './dom';
 import { ensureKartThumbnails, getKartThumbnail, onKartThumbnail } from './kartThumbnails';
 import { buildTrackThumbnail } from './trackThumbnails';
@@ -200,11 +200,7 @@ export class MainMenu {
     // cup is three or four of them for a trophy, which is something to come back for.
     const gridStart = this.lobbyButtons.length;
     this.cupGoalButton = lobbyEntry(t('cup.label'), 'lobby-btn cup-toggle', lobbyGrid, () => this.startCupGoal(), 'trophy');
-    this.garageButton = lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => {
-      markGarageSeen(getOwned());
-      this.refreshNews();
-      this.onGarage?.();
-    }, 'wrench');
+    this.garageButton = lobbyEntry(t('lobby.garage'), 'lobby-btn garage-toggle', lobbyGrid, () => this.onGarage?.(), 'wrench');
     this.missionsButton = lobbyEntry(t('lobby.missions'), 'lobby-btn missions-toggle', lobbyGrid, () => this.onMissions?.(), 'target');
     if (online) lobbyEntry(t('lobby.online'), 'lobby-btn online-toggle', lobbyGrid, () => this.onOnline?.(), 'users');
     const gridEnd = this.lobbyButtons.length;
@@ -574,7 +570,10 @@ export class MainMenu {
   }
 
   /** Red dots: the lobby buttons with something new behind them (src/ui/lobbyNews.ts). */
-  private refreshNews(): void {
+  refreshNews(): void {
+    const ladder = getLadder();
+    // Only once the record is in: an empty collection read too early must not become the baseline.
+    if (ladder) ensureGarageBaseline(getOwned(), ladder.all);
     const progress = getCupProgress();
     this.cupGoalButton?.classList.toggle('news', cupIsNews(nextCupGoal(progress), progress));
     this.garageButton?.classList.toggle('news', garageIsNews(getOwned()));
